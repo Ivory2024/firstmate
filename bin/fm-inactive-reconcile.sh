@@ -311,15 +311,19 @@ meta_incarnation() { # <meta>
   printf 'legacy-%s\n' "$(sha256_text "$identity")"
 }
 
-pr_for_task() { # <meta> <status> [preferred-line]
-  local meta=$1 status=$2 preferred=${3:-} value
+# The task's delivered PR. Recorded meta pr= is the only authoritative source;
+# the fallback scrape accepts only a preferred terminal line in a mode's
+# ready-signal shape (`done: PR <url>` or `done: PR <url> checks green`), so a
+# PR a worker merely mentioned in prose is never claimed as the delivery.
+# A scout never delivers a PR, so it never carries one.
+pr_for_task() { # <meta> [preferred-line]
+  local meta=$1 preferred=${2:-} value
+  [ "$(meta_field "$meta" kind)" != scout ] || return 0
   value=$(meta_field "$meta" pr)
   if [ -z "$value" ] && [ -n "$preferred" ]; then
     value=$(printf '%s\n' "$preferred" \
-      | grep -Eo 'https?://[^[:space:])"]+/pull/[0-9]+' | head -1 || true)
-  fi
-  if [ -z "$value" ] && [ -f "$status" ]; then
-    value=$(grep -Eo 'https?://[^[:space:])"]+/pull/[0-9]+' "$status" 2>/dev/null | tail -1 || true)
+      | sed -nE 's|^done: PR (https?://[^[:space:])"]+/pull/[0-9]+)( checks green)?$|\1|p' \
+      | head -1 || true)
   fi
   clean_field "$value"
 }
@@ -398,7 +402,7 @@ report_child_ledger_locked() { # <id> <meta>
   status="$STATE/$id.status"
   last=$(child_terminal_ledger_line "$status") || return 0
   state=$(status_line_verb "$last")
-  pr=$(pr_for_task "$meta" "$status" "$last")
+  pr=$(pr_for_task "$meta" "$last")
   incarnation=$(meta_incarnation "$meta")
   fingerprint=$(sha256_text "$incarnation|$id|$state|ledger|$last")
   previous=$(grep -v '^[[:space:]]*$' "$status" 2>/dev/null \
@@ -469,6 +473,30 @@ report_child() { # <id>
   report_child_ledger_locked "$id" "$meta"
 }
 
+reap_terminal_child_locked() { # <id> <meta>
+  local id=$1 meta=$2 backend target pids pid
+  [ -f "$meta" ] && [ ! -L "$meta" ] || return 0
+  backend=$(clean_field "$(meta_field "$meta" backend)")
+  [ -n "$backend" ] || backend=tmux
+  target=$(clean_field "$(meta_field "$meta" window)")
+  [ -n "$target" ] || return 0
+  if [ "$backend" = tmux ] && command -v tmux >/dev/null 2>&1; then
+    pids=$(tmux list-panes -t "$target" -F '#{pane_pid}' 2>/dev/null || true)
+    for pid in $pids; do
+      if [ -n "$pid" ] && [ "$pid" -gt 1 ] 2>/dev/null; then
+        kill -TERM -"$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+      fi
+    done
+  fi
+  if [ -f "$SCRIPT_DIR/fm-backend.sh" ]; then
+    # shellcheck source=bin/fm-backend.sh
+    . "$SCRIPT_DIR/fm-backend.sh"
+    fm_backend_kill "$backend" "$target" 2>/dev/null || true
+  elif [ "$backend" = tmux ] && command -v tmux >/dev/null 2>&1; then
+    tmux kill-window -t "$target" 2>/dev/null || true
+  fi
+}
+
 reconcile_direct_child_locked() { # <id> <meta> <secondmate-id-or-empty> <timeout>
   local id=$1 meta=$2 self=${3:-} timeout=$4 status turn last age state_line state pr incarnation fingerprint outcome_key payload kind state_rc=0
   [ -f "$meta" ] && [ ! -L "$meta" ] || return 0
@@ -505,7 +533,10 @@ reconcile_direct_child_locked() { # <id> <meta> <secondmate-id-or-empty> <timeou
     outcome_key="inactive-outcome-main-$id-$state"
   fi
   ensure_record "$fingerprint" "$id" "$incarnation" "$state" "$outcome_key" direct "upstream" "$pr" "$(sha256_text "$last")" || return 1
-  [ -n "$RECORD_PENDING" ] || return 0
+  if [ -z "$RECORD_PENDING" ]; then
+    reap_terminal_child_locked "$id" "$meta" || true
+    return 0
+  fi
   if [ -n "$self" ]; then
     if report_to_parent "$id" "$state" "$outcome_key" "$fingerprint" "$pr"; then
       mark_reported "$RECORD_PENDING" || return 1
@@ -513,12 +544,14 @@ reconcile_direct_child_locked() { # <id> <meta> <secondmate-id-or-empty> <timeou
       notice_parent_report_failed "$RECORD_PENDING" "$fingerprint" \
         "inactive terminal outcome needs parent report: child=$id state=$state"
     fi
+    reap_terminal_child_locked "$id" "$meta" || true
     return 0
   fi
   record_phase_set "$RECORD_PENDING" presentation || return 1
   payload="inactive terminal outcome awaiting captain presentation: child=$id state=$state"
   [ -z "$pr" ] || payload="$payload pr=$pr"
   queue_presentation "$RECORD_PENDING" "$fingerprint" "$payload" || true
+  reap_terminal_child_locked "$id" "$meta" || true
 }
 
 reconcile_direct_child() { # <id> <meta> <secondmate-id-or-empty> <timeout>
