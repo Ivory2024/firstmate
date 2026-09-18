@@ -1,7 +1,6 @@
 ---
 name: specialist-tools
-description: >-
-  Route one task to the captain-approved ECC, paperthin, or ultrawork specialist path without loading an entire tool catalog into context.
+description: Route a task to a captain-approved ECC, paperthin, or ultrawork specialist path without loading the full tool catalog.
 user-invocable: false
 metadata:
   internal: true

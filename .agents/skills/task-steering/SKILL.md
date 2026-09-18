@@ -1,6 +1,6 @@
 ---
 name: task-steering
-description: >- Agent-only reference for steering a live worker and driving its lifecycle. Load before sending ordinary text to a worker, resending after an unconfirmed remote delivery, closing an open keyed decision with an answer, or interrupting, exiting, or relaunching a worker.
+description: Steer or end a live worker: send ordinary text, resend after an unconfirmed remote delivery, close an open keyed decision with an answer, or interrupt, exit, or relaunch it.
 user-invocable: false
 metadata:
   internal: true

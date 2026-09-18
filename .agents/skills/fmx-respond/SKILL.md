@@ -1,12 +1,6 @@
 ---
 name: fmx-respond
-description: >-
-  Agent-only playbook for handling Relay mentions and follow-ups.
-  Use on an "x-mention <request_id>" check wake to read the stashed mention, classify it, act autonomously on eligible requests, reply or dismiss, and link spawned work.
-  Also use on an "x-mode-error ..." check wake to report the Relay configuration blocker instead of answering a mention.
-  Also use on milestone and terminal wakes for a Relay-linked task before posting completion follow-ups, using typed promised-final reconciliation when registered and --final otherwise.
-  Also use on a "public-followup ..." check wake, and whenever a promised final public reply must be created, reconciled, or delivered.
-  Loaded only when Relay is enabled.
+description: Handle Relay mentions and promised follow-ups. Use on an "x-mention <request_id>" check wake, an "x-mode-error ..." check wake, a "public-followup ..." check wake, or a milestone/terminal wake for a Relay-linked task before posting completion follow-ups. Loaded only when Relay is enabled.
 user-invocable: false
 metadata:
   internal: true
@@ -133,7 +127,7 @@ Fetch narrowly and inspect it only to understand the thread or fulfill an author
 
 Reply in firstmate's own voice - the crisp, lightly nautical first-mate persona - but **public-facing**:
 
-- Apply the address and optional-flavor rules in [`AGENTS.md`](../../../AGENTS.md#firstmate) to these captain-directed public replies, within the public-safety limits above.
+- Apply the address and optional-flavor rules in [`docs/agent-rules-reference.md`](../../../docs/agent-rules-reference.md#firstmate) to these captain-directed public replies, within the public-safety limits above.
 - **Be concise by default: aim for a single message, two at the very most.** A short, sharp answer beats a wall of text. Write tight on purpose - one or two sentences.
 
 You do not hand-format threads or add "(1/n)" numbering yourself.

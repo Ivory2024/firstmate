@@ -149,6 +149,10 @@
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/firstmate-layout/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/firstmate-orca/SKILL.md",
       "audience": "agent-runtime"
     },
@@ -254,6 +258,10 @@
     },
     {
       "path": ".agents/skills/specialist-tools/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/task-steering/SKILL.md",
       "audience": "agent-runtime"
     },
     {
@@ -503,6 +511,10 @@
     {
       "path": "docs/wedge-alarm.md",
       "audience": "operator-current"
+    },
+    {
+      "path": "docs/agent-rules-reference.md",
+      "audience": "agent-runtime"
     },
     {
       "path": "docs/zellij-backend.md",

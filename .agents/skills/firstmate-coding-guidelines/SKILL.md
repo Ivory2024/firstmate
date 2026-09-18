@@ -1,9 +1,6 @@
 ---
 name: firstmate-coding-guidelines
-description: >-
-  Agent-only reference for changing firstmate's shared, tracked material per AGENTS.md section 1.
-  Use before editing any of that material, whether working as firstmate directly or as a crewmate briefed on a firstmate-repo task.
-  Covers the knowledge-placement decision tree, the one-owner rule for contracts, the inline-stub pattern for content moved into a skill, AGENTS.md size discipline, trigger hygiene for new skills, and repo style rules (one sentence per line, plain dash, no agent co-author, shellcheck-clean bin scripts, colocated tests, and maintainer-verification evidence).
+description: Route Firstmate shared-file changes to the right owner and keep AGENTS.md, skills, docs, and tests concise.
 user-invocable: false
 metadata:
   internal: true
@@ -48,12 +45,13 @@ When you touch a contract, patch, replace, or prune the owner's existing languag
 
 ## Inline-stub pattern
 
-When content moves out of `AGENTS.md` into a skill, decide what stays behind by asking one question: what must survive with no skill loaded?
-That is the trigger condition for loading the skill, plus any safety-critical fact that fires on a wake the skill itself is not loaded for.
+When content moves out of `AGENTS.md` into a skill or into the on-demand `docs/agent-rules-reference.md`, decide what stays behind by asking one question: what must survive with no skill loaded and no section opened?
+That is the trigger condition for loading the skill or section, plus any safety-critical fact that fires on a wake or action the skill or section itself is not loaded for - a fact like that stays inline in `AGENTS.md` regardless of how conditional-detail-heavy its surrounding topic is.
 Everything else - the procedure, the mechanism, the surrounding detail - moves out completely.
 Do not leave a partial restatement behind "just in case".
 A partial copy is exactly the duplication the one-owner rule forbids.
 The model to copy is `AGENTS.md` section 8's "Away-mode and quiet-mode stub": it keeps only the marker format, the ownership-transfer rule, and the exit condition inline, and points everything else at the `/afk` and `/quiet` skills.
+Before shrinking `AGENTS.md` into `docs/agent-rules-reference.md`, verify every fact you moved still has a live trigger - a skill description, a script's `--help` output, or a router pointer - and read that reference file's own "Maintaining this file" section, which owns its safety-boundary-preservation bar.
 
 ## Size discipline
 

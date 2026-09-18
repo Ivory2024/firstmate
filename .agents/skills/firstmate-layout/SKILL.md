@@ -1,6 +1,6 @@
 ---
 name: firstmate-layout
-description: >- Full FM_HOME directory and file layout reference, naming every tracked path, config/ override, data/ record, and state/ runtime file and its owner. Load before inspecting, debugging, or reasoning about a specific file or directory under FM_HOME whose purpose AGENTS.md section 2 does not already name, or before hand-writing a path into a script or check.
+description: Resolve FM_HOME paths and ownership before inspecting, debugging, or hand-writing a path for a file or directory that AGENTS.md section 2 does not already name.
 user-invocable: false
 metadata:
   internal: true

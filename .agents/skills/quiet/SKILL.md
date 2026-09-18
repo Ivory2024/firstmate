@@ -1,8 +1,6 @@
 ---
 name: quiet
-description: >-
-  Enter quiet supervision mode when the captain invokes /quiet or asks for quiet mode, quiet-while-present, or fewer routine wake turns while they stay in the session.
-  It sets the same durable away/quiet-mode flag as /afk, in `quiet` mode, so the sub-supervisor daemon self-handles routine wakes and escalates captain-relevant events exactly as away mode does, but ordinary captain chat does NOT exit it - only an explicit `/quiet off` does.
+description: Enter or exit quiet mode on `/quiet`, quiet-while-present, or a request for fewer routine wake turns while present; preserve its durable supervision rules - ordinary chat does NOT exit it, only `/quiet off` does.
 user-invocable: true
 metadata:
   internal: true

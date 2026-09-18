@@ -1,6 +1,6 @@
 ---
 name: stow
-description: Sweep the current conversation for durable knowledge - user preferences, project facts, operational gotchas, standing decisions, and unfinished next steps - and file each through explicit instructions, existing local conventions, or the private `.stow-notes.md` fallback, curating tiered, decaying destination files as it writes. Use when the user invokes /stow, asks to save or write down what was learned this session, or before a context reset or long break.
+description: Capture durable session knowledge - preferences, facts, gotchas, decisions, next steps - through the user-facing stow workflow. Use on `/stow`, when asked to save or write down what was learned, or before a context reset or long break.
 user-invocable: true
 ---
 
