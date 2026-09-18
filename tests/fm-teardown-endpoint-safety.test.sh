@@ -533,6 +533,33 @@ test_reused_pool_slot_refuses_before_touching_the_other_task() {
   pass "fm-teardown: a pool slot named by a second task record is never returned, killed, or reset"
 }
 
+test_duplicate_pool_slot_records_follow_readable_claim() {
+  local dir id=stale-task other=live-task rc
+
+  dir=$(make_case duplicate-slot-claim)
+  mark_case_as_treehouse_pool "$dir"
+  fm_write_meta "$dir/home/state/$id.meta" \
+    "window=firstmate:fm-$id" "endpoint_task_id=$id" \
+    "worktree=$dir/worktree" "project=$dir/project" "kind=scout"
+  fm_write_meta "$dir/home/state/$other.meta" \
+    "window=firstmate:fm-$other" "endpoint_task_id=$other" \
+    "worktree=$dir/worktree" "project=$dir/project" "kind=scout"
+  claim_pool_slot "$dir" "$other"
+
+  set +e
+  run_case "$dir" "$id" > "$dir/stdout" 2> "$dir/stderr"
+  rc=$?
+  set -e
+  [ "$rc" -eq 0 ] || fail "a readable slot claim should let stale duplicate cleanup finish: $(cat "$dir/stderr")"
+  assert_absent "$dir/home/state/$id.meta" "stale duplicate record was not removed"
+  assert_present "$dir/home/state/$other.meta" "live claimant record was removed"
+  assert_present "$dir/worktree/sentinel" "claimant worktree was reset"
+  ! grep -Fq "treehouse <return>" "$dir/runtime.log" \
+    || fail "stale duplicate cleanup returned the claimant's slot: $(cat "$dir/runtime.log")"
+
+  pass "fm-teardown: duplicate records follow the readable slot claim"
+}
+
 test_cross_home_pool_slot_collision_refuses() {
   local dir id=stale-task other=secondmate-task second_home second_project rc
   dir=$(make_case slot-reuse-cross-home)
@@ -1383,6 +1410,7 @@ test_orca_close_failure_refuses_even_under_force
 test_already_gone_endpoint_still_completes_without_a_refusal
 test_bare_relative_origin_shares_project_lock_with_clone
 test_reused_pool_slot_refuses_before_touching_the_other_task
+test_duplicate_pool_slot_records_follow_readable_claim
 test_cross_home_pool_slot_collision_refuses
 test_sole_slot_record_still_tears_down
 test_reassigned_pool_slot_finishes_own_cleanup_without_touching_the_slot
