@@ -854,10 +854,13 @@ function analyzeProgram(command, context, depth = 0) {
   return { error: "", protectedFound, directProtected, nestedProtected, broadKill: broadKillFound, pgrepWatcher, watcherPids: activeContext.watcherPids, program, nodeInfos };
 }
 
-function xModePathAllowed(value, home) {
+function xModePathAllowed(value, home, root) {
   if (value === "config/x-mode.env" || value === "./config/x-mode.env") return true;
   if (!path.isAbsolute(value)) return false;
-  return path.normalize(value) === path.join(path.normalize(home), "config/x-mode.env");
+  const normalized = path.normalize(value);
+  if (home && normalized === path.join(path.normalize(home), "config/x-mode.env")) return true;
+  if (root && normalized === path.join(path.normalize(root), "config/x-mode.env")) return true;
+  return false;
 }
 
 function ordinaryWordsOnly(tokens) {
@@ -870,8 +873,8 @@ function setupKind(info, context) {
   const values = position.words.map((word) => word.value);
   if (values[0] === "cd" && values.length === 2) return "cd";
   if (values[0] === "export" && values.length === 2 && isAssignment(values[1])) return "export";
-  if ((values[0] === "source" || values[0] === ".") && values.length === 2 && xModePathAllowed(values[1], context.home)) return "source";
-  if (values[0] === "[" && values[1] === "-f" && values[3] === "]" && values.length === 4 && xModePathAllowed(values[2], context.home)) return "test-source";
+  if ((values[0] === "source" || values[0] === ".") && values.length === 2 && xModePathAllowed(values[1], context.home, context.root)) return "source";
+  if (values[0] === "[" && values[1] === "-f" && values[3] === "]" && values.length === 4 && xModePathAllowed(values[2], context.home, context.root)) return "test-source";
   return "";
 }
 
