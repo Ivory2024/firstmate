@@ -1,0 +1,15 @@
+== live provider poll ==
+quota: quota-agy
+status: error
+detail: {"provider":"agy","best":null,"error":"Antigravity sign-in required"}
+condition_polls: 1
+== live aggregate poll ==
+quota: quota
+status: error
+detail: {"provider":"aggregate","summary":[{"provider":"claude","best":null},{"provider":"codex","best":{"scope":"all_models","status":"known","effectivePercentRemaining":67,"boundedBy":["five_hour","weekly"],"limitingWindowIds":["weekly"],"pace":{"status":"mixed","aheadWindowIds":["weekly"],"worstReservePercentPoints":-25.9683,"worstReserveWindowId":"weekly"},"runway":{"status":"projected_exhaustion","usableRunwaySeconds":86344,"projectedExhaustedAt":"2026-09-20T23:28:27.375Z","limitingWindowId":"weekly","projectionConfidence":"early"},"selection":{"status":"known","spendPriority":-3.852}}},{"provider":"cursor","best":null},{"provider":"copilot","best":null},{"provider":"grok","best":null},{"provider":"kimi","best":null},{"provider":"zai","best":null},{"provider":"agy","best":null,"error":"Antigravity sign-in required"}]}
+condition_polls: 1
+== live chooser AGY candidate ==
+rc: 2
+output: error: unknown harness: agy
+== direct resolver credential availability ==
+TYPESAFE_API_KEY in environment: absent
