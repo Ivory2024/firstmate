@@ -322,7 +322,10 @@ jq '(.providers[] | select(.provider == "agy") | .state) = {
   "status":"auth_required","stale":false,"error":"Antigravity sign-in required"
 } |
 (.providers[] | select(.provider == "agy") | .quotaSemantics) = {
-  "status":"unknown","effectiveAvailability":[]
+  "status":"unknown","effectiveAvailability":[{
+    "scope":"gemini_only","status":"known","effectivePercentRemaining":64,
+    "runway":{"status":"through_reset"},"selection":{"spendPriority":0.4}
+  }]
 }' "$QUOTA" > "$AUTH_REQUIRED_AGY"
 reset_log
 TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$AUTH_REQUIRED_AGY" run code out err "$BRIEF"

@@ -306,6 +306,8 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
     (provider_of($c)) as $p |
     if $p == null then {profile: $c, eligible: false, reason: "no provider family for harness \($c.harness); declare provider on the profile"}
     elif prov($p) == null then {profile: $c, provider: $p, eligible: true, unranked: true, reason: "provider \($p) not in the quota snapshot"}
+    elif ($p == "agy" and (prov($p).state.status // "") == "auth_required") then
+      {profile: $c, provider: $p, eligible: true, unranked: true, unknown: true, uncertainty: uncertainty($p), reason: "provider \($p) unmeasured (\(prov($p).quotaSemantics.status))"}
     else
       (applicable($p; ($c.model // ""))) as $rows |
       (evidence($rows)) as $bounds |
