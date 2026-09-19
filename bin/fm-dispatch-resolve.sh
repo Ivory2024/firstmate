@@ -274,12 +274,17 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
   def bare($m): ($m | split("/") | last);
   def provider_of($c): ($c.provider // $pmap[$c.harness] // null);
   def measured($p):
-    (prov($p) != null and (["known", "partial"] | index(prov($p).quotaSemantics.status)) != null);
+    (prov($p) != null and
+     ((["known", "partial"] | index(prov($p).quotaSemantics.status)) != null or
+      (prov($p).quotaSemantics.status == "unknown" and
+       any((prov($p).quotaSemantics.effectiveAvailability // [])[]; .status == "known"))));
+  def scope_applies($p; $scope; $m):
+    $scope == "all_models" or $scope == "all_products" or
+    ($p == "agy" and $scope == "gemini_only") or
+    ($m != "" and ($scope == ("model:" + (bare($m))) or $scope == ("product:" + (bare($m)))));
   def applicable($p; $m):
-    (bare($m)) as $bare |
     [rows($p)[] | select(
-      .scope == "all_models" or .scope == "all_products" or
-      ($m != "" and (.scope == ("model:" + $bare) or .scope == ("product:" + $bare)))
+      scope_applies($p; .scope; $m)
     )];
   def floor_state($f; $p):
     if $f == null then "none"
