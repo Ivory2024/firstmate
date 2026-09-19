@@ -6,7 +6,11 @@
 # when neither file exists, promotes a real CLAUDE.md file when it is the only
 # file present (unless it is already the canonical pointer), converts a correct
 # CLAUDE.md -> AGENTS.md symlink into the pointer file, and refuses to clobber
-# distinct real files or wrong symlinks.
+# distinct real files or wrong symlinks. Skips writing a brand-new CLAUDE.md
+# pointer (neither file existed, or AGENTS.md existed with no CLAUDE.md) when
+# the invoking Claude Code is >= 2.1.277, which reads AGENTS.md natively; see
+# claude_supports_native_agents_md. Existing pointers and symlink conversions
+# are left alone by this gate for now.
 # Owns the canonical "## Maintaining this file" self-governance wording for
 # project AGENTS.md files, injecting it idempotently into created skeletons,
 # promoted CLAUDE.md files, and existing AGENTS.md files lacking both the exact
@@ -128,6 +132,36 @@ is_canonical_claude_pointer() {
   claude_pointer_content | cmp -s - "$CLAUDE"
 }
 
+fm_version_at_least() {  # <candidate> <floor>
+  local candidate=${1:-} floor=${2:-} c f
+  candidate=${candidate%%[-+]*}
+  case "$candidate" in ''|*[!0-9.]*) return 1 ;; esac
+  while [ -n "$floor" ]; do
+    c=${candidate%%.*}
+    f=${floor%%.*}
+    [ -n "$c" ] || c=0
+    [ "$c" -gt "$f" ] 2>/dev/null && return 0
+    [ "$c" -lt "$f" ] 2>/dev/null && return 1
+    case "$candidate" in *.*) candidate=${candidate#*.} ;; *) candidate= ;; esac
+    case "$floor" in *.*) floor=${floor#*.} ;; *) floor= ;; esac
+  done
+  return 0
+}
+
+# Returns 0 if local Claude Code is installed and version is >= 2.1.277.
+# Returns 1 if missing, unparseable, command errors, or version < 2.1.277.
+claude_supports_native_agents_md() {
+  command -v claude >/dev/null 2>&1 || return 1
+  local ver_str ver
+  ver_str=$(claude --version 2>/dev/null) || return 1
+  if [[ "$ver_str" =~ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+    ver="${BASH_REMATCH[1]}"
+  else
+    return 1
+  fi
+  fm_version_at_least "$ver" "2.1.277"
+}
+
 # Write the canonical pointer as a regular file. Unlink a symlink first so the
 # write cannot follow it and destroy AGENTS.md. Never overwrite a distinct real
 # file; callers classify that as a conflict before invoking this.
@@ -209,11 +243,19 @@ if [ -e "$AGENTS" ]; then
   fi
   if [ ! -e "$CLAUDE" ]; then
     ensure_maintenance_section
-    install_claude_pointer
-    if [ "$MAINT_INJECTED" -eq 1 ]; then
-      echo "updated: added ## Maintaining this file to AGENTS.md and wrote CLAUDE.md @AGENTS.md pointer in $DIR"
+    if claude_supports_native_agents_md; then
+      if [ "$MAINT_INJECTED" -eq 1 ]; then
+        echo "updated: added ## Maintaining this file to AGENTS.md in $DIR"
+      else
+        echo "unchanged: AGENTS.md in $DIR"
+      fi
     else
-      echo "wrote: CLAUDE.md @AGENTS.md pointer in $DIR"
+      install_claude_pointer
+      if [ "$MAINT_INJECTED" -eq 1 ]; then
+        echo "updated: added ## Maintaining this file to AGENTS.md and wrote CLAUDE.md @AGENTS.md pointer in $DIR"
+      else
+        echo "wrote: CLAUDE.md @AGENTS.md pointer in $DIR"
+      fi
     fi
     exit 0
   fi
@@ -263,5 +305,9 @@ if [ -e "$CLAUDE" ]; then
 fi
 
 write_skeleton
-install_claude_pointer
-echo "created: AGENTS.md and CLAUDE.md @AGENTS.md pointer in $DIR"
+if claude_supports_native_agents_md; then
+  echo "created: AGENTS.md in $DIR"
+else
+  install_claude_pointer
+  echo "created: AGENTS.md and CLAUDE.md @AGENTS.md pointer in $DIR"
+fi
