@@ -26,11 +26,40 @@ write_fixture_claude_pointer() {
 EOF
 }
 
+with_mock_claude() {
+  local output=$1 code=${2:-0} mock_dir
+  shift 2
+  mock_dir=$(mktemp -d "$TMP_ROOT/mock-claude.XXXXXX")
+  cat > "$mock_dir/claude" <<EOF
+#!/bin/sh
+if [ "$code" -ne 0 ]; then
+  exit $code
+fi
+cat <<'OUT'
+$output
+OUT
+EOF
+  chmod +x "$mock_dir/claude"
+  PATH="$mock_dir:$PATH" "$@"
+}
+
+with_no_claude() {
+  local claude_path claude_dir new_path
+  claude_path=$(command -v claude 2>/dev/null)
+  if [ -n "$claude_path" ]; then
+    claude_dir=$(dirname "$claude_path")
+    new_path=$(echo "$PATH" | tr ':' '\n' | grep -v -Fx "$claude_dir" | tr '\n' ':')
+    PATH="$new_path" "$@"
+  else
+    "$@"
+  fi
+}
+
 test_created_agents_md_includes_self_governance() {
   local repo agents
   repo="$TMP_ROOT/new-project"
   mkdir -p "$repo"
-  "$ROOT/bin/fm-ensure-agents-md.sh" "$repo" >/dev/null 2>&1 || fail "fm-ensure-agents-md.sh failed for empty project"
+  with_mock_claude "2.0.0" 0 "$ROOT/bin/fm-ensure-agents-md.sh" "$repo" >/dev/null 2>&1 || fail "fm-ensure-agents-md.sh failed for empty project"
   agents="$repo/AGENTS.md"
   assert_present "$agents" "AGENTS.md was not created"
   assert_absent "$repo/CLAUDE.md" "fresh setup created a CLAUDE.md file"
@@ -159,7 +188,7 @@ test_existing_agents_md_without_claude_gains_section() {
   mkdir -p "$repo"
   printf '# Existing agent memory\n\nDeploy with kubectl.\n' > "$repo/AGENTS.md"
   agents="$repo/AGENTS.md"
-  out=$("$ROOT/bin/fm-ensure-agents-md.sh" "$repo" 2>&1) \
+  out=$(with_mock_claude "2.0.0" 0 "$ROOT/bin/fm-ensure-agents-md.sh" "$repo" 2>&1) \
     || fail "fm-ensure-agents-md.sh failed for existing AGENTS.md without CLAUDE.md"
   assert_contains "$out" "updated:" "injection without CLAUDE.md did not report an update"
   assert_absent "$repo/CLAUDE.md" "injection created a CLAUDE.md file"
@@ -204,7 +233,7 @@ test_marked_project_guidance_stays_unchanged() {
         symlink) ln -s AGENTS.md "$repo/CLAUDE.md" ;;
         promotion) mv "$repo/AGENTS.md" "$repo/CLAUDE.md" ;;
       esac
-      "$ROOT/bin/fm-ensure-agents-md.sh" "$repo" >/dev/null 2>&1 \
+      with_mock_claude "2.0.0" 0 "$ROOT/bin/fm-ensure-agents-md.sh" "$repo" >/dev/null 2>&1 \
         || fail "ensure failed for marked project ($route)"
       cmp -s "$repo/.before" "$repo/AGENTS.md" \
         || fail "marked project guidance was modified ($route)"
@@ -239,7 +268,7 @@ test_reworded_guidance_requires_first_line_marker() {
         'Keep broadly useful knowledge concise; link to sources and rewrite stale entries.' \
         'Preserve these rules for every agent.' |
         while IFS= read -r line; do printf '%s%s' "$line" "$eol"; done > "$repo/AGENTS.md"
-      "$ROOT/bin/fm-ensure-agents-md.sh" "$repo" >/dev/null 2>&1 \
+      with_mock_claude "2.0.0" 0 "$ROOT/bin/fm-ensure-agents-md.sh" "$repo" >/dev/null 2>&1 \
         || fail "ensure failed for unmarked reworded guidance"
       # AGENTS.md is the helper's generated output contract, not implementation source.
       assert_grep '## Editing these notes' "$repo/AGENTS.md" "ensure removed project guidance"
@@ -247,7 +276,7 @@ test_reworded_guidance_requires_first_line_marker() {
       [ "$count" -eq 1 ] || fail "guidance without a first-line mark did not gain the canonical section"
       assert_absent "$repo/CLAUDE.md" "ensure created a CLAUDE.md file"
       cp "$repo/AGENTS.md" "$repo/.after-first"
-      "$ROOT/bin/fm-ensure-agents-md.sh" "$repo" >/dev/null 2>&1 \
+      with_mock_claude "2.0.0" 0 "$ROOT/bin/fm-ensure-agents-md.sh" "$repo" >/dev/null 2>&1 \
         || fail "ensure failed on unmarked project re-run"
       cmp -s "$repo/.after-first" "$repo/AGENTS.md" \
         || fail "unmarked project re-run modified guidance"
@@ -437,3 +466,4 @@ test_agents_md_symlink_is_refused
 test_wrong_target_symlink_is_refused
 test_non_regular_claude_md_is_refused
 test_lowercase_agents_md_refuses_case_fragile_pointer
+
