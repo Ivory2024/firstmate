@@ -230,7 +230,12 @@ out=$(QUOTA_AXI_MALFORMED=auth-required-agy QUOTA_AXI_COUNT="$COUNT" PATH="$FAKE
   "$BIN/fm-procevent-quota.sh" poll --interval 1 --threshold 10 --provider agy --timeout 1)
 printf '%s\n' "$out" | grep -qx 'status: error' || fail "auth-required AGY quota unexpectedly triggered a wake"
 detail=$(printf '%s\n' "$out" | sed -n 's/^detail: //p')
-printf '%s\n' "$detail" | jq -e '.best == null' >/dev/null || fail "auth-required AGY detail reused stale quota evidence: $detail"
-ok "auth-required AGY stays out of wake classification and stale details"
+printf '%s\n' "$detail" | jq -e '.best == null and .error == "Antigravity sign-in required"' >/dev/null || fail "auth-required AGY detail hid the authentication cause: $detail"
+out=$(QUOTA_AXI_MALFORMED=auth-required-agy QUOTA_AXI_COUNT="$COUNT" PATH="$FAKEBIN:$PATH" \
+  "$BIN/fm-procevent-quota.sh" poll --interval 1 --threshold 10 --timeout 1)
+printf '%s\n' "$out" | grep -qx 'status: error' || fail "aggregate auth-required AGY quota did not surface an error"
+detail=$(printf '%s\n' "$out" | sed -n 's/^detail: //p')
+printf '%s\n' "$detail" | jq -e '.summary[0].best == null and .summary[0].error == "Antigravity sign-in required"' >/dev/null || fail "aggregate auth-required AGY detail hid the authentication cause: $detail"
+ok "auth-required AGY stays out of wake classification and surfaces its cause"
 
 printf '# all fm-procevent-quota tests passed\n'

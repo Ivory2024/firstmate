@@ -116,6 +116,8 @@ condition_status() {
   printf '%s\n' "$json" | jq -r --arg provider "$provider" --arg threshold "$threshold" '
     def auth_required($p):
       $p.provider == "agy" and ($p.state.status // "") == "auth_required";
+    def auth_cause($p):
+      (($p.state.error // "authentication required") | tostring);
     def classify($availability):
       ($availability | map(select(.status == "known"))) as $known |
       if ($availability | length) == 0 then "error"
@@ -126,8 +128,10 @@ condition_status() {
       end;
     if (.providers | type) != "array" then "error"
     elif $provider == "" then
+      ([.providers[]? | select(auth_required(.))]) as $auth |
       ([.providers[]? | select((auth_required(.)) | not) | .quotaSemantics.effectiveAvailability[]?]) as $availability |
-      if ($availability | length) == 0 then "healthy"
+      if ($auth | length) > 0 then "error"
+      elif ($availability | length) == 0 then "healthy"
       else classify($availability)
       end
     else
@@ -149,6 +153,8 @@ details() {
   printf '%s\n' "$json" | jq -c --arg provider "$provider" '
     def auth_required($p):
       $p.provider == "agy" and ($p.state.status // "") == "auth_required";
+    def auth_cause($p):
+      (($p.state.error // "authentication required") | tostring);
     def best_detail($availability):
       ($availability | map(select(.status == "known"))) as $known |
       ($availability | map(select((.runway.status // "") == "exhausted_now"))) as $exhausted |
@@ -161,9 +167,11 @@ details() {
         provider: "aggregate",
         summary: [
           (.providers[]? |
-            { provider: .provider,
-              best: (if auth_required(.) then null else best_detail(.quotaSemantics.effectiveAvailability // []) end)
-            }
+            { provider: .provider } +
+            (if auth_required(.)
+             then {best: null, error: auth_cause(.)}
+             else {best: best_detail(.quotaSemantics.effectiveAvailability // [])}
+             end)
           )
         ]
       }
@@ -172,7 +180,7 @@ details() {
       {
         provider: $provider,
         best: (if auth_required($p) then null else best_detail($p.quotaSemantics.effectiveAvailability // []) end)
-      }
+      } + (if auth_required($p) then {error: auth_cause($p)} else {} end)
     end
   ' 2>/dev/null
 }

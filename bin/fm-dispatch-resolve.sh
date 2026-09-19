@@ -273,6 +273,8 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
   def rows($p): (prov($p) | .quotaSemantics.effectiveAvailability // []);
   def bare($m): ($m | split("/") | last);
   def provider_of($c): ($c.provider // $pmap[$c.harness] // null);
+  def auth_required($p):
+    $p == "agy" and (prov($p).state.status // "") == "auth_required";
   def measured($p):
     (prov($p) != null and
      ((["known", "partial"] | index(prov($p).quotaSemantics.status)) != null or
@@ -287,7 +289,7 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
       scope_applies($p; .scope; $m)
     )];
   def floor_state($f; $p):
-    if $f == null then "none"
+    if $f == null or auth_required($p) then "none"
     elif prov($p) == null or (measured($p) | not) then "unknown"
     else [rows($p)[] | select(.scope == $f.scope)] as $matches
       | if ($matches | length) == 0 or any($matches[]; .status != "known") then "unknown"

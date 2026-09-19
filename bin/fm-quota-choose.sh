@@ -326,6 +326,7 @@ effective_for_provider_model() {
     ($model | sub("^model:"; "")) as $model_token |
     ([.providers[]? | select(.provider == $provider)] | first) as $p |
     if ($p // null) == null then {status: "unknown"}
+    elif ($p.provider == "agy" and ($p.state.status // "") == "auth_required") then {status: "unknown"}
     else ($p.quotaSemantics.effectiveAvailability // []) |
     map(select(.scope as $scope |
       $scope == "all_models" or $scope == "all_products" or

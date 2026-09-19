@@ -342,6 +342,16 @@ assert_contains "$out" 'candidate: agy:-  provider=agy  -> eligible, unranked: p
 assert_not_contains "$out" 'profile: --harness '\''agy'\''' "object-valued auth_required errors never authorize AGY dispatch"
 pass "auth_required object errors preserve the eligible unranked outcome"
 
+AUTH_REQUIRED_AGY_FLOOR_RULE="$TMP_ROOT/auth-required-agy-floor-rule.json"
+printf '%s\n' '{"rules":[{"when":"Agy floor work.","floor":{"scope":"gemini_only","min_percent":90,"provider":"agy"},"use":{"harness":"agy"}}]}' > "$AUTH_REQUIRED_AGY_FLOOR_RULE"
+cp "$AUTH_REQUIRED_AGY_FLOOR_RULE" "$RULES"
+reset_log
+TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$AUTH_REQUIRED_AGY" run code out err "$BRIEF"
+assert_contains "$out" 'candidate: agy:-  provider=agy  -> eligible, unranked: provider agy unmeasured (unknown) [auth_required: Antigravity sign-in required]: disclosed uncertainty' "auth_required AGY ignores the rule floor veto"
+assert_contains "$out" '  status: escalate' "auth_required AGY with a floor remains non-rankable"
+assert_not_contains "$out" "  profile: --harness 'agy'" "auth_required AGY with a floor never authorizes dispatch"
+pass "auth_required AGY remains unranked before rule-floor selection"
+
 GEMINI_RULE="$TMP_ROOT/gemini-rule.json"
 printf '%s\n' '{"rules":[{"when":"Gemini work.","use":{"harness":"gemini","model":"gemini-3.8-flash-high","provider":"google"}}]}' > "$GEMINI_RULE"
 cp "$GEMINI_RULE" "$RULES"
