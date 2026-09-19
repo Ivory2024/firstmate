@@ -476,14 +476,19 @@ report_child() { # <id>
 }
 
 reap_terminal_child_locked() { # <id> <meta>
-  local id=$1 meta=$2 backend target pids pid
+  local id=$1 meta=$2 backend window endpoint pids pid
   [ -f "$meta" ] && [ ! -L "$meta" ] || return 0
   backend=$(clean_field "$(meta_field "$meta" backend)")
   [ -n "$backend" ] || backend=tmux
-  target=$(clean_field "$(meta_field "$meta" window)")
-  [ -n "$target" ] || return 0
+  window=$(clean_field "$(meta_field "$meta" window)")
+  [ -n "$window" ] || return 0
+  endpoint=$window
+  if [ "$backend" = orca ]; then
+    endpoint=$(clean_field "$(meta_field "$meta" terminal)")
+  fi
+  [ -n "$endpoint" ] || return 0
   if [ "$backend" = tmux ] && command -v tmux >/dev/null 2>&1; then
-    pids=$(tmux list-panes -t "$target" -F '#{pane_pid}' 2>/dev/null || true)
+    pids=$(tmux list-panes -t "$window" -F '#{pane_pid}' 2>/dev/null || true)
     for pid in $pids; do
       if [ -n "$pid" ] && [ "$pid" -gt 1 ] 2>/dev/null; then
         kill -TERM -"$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
@@ -493,9 +498,9 @@ reap_terminal_child_locked() { # <id> <meta>
   if [ -f "$SCRIPT_DIR/fm-backend.sh" ]; then
     # shellcheck source=bin/fm-backend.sh
     . "$SCRIPT_DIR/fm-backend.sh"
-    fm_backend_kill "$backend" "$target" 2>/dev/null || true
+    fm_backend_kill "$backend" "$endpoint" 2>/dev/null || true
   elif [ "$backend" = tmux ] && command -v tmux >/dev/null 2>&1; then
-    tmux kill-window -t "$target" 2>/dev/null || true
+    tmux kill-window -t "$window" 2>/dev/null || true
   fi
 }
 
