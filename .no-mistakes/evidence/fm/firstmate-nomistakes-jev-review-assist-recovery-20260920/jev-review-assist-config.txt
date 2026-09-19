@@ -1,0 +1,9 @@
+$ no-mistakes --version
+no-mistakes version v1.79.0 (fc540ac) 2026-09-19T09:34:44Z
+$ ruby semantic config assertion
+parsed jev.review_assist=true
+parsed commands.test=absent
+$ bash tests/fm-nm-test-contract.test.sh
+ok - no-mistakes does not configure commands.test
+$ no-mistakes status
+repo not initialized (run 'no-mistakes init' first)
