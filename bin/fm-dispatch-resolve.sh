@@ -289,7 +289,8 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
       scope_applies($p; .scope; $m)
     )];
   def floor_state($f; $p):
-    if $f == null or auth_required($p) then "none"
+    if $f == null then "none"
+    elif auth_required($p) then "unknown"
     elif prov($p) == null or (measured($p) | not) then "unknown"
     else [rows($p)[] | select(.scope == $f.scope)] as $matches
       | if ($matches | length) == 0 or any($matches[]; .status != "known") then "unknown"

@@ -352,6 +352,16 @@ assert_contains "$out" '  status: escalate' "auth_required AGY with a floor rema
 assert_not_contains "$out" "  profile: --harness 'agy'" "auth_required AGY with a floor never authorizes dispatch"
 pass "auth_required AGY remains unranked before rule-floor selection"
 
+AUTH_REQUIRED_AGY_CROSS_PROVIDER_RULE="$TMP_ROOT/auth-required-agy-cross-provider-rule.json"
+printf '%s\n' '{"rules":[{"when":"Agy gate for Codex work.","floor":{"scope":"gemini_only","min_percent":90,"provider":"agy"},"use":{"harness":"codex","model":"gpt-5.6-sol"}}]}' > "$AUTH_REQUIRED_AGY_CROSS_PROVIDER_RULE"
+cp "$AUTH_REQUIRED_AGY_CROSS_PROVIDER_RULE" "$RULES"
+reset_log
+TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$AUTH_REQUIRED_AGY" run code out err "$BRIEF"
+assert_contains "$out" '  status: escalate' "an auth_required AGY rule floor blocks cross-provider dispatch"
+assert_contains "$out" 'rule rule_1 floor agy/gemini_only is unverifiable' "an auth_required AGY rule floor remains unverifiable"
+assert_not_contains "$out" "  profile: --harness 'codex'" "an auth_required AGY rule floor never authorizes a Codex profile"
+pass "auth_required AGY rule floors block cross-provider ranking"
+
 GEMINI_RULE="$TMP_ROOT/gemini-rule.json"
 printf '%s\n' '{"rules":[{"when":"Gemini work.","use":{"harness":"gemini","model":"gemini-3.8-flash-high","provider":"google"}}]}' > "$GEMINI_RULE"
 cp "$GEMINI_RULE" "$RULES"
