@@ -299,7 +299,7 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
     $rows | map({scope, status, pct: (.effectivePercentRemaining // null), runway: (.runway.status // null), spendPriority: (.selection.spendPriority // null)});
   def uncertainty($p):
     if (prov($p).state.status // "") == "auth_required" then
-      "auth_required: " + (prov($p).state.error // "authentication required")
+      "auth_required: " + ((prov($p).state.error // "authentication required") | tostring)
     else null
     end;
   def evaluate($c):

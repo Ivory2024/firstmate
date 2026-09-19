@@ -334,6 +334,14 @@ assert_not_contains "$out" 'candidate: agy:-  provider=agy  scope=' "auth_requir
 assert_not_contains "$out" 'profile: --harness '\''agy'\''' "auth_required never authorizes AGY dispatch"
 pass "auth_required AGY evidence stays unknown while its external cause remains visible"
 
+AUTH_REQUIRED_AGY_OBJECT_ERROR="$TMP_ROOT/auth-required-agy-object-error.json"
+jq '(.providers[] | select(.provider == "agy") | .state.error) = {"message":"Antigravity sign-in required"}' "$AUTH_REQUIRED_AGY" > "$AUTH_REQUIRED_AGY_OBJECT_ERROR"
+reset_log
+TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$AUTH_REQUIRED_AGY_OBJECT_ERROR" run code out err "$BRIEF"
+assert_contains "$out" 'candidate: agy:-  provider=agy  -> eligible, unranked: provider agy unmeasured (unknown) [auth_required: {"message":"Antigravity sign-in required"}]: disclosed uncertainty' "auth_required object errors remain visible without collapsing resolution"
+assert_not_contains "$out" 'profile: --harness '\''agy'\''' "object-valued auth_required errors never authorize AGY dispatch"
+pass "auth_required object errors preserve the eligible unranked outcome"
+
 GEMINI_RULE="$TMP_ROOT/gemini-rule.json"
 printf '%s\n' '{"rules":[{"when":"Gemini work.","use":{"harness":"gemini","model":"gemini-3.8-flash-high","provider":"google"}}]}' > "$GEMINI_RULE"
 cp "$GEMINI_RULE" "$RULES"
