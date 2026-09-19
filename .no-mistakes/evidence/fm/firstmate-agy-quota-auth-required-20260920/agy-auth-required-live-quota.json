@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 5,
+  "agy": [
+    {
+      "state": {
+        "status": "auth_required",
+        "error": "Antigravity sign-in required"
+      },
+      "quotaStatus": "unknown",
+      "effectiveAvailability": []
+    }
+  ]
+}
