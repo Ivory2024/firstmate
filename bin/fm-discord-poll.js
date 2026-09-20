@@ -99,9 +99,6 @@ async function main() {
 			// Discord returns newest-first; process oldest-first so the cursor
 			// only advances past messages actually handled.
 			const ordered = [...msgs].reverse();
-			if (ordered.length > 0) {
-				writeCursor(chId, ordered[ordered.length - 1].id);
-			}
 
 			for (const msg of ordered) {
 				if (msg.author?.bot) continue;
@@ -180,6 +177,9 @@ async function main() {
 				writeFileSync(offeredFile, JSON.stringify({ request_id: reqId, recorded_at: Math.floor(Date.now() / 1000) }), { mode: 0o600 });
 
 				console.log(`x-mention ${reqId}`);
+			}
+			if (ordered.length > 0) {
+				writeCursor(chId, ordered[ordered.length - 1].id);
 			}
 		}
 	} catch (_err) {

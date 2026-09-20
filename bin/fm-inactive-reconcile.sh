@@ -478,27 +478,28 @@ report_child() { # <id>
 }
 
 reap_terminal_child_locked() { # <id> <meta>
-  local id=$1 meta=$2 backend target pids pid
+  local id=$1 meta=$2 backend target session window pids pane_name pid
   [ -f "$meta" ] && [ ! -L "$meta" ] || return 0
-  backend=$(clean_field "$(meta_field "$meta" backend)")
-  [ -n "$backend" ] || backend=tmux
-  target=$(clean_field "$(meta_field "$meta" window)")
-  [ -n "$target" ] || return 0
+
+  [ -f "$SCRIPT_DIR/fm-backend.sh" ] || return 0
+  # shellcheck source=bin/fm-backend.sh
+  . "$SCRIPT_DIR/fm-backend.sh"
+  fm_backend_validate_task_endpoint "$meta" "$id" >/dev/null 2>&1 || return 0
+  backend=$FM_BACKEND_VALIDATED_BACKEND
+  target=$FM_BACKEND_VALIDATED_TARGET
   if [ "$backend" = tmux ] && command -v tmux >/dev/null 2>&1; then
-    pids=$(tmux list-panes -t "$target" -F '#{pane_pid}' 2>/dev/null || true)
-    for pid in $pids; do
-      if [ -n "$pid" ] && [ "$pid" -gt 1 ] 2>/dev/null; then
+    session=${target%%:*}
+    window=${target#*:}
+    pids=$(tmux list-panes -t "=$session:=$window" -F '#{window_name}\t#{pane_pid}' 2>/dev/null || true)
+    while IFS=$'\t' read -r pane_name pid; do
+      if [ "$pane_name" = "fm-$id" ] && [ -n "$pid" ] && [ "$pid" -gt 1 ] 2>/dev/null; then
         kill -TERM -"$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
       fi
-    done
+    done <<EOF
+$pids
+EOF
   fi
-  if [ -f "$SCRIPT_DIR/fm-backend.sh" ]; then
-    # shellcheck source=bin/fm-backend.sh
-    . "$SCRIPT_DIR/fm-backend.sh"
-    fm_backend_kill "$backend" "$target" 2>/dev/null || true
-  elif [ "$backend" = tmux ] && command -v tmux >/dev/null 2>&1; then
-    tmux kill-window -t "$target" 2>/dev/null || true
-  fi
+  fm_backend_kill "$backend" "$target" "fm-$id" 2>/dev/null || true
 }
 
 reconcile_direct_child_locked() { # <id> <meta> <secondmate-id-or-empty> <timeout>

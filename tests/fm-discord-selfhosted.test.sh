@@ -24,48 +24,46 @@ test_poll_no_token_is_hard_noop() {
   pass "fm-discord-poll is a hard no-op without a token"
 }
 
+make_fake_discord_node() {
+  local home=$1
+  mkdir -p "$home/fake-bin"
+  cat > "$home/fake-bin/node" <<'SH'
+#!/usr/bin/env bash
+set -u
+exec "$FM_TEST_REAL_NODE" --input-type=module -e '
+  import { pathToFileURL } from "node:url";
+  const script = process.argv[1];
+  const messages = JSON.parse(process.env.FM_DISCORD_FAKE_MESSAGES || "[]");
+  const log = process.env.FM_DISCORD_FAKE_FETCH_LOG;
+  globalThis.fetch = async (url) => {
+    if (log) {
+      const channel = url.match(/\/channels\/([^/]+)\/messages/);
+      if (channel) {
+        await import("node:fs/promises").then(({ appendFile }) => appendFile(log, channel[1] + "\\n"));
+      }
+    }
+    if (url === "https://discord.com/api/v10/users/@me") return Response.json({ id: "9000000000000000001" });
+    if (url.includes("/channels/")) return Response.json(messages);
+    return new Response("not found", { status: 404 });
+  };
+  await import(pathToFileURL(script).href);
+' "$1"
+SH
+  chmod +x "$home/fake-bin/node"
+}
+
 test_ingestion_payload_shape_and_wake() {
-  local home inbox_file ctx_file wake_out platform source
+  local home inbox_file ctx_file wake_out platform source cursor
   home="$TMP_ROOT/ingestion-test"
   mkdir -p "$home/state/x-inbox" "$home/state/x-context"
   chmod 700 "$home/state" "$home/state/x-inbox" "$home/state/x-context"
+  make_fake_discord_node "$home"
 
-  FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN="fake-test-token" \
-  FM_DISCORD_CHANNELS="1000000000000000001" FM_DISCORD_EXCLUDES="1551134713727426570" \
-  node -e '
-    import { writeFileSync } from "node:fs";
-    import { join } from "node:path";
-    const home = process.env.FM_HOME;
-    const reqId = "discord-sh-1352000000000000099";
-    const payload = {
-      request_id: reqId,
-      text: "add login fix to backlog",
-      author_handle: "captain",
-      platform: "discord",
-      source: "discord-selfhosted",
-      reply_max_chars: 1900,
-      tweet_id: "discord:1000000000000000001:1352000000000000099",
-      channel_id: "1000000000000000001",
-      message_id: "1352000000000000099",
-      guild_id: "1000000000000000000",
-      in_reply_to: null,
-      in_reply_to_chain: [],
-      attachments: []
-    };
-    const ctx = {
-      request_id: reqId,
-      platform: "discord",
-      source: "discord-selfhosted",
-      channel_id: "1000000000000000001",
-      message_id: "1352000000000000099",
-      reply_max_chars: "1900",
-      recorded_at: Math.floor(Date.now() / 1000)
-    };
-    writeFileSync(join(home, "state", "x-inbox", reqId + ".json"), JSON.stringify(payload, null, 2), { mode: 0o600 });
-    writeFileSync(join(home, "state", "x-context", reqId + ".json"), JSON.stringify(ctx, null, 2), { mode: 0o600 });
-    writeFileSync(join(home, "state", "x-context", reqId + ".offered.json"), JSON.stringify({ request_id: reqId }), { mode: 0o600 });
-    console.log("x-mention " + reqId);
-  ' > "$home/wake.log"
+  FM_TEST_REAL_NODE=$(command -v node) \
+  FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000000099","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"username":"captain"},"mentions":[{"id":"9000000000000000001"}],"content":"<@9000000000000000001> add login fix to backlog","attachments":[]}]' \
+  PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN="fake-test-token" \
+  FM_DISCORD_CHANNEL_ID="1000000000000000001" FM_DISCORD_EXCLUDE_CHANNELS="1551134713727426570" \
+  "$ROOT/bin/fm-discord-poll.sh" > "$home/wake.log"
 
   wake_out=$(cat "$home/wake.log")
   assert_equals "x-mention discord-sh-1352000000000000099" "$wake_out" "wake line emitted"
@@ -79,6 +77,10 @@ test_ingestion_payload_shape_and_wake() {
   source=$(jq -r '.source' "$inbox_file")
   assert_equals "discord" "$platform" "inbox platform"
   assert_equals "discord-selfhosted" "$source" "inbox source"
+
+  cursor="$home/state/x-context/discord-cursor-1000000000000000001.json"
+  assert_present "$cursor" "poll cursor exists after ingestion"
+  assert_equals "1352000000000000099" "$(jq -r '.last_id' "$cursor")" "poll cursor advances after ingestion"
 
   pass "self-hosted Discord ingestion writes x-inbox payload shape and fires x-mention wake"
 }
@@ -112,12 +114,18 @@ test_reply_dry_run_routing() {
 }
 
 test_collision_exclusion_filter() {
-  local result
-  result=$(FM_HOME="$TMP_ROOT" FM_DISCORD_EXCLUDE_CHANNELS="1551134713727426570" node -e '
-    const excludes = (process.env.FM_DISCORD_EXCLUDE_CHANNELS || "").split(",");
-    console.log(excludes.includes("1551134713727426570"));
-  ')
-  assert_equals "true" "$result" "gajae-way channel ID is excluded"
+  local home wake_out
+  home="$TMP_ROOT/exclusion-test"
+  mkdir -p "$home/state"
+  make_fake_discord_node "$home"
+  wake_out=$(FM_TEST_REAL_NODE=$(command -v node) \
+    FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000000100","channel_id":"1000000000000000002","guild_id":"1000000000000000000","author":{"username":"captain"},"mentions":[{"id":"9000000000000000001"}],"content":"<@9000000000000000001> allowed","attachments":[]}]' \
+    FM_DISCORD_FAKE_FETCH_LOG="$home/fetch.log" PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN="fake-test-token" FM_DISCORD_CHANNEL_ID="1551134713727426570,1000000000000000002" \
+    FM_DISCORD_EXCLUDE_CHANNELS="1551134713727426570" "$ROOT/bin/fm-discord-poll.sh")
+  assert_equals "x-mention discord-sh-1352000000000000100" "$wake_out" "allowed channel wake emitted"
+  ! grep -Fxq "1551134713727426570" "$home/fetch.log" || fail "excluded channel was fetched"
+  assert_present "$home/state/x-inbox/discord-sh-1352000000000000100.json" "allowed channel inbox exists"
 
   pass "collision handling excludes gajae-way channel 1551134713727426570"
 }
