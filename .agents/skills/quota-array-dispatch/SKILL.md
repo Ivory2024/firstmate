@@ -26,7 +26,6 @@ Pass it the intake's already-captured default TOON or permitted JSON fallback th
 Pass each candidate as `harness:model`, with earlier candidates preferred.
 The helper maps each harness to its primary provider family and applies the provider-wide scopes plus the exact model or product scopes for the model.
 An `exhausted_now` runway vetoes the candidate.
-An AGY provider whose `state.status` is `auth_required` is treated as unknown and is never selected, even when a known sub-scope is present.
 The helper selects a candidate only when its applicable quota has a known `effectivePercentRemaining` greater than zero.
 This is an optional narrow helper with a known limitation: it maps each harness to one primary provider family only, so a candidate whose established provider differs from that primary family is checked against the wrong quota row.
 omp has no primary family, so the helper keys an `omp:` candidate on its model prefix, mapping only `openai-codex/` and `claude-bridge/` and refusing every other prefix; the helper's header owns that mapping.
