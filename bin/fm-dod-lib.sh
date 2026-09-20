@@ -223,6 +223,14 @@ fm_brief_intent_address_line() {  # <file>
   '
 }
 
+# The `nm-<run>-<step>` decision key this block mandates is load-bearing beyond
+# the brief itself: the watcher binds an open `needs-decision` to the run a
+# crew's current state reports by matching exactly that shape
+# (wedge_wait_evidence in bin/fm-watch.sh, through
+# status_has_open_needs_decision in bin/fm-classify-lib.sh), which is what buys
+# a lane parked at a human-owed gate the long recheck cadence instead of a
+# wedge escalation. A gate escalated under any other key still reads as a
+# suspected wedge.
 fm_ask_user_escalation_block() {  # <data-dir> <task-id>
   local data=$1 id=$2
   cat <<EOF
