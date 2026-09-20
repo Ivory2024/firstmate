@@ -478,7 +478,7 @@ report_child() { # <id>
 }
 
 reap_terminal_child_locked() { # <id> <meta>
-  local id=$1 meta=$2 backend target tab_id session window pids pane_name pid
+  local id=$1 meta=$2 backend target tab_id session window pids pane_name pid tmux_owned=1
   [ -f "$meta" ] && [ ! -L "$meta" ] || return 0
 
   [ -f "$SCRIPT_DIR/fm-backend.sh" ] || return 0
@@ -490,16 +490,19 @@ reap_terminal_child_locked() { # <id> <meta>
   tab_id=
   [ "$backend" = zellij ] && tab_id=$(fm_meta_get "$meta" zellij_tab_id)
   if [ "$backend" = tmux ] && command -v tmux >/dev/null 2>&1; then
+    tmux_owned=0
     session=${target%%:*}
     window=${target#*:}
     pids=$(tmux list-panes -t "=$session:=$window" -F '#{window_name}\t#{pane_pid}' 2>/dev/null || true)
     while IFS=$'\t' read -r pane_name pid; do
       if [ "$pane_name" = "fm-$id" ] && [ -n "$pid" ] && [ "$pid" -gt 1 ] 2>/dev/null; then
+        tmux_owned=1
         kill -TERM -"$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
       fi
     done <<EOF
 $pids
 EOF
+    [ "$tmux_owned" = 1 ] || return 0
   fi
   fm_backend_kill "$backend" "$target" "$tab_id" "fm-$id" 2>/dev/null || true
 }
