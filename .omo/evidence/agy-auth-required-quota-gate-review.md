@@ -27,7 +27,7 @@
 - Production: `bin/fm-quota-axi-lib.sh`, `bin/fm-dispatch-resolve.sh`, `bin/fm-quota-choose.sh`, `bin/fm-procevent-quota.sh`
 - Tests: `tests/fm-quota-choose.test.sh`, `tests/fm-dispatch-resolve.test.sh`, `tests/fm-procevent-quota.test.sh`
 - Contracts: `.agents/skills/quota-array-dispatch/SKILL.md`, `.agents/skills/process-event-sources/SKILL.md`, `docs/configuration.md`, `docs/scripts.md`
-- Prior evidence: `/Users/irene/.no-mistakes/eval/cases/01M2WPZF2BPQW949KTCR4Q08YH-01M2WQ2FEPFMC354WC7ETE7VM6/manifest.json`, `/Users/irene/.no-mistakes/evidence/01M2XBKH3X2ABGE0VJKCP6RPKG/agy-auth-required-live-quota.json`, `/Users/irene/.no-mistakes/evidence/01M2XBKH3X2ABGE0VJKCP6RPKG/fm-dispatch-resolve-auth-required.log`, `/Users/irene/.no-mistakes/logs/01M2YCCKY7BNYXCPABR84D0XHV/review.log`, `/Users/irene/.no-mistakes/logs/01M2YDVN44XTTFK4V5HKSEQMHN/review.log`
+- Prior evidence (local paths redacted): manifest.json, agy-auth-required-live-quota.json, fm-dispatch-resolve-auth-required.log, and two review.log runs.
 
 ## Exact evidence gaps
 

@@ -53,8 +53,8 @@ The branch does not close the authoritative fallback intake path, and aggregate 
 - `tests/fm-dispatch-resolve.test.sh`
 - `tests/fm-quota-choose.test.sh`
 - `tests/fm-procevent-quota.test.sh`
-- `/Users/irene/.codex/plugins/cache/sisyphuslabs/omo/4.19.4/skills/programming/SKILL.md`
-- `/Users/irene/.codex/plugins/cache/sisyphuslabs/omo/4.19.4/skills/remove-ai-slops/SKILL.md`
+- `programming/SKILL.md` (local path redacted)
+- `remove-ai-slops/SKILL.md` (local path redacted)
 
 ## exactEvidenceGaps
 

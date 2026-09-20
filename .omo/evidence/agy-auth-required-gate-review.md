@@ -40,7 +40,7 @@ The chooser path does not satisfy the requested end-to-end review outcome. Its n
 - `tests/fm-quota-choose.test.sh`
 - `tests/fm-procevent-quota.test.sh`
 - commits `384c69f^..9dd1473`
-- `/Users/irene/.no-mistakes/logs/01M2YDVN44XTTFK4V5HKSEQMHN/review.log`
+- `review.log` (local path redacted)
 
 ## evidenceGaps
 

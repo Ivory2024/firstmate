@@ -25,7 +25,7 @@
   - `tests/fm-quota-choose.test.sh`
   - `.omo/evidence/agy-auth-quota-gate-review.md`
   - `.omo/evidence/agy-auth-required-gate-review.md`
-  - `/Users/irene/.no-mistakes/logs/01M2YDVN44XTTFK4V5HKSEQMHN/review.log`
+  - `review.log` (local path redacted)
 - skillPerspective:
   - remove-ai-slops: Direct pass found one unreachable production branch and one unused helper. No deletion-only, requested-removal, prose-pin, tautological, or implementation-mirroring test finding was needed beyond the public-boundary evidence showing the chooser branch is unreachable.
   - programming: Both findings add maintenance surface without adding reachable typed behavior. No new source abstraction, parser, normalization layer, alias, or mode elsewhere in the diff met the reporting threshold.
