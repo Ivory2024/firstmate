@@ -14,7 +14,7 @@ what each producing script's header and help would otherwise require reading
 individually.
 
 ```
-AGENTS.md            this file
+AGENTS.md            supervisor contract and always-loaded layout summary
 CONTRIBUTING.md      contributor workflow and repo conventions
 README.md            public overview and development notes
 .github/workflows/   shared CI and PR enforcement, committed
