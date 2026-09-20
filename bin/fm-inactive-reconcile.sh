@@ -478,7 +478,7 @@ report_child() { # <id>
 }
 
 reap_terminal_child_locked() { # <id> <meta>
-  local id=$1 meta=$2 backend target session window pids pane_name pid
+  local id=$1 meta=$2 backend target tab_id session window pids pane_name pid
   [ -f "$meta" ] && [ ! -L "$meta" ] || return 0
 
   [ -f "$SCRIPT_DIR/fm-backend.sh" ] || return 0
@@ -487,6 +487,8 @@ reap_terminal_child_locked() { # <id> <meta>
   fm_backend_validate_task_endpoint "$meta" "$id" >/dev/null 2>&1 || return 0
   backend=$FM_BACKEND_VALIDATED_BACKEND
   target=$FM_BACKEND_VALIDATED_TARGET
+  tab_id=
+  [ "$backend" = zellij ] && tab_id=$(fm_meta_get "$meta" zellij_tab_id)
   if [ "$backend" = tmux ] && command -v tmux >/dev/null 2>&1; then
     session=${target%%:*}
     window=${target#*:}
@@ -499,7 +501,7 @@ reap_terminal_child_locked() { # <id> <meta>
 $pids
 EOF
   fi
-  fm_backend_kill "$backend" "$target" "" "fm-$id" 2>/dev/null || true
+  fm_backend_kill "$backend" "$target" "$tab_id" "fm-$id" 2>/dev/null || true
 }
 
 reconcile_direct_child_locked() { # <id> <meta> <secondmate-id-or-empty> <timeout>
