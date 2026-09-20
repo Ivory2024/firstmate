@@ -1,0 +1,11 @@
+Firstmate upstream-sync live validation
+target=c4c99e94a2f8a626d150cae7d25f3f0554c5cb71
+sync_merge=961e5f94113c4feeb028c25490260cf5133289c7
+sync_parents=03bf275987a3715b5b50f8cfe94c2ab573e0bbdc 2bcb88c38921030033a37d67ae4f5d82cea90eb4
+upstream_commit_ancestor=2bcb88c38921030033a37d67ae4f5d82cea90eb4 yes
+upstream_commit_ancestor=65a3bac6 yes
+upstream_commit_ancestor=4812db80 yes
+sync_merge_in_target=yes
+target_diff_check=clean
+conflict_markers=none
+worktree_status=
