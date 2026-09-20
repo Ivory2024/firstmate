@@ -114,6 +114,8 @@ condition_status() {
   local json=$1 provider=${2:-} threshold=${3:-$DEFAULT_THRESHOLD}
   printf '%s\n' "$json" | fm_quota_json_valid || { printf 'error\n'; return; }
   printf '%s\n' "$json" | jq -r --arg provider "$provider" --arg threshold "$threshold" '
+    def auth_required($p):
+      $p.provider == "agy" and ($p.state.status // "") == "auth_required";
     def classify($availability):
       ($availability | map(select(.status == "known"))) as $known |
       if ($availability | length) == 0 then "error"
@@ -124,13 +126,16 @@ condition_status() {
       end;
     if (.providers | type) != "array" then "error"
     elif $provider == "" then
-      if (.providers | length) == 0 then "healthy"
-      elif ([.providers[]?.quotaSemantics.effectiveAvailability[]?] | length) == 0 then "healthy"
-      else classify([.providers[]?.quotaSemantics.effectiveAvailability[]?])
+      ([.providers[]? | select(auth_required(.))]) as $auth |
+      ([.providers[]? | select((auth_required(.)) | not) | .quotaSemantics.effectiveAvailability[]?]) as $availability |
+      if ($auth | length) > 0 then "error"
+      elif ($availability | length) == 0 then "healthy"
+      else classify($availability)
       end
     else
       ([.providers[]? | select(.provider == $provider)] | first) as $p |
       if ($p // null) == null then "error"
+      elif auth_required($p) then "error"
       elif ($p.quotaSemantics.effectiveAvailability | length) == 0 and
            ($p.quotaSemantics.status == "unknown" or $p.quotaSemantics.status == "partial") then "healthy"
       else classify($p.quotaSemantics.effectiveAvailability // [])
@@ -144,6 +149,10 @@ condition_status() {
 details() {
   local json=$1 provider=${2:-}
   printf '%s\n' "$json" | jq -c --arg provider "$provider" '
+    def auth_required($p):
+      $p.provider == "agy" and ($p.state.status // "") == "auth_required";
+    def auth_cause($p):
+      (($p.state.error // "authentication required") | tostring);
     def best_detail($availability):
       ($availability | map(select(.status == "known"))) as $known |
       ($availability | map(select((.runway.status // "") == "exhausted_now"))) as $exhausted |
@@ -156,9 +165,11 @@ details() {
         provider: "aggregate",
         summary: [
           (.providers[]? |
-            { provider: .provider,
-              best: best_detail(.quotaSemantics.effectiveAvailability // [])
-            }
+            { provider: .provider } +
+            (if auth_required(.)
+             then {best: null, error: auth_cause(.)}
+             else {best: best_detail(.quotaSemantics.effectiveAvailability // [])}
+             end)
           )
         ]
       }
@@ -166,8 +177,8 @@ details() {
       (.providers[]? | select(.provider == $provider)) as $p |
       {
         provider: $provider,
-        best: best_detail($p.quotaSemantics.effectiveAvailability // [])
-      }
+        best: (if auth_required($p) then null else best_detail($p.quotaSemantics.effectiveAvailability // []) end)
+      } + (if auth_required($p) then {error: auth_cause($p)} else {} end)
     end
   ' 2>/dev/null
 }
