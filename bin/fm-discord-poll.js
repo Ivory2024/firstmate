@@ -82,6 +82,19 @@ async function main() {
 					}
 				}
 			}
+			if (allowDMs) {
+				const dmsRes = await fetch("https://discord.com/api/v10/users/@me/channels", { headers: apiHeaders });
+				if (dmsRes.ok) {
+					const dms = await dmsRes.json();
+					if (Array.isArray(dms)) {
+						for (const dm of dms) {
+							if ([1, 3].includes(dm.type) && typeof dm.id === "string" && !excludeIds.includes(dm.id)) {
+								targetChannels.push(dm.id);
+							}
+						}
+					}
+				}
+			}
 		}
 
 		// 3. Poll each target channel

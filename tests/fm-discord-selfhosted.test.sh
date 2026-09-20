@@ -34,6 +34,7 @@ exec "$FM_TEST_REAL_NODE" --input-type=module -e '
   import { pathToFileURL } from "node:url";
   const script = process.argv[1];
   const messages = JSON.parse(process.env.FM_DISCORD_FAKE_MESSAGES || "[]");
+  const channels = JSON.parse(process.env.FM_DISCORD_FAKE_CHANNELS || "[]");
   const log = process.env.FM_DISCORD_FAKE_FETCH_LOG;
   globalThis.fetch = async (url) => {
     if (log) {
@@ -43,6 +44,7 @@ exec "$FM_TEST_REAL_NODE" --input-type=module -e '
       }
     }
     if (url === "https://discord.com/api/v10/users/@me") return Response.json({ id: "9000000000000000001" });
+    if (url === "https://discord.com/api/v10/users/@me/channels") return Response.json(channels);
     if (url.includes("/channels/")) return Response.json(messages);
     return new Response("not found", { status: 404 });
   };
@@ -83,6 +85,21 @@ test_ingestion_payload_shape_and_wake() {
   assert_equals "1352000000000000099" "$(jq -r '.last_id' "$cursor")" "poll cursor advances after ingestion"
 
   pass "self-hosted Discord ingestion writes x-inbox payload shape and fires x-mention wake"
+}
+
+test_default_dm_discovery() {
+  local home wake_out
+  home="$TMP_ROOT/default-dm-test"
+  mkdir -p "$home/state"
+  make_fake_discord_node "$home"
+  wake_out=$(FM_TEST_REAL_NODE=$(command -v node) \
+    FM_DISCORD_FAKE_CHANNELS='[{"id":"1000000000000000003","type":1}]' \
+    FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000000101","channel_id":"1000000000000000003","author":{"username":"captain"},"content":"hello from DM","attachments":[]}]' \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN="fake-test-token" \
+    "$ROOT/bin/fm-discord-poll.sh")
+  assert_equals "x-mention discord-sh-1352000000000000101" "$wake_out" "default DM wake emitted"
+  assert_present "$home/state/x-inbox/discord-sh-1352000000000000101.json" "default DM inbox exists"
+  pass "self-hosted Discord default polling discovers permitted DMs"
 }
 
 test_reply_dry_run_routing() {
@@ -155,6 +172,7 @@ test_bootstrap_activation() {
 
 test_poll_no_token_is_hard_noop
 test_ingestion_payload_shape_and_wake
+test_default_dm_discovery
 test_reply_dry_run_routing
 test_collision_exclusion_filter
 test_bootstrap_activation
