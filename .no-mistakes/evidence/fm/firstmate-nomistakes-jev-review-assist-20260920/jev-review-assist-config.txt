@@ -1,0 +1,5 @@
+$ no-mistakes --version
+no-mistakes version v1.79.0 (fc540ac) 2026-09-19T09:34:44Z
+$ ruby semantic config assertion
+parsed jev.review_assist=true
+parsed commands.test=absent
