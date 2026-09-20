@@ -116,8 +116,6 @@ condition_status() {
   printf '%s\n' "$json" | jq -r --arg provider "$provider" --arg threshold "$threshold" '
     def auth_required($p):
       $p.provider == "agy" and ($p.state.status // "") == "auth_required";
-    def auth_cause($p):
-      (($p.state.error // "authentication required") | tostring);
     def classify($availability):
       ($availability | map(select(.status == "known"))) as $known |
       if ($availability | length) == 0 then "error"
