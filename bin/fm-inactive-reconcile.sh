@@ -499,7 +499,7 @@ reap_terminal_child_locked() { # <id> <meta>
 $pids
 EOF
   fi
-  fm_backend_kill "$backend" "$target" "fm-$id" 2>/dev/null || true
+  fm_backend_kill "$backend" "$target" "" "fm-$id" 2>/dev/null || true
 }
 
 reconcile_direct_child_locked() { # <id> <meta> <secondmate-id-or-empty> <timeout>
