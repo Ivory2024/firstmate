@@ -12,7 +12,7 @@
 # first runs the LEDGER-FIRST parent delivery: a direct child whose status
 # ledger ends in a whole `done:` or `failed:` line has stated its own outcome,
 # so that line is published on the parent channel at once through
-# bin/fm-parent-channel-lib.sh as
+# bin/fm-parent-channel-lib.sh from this unstamped payload:
 #   <state> [key=child-outcome-<child>-<state>-<fp8>]: child <child> <state>: <note> [pr=<url>] [mode=<mode>] [yolo=<posture>] [report=data/<child>/report.md]
 # carrying the child's recorded PR, delivery mode, merge posture, and scout
 # report pointer, without consulting fm-crew-state.sh and without waiting for
@@ -315,8 +315,10 @@ meta_incarnation() { # <meta>
 
 # The task's delivered PR. Recorded meta pr= is the only authoritative source;
 # the fallback scrape accepts only a preferred terminal line in a mode's
-# ready-signal shape (`done: PR <url>` or `done: PR <url> checks green`), so a
-# PR a worker merely mentioned in prose is never claimed as the delivery.
+# ready-signal shape (`done: PR <url>` or `done: PR <url> checks green`,
+# optionally carrying an emission-time tag this scrape steps over without
+# reading), so a PR a worker merely mentioned in prose is never claimed as the
+# delivery.
 # A scout never delivers a PR, so it never carries one.
 pr_for_task() { # <meta> [preferred-line]
   local meta=$1 preferred=${2:-} value
@@ -324,7 +326,7 @@ pr_for_task() { # <meta> [preferred-line]
   value=$(meta_field "$meta" pr)
   if [ -z "$value" ] && [ -n "$preferred" ]; then
     value=$(printf '%s\n' "$preferred" \
-      | sed -nE 's|^done: PR (https?://[^[:space:])"]+/pull/[0-9]+)( checks green)?$|\1|p' \
+      | sed -nE 's|^done( \[at=[^]]*\])?: PR (https?://[^[:space:])"]+/pull/[0-9]+)( checks green)?$|\2|p' \
       | head -1 || true)
   fi
   clean_field "$value"
@@ -479,19 +481,33 @@ report_child() { # <id>
 }
 
 reap_terminal_child_locked() { # <id> <meta>
-  local id=$1 meta=$2 backend endpoint pids pid
+  local id=$1 meta=$2 backend target tab_id session window pids pane_name pid tmux_owned=1
+  [ -f "$meta" ] && [ ! -L "$meta" ] || return 0
+
+  [ -f "$SCRIPT_DIR/fm-backend.sh" ] || return 0
+  # shellcheck source=bin/fm-backend.sh
+  . "$SCRIPT_DIR/fm-backend.sh"
   fm_backend_validate_task_endpoint "$meta" "$id" >/dev/null 2>&1 || return 0
   backend=$FM_BACKEND_VALIDATED_BACKEND
-  endpoint=$FM_BACKEND_VALIDATED_TARGET
+  target=$FM_BACKEND_VALIDATED_TARGET
+  tab_id=
+  [ "$backend" = zellij ] && tab_id=$(fm_meta_get "$meta" zellij_tab_id)
   if [ "$backend" = tmux ] && command -v tmux >/dev/null 2>&1; then
-    pids=$(tmux list-panes -t "$endpoint" -F '#{pane_pid}' 2>/dev/null || true)
-    for pid in $pids; do
-      if [ -n "$pid" ] && [ "$pid" -gt 1 ] 2>/dev/null; then
+    tmux_owned=0
+    session=${target%%:*}
+    window=${target#*:}
+    pids=$(tmux list-panes -t "=$session:=$window" -F '#{window_name}\t#{pane_pid}' 2>/dev/null || true)
+    while IFS=$'\t' read -r pane_name pid; do
+      if [ "$pane_name" = "fm-$id" ] && [ -n "$pid" ] && [ "$pid" -gt 1 ] 2>/dev/null; then
+        tmux_owned=1
         kill -TERM -"$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
       fi
-    done
+    done <<EOF
+$pids
+EOF
+    [ "$tmux_owned" = 1 ] || return 0
   fi
-  fm_backend_kill "$backend" "$endpoint" 2>/dev/null || true
+  fm_backend_kill "$backend" "$target" "$tab_id" "fm-$id" 2>/dev/null || true
 }
 
 reconcile_direct_child_locked() { # <id> <meta> <secondmate-id-or-empty> <timeout>
