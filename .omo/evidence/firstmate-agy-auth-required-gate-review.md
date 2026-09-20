@@ -23,9 +23,9 @@ The branch does not close the authoritative fallback intake path, and aggregate 
 ### AUTH-1 — auth_required AGY must not authorize dispatch through any reachable path
 
 - **Observation:** The auth guard exists only in the optional typed resolver. With no `TYPESAFE_API_KEY`, the resolver exits off (`bin/fm-dispatch-resolve.sh:101-107`), and the mandatory policy returns every off/non-clear result to the ordinary intake (`AGENTS.md:132`; `docs/configuration.md:498,511-513`). That authoritative intake says missing/unmodeled authentication remains eligible (`AGENTS.md:125-126`) and the skill identifies auth-required only as an attention fact (`.agents/skills/quota-array-dispatch/SKILL.md:74`) without declaring AGY `state.status: auth_required` a dispatch veto (`.agents/skills/quota-array-dispatch/SKILL.md:81-91`). A reachable sequence is: resolver key absent -> resolver off -> AGY profile in matched rule/default -> snapshot reports AGY `auth_required` -> fallback intake retains the candidate as eligible -> operator/agent may select and pass AGY to `fm-spawn`.
-- **False-confidence/slop evidence:** `.agents/skills/quota-array-dispatch/SKILL.md:24-30` claims the worker helper never selects auth-required AGY, and `bin/fm-quota-choose.sh:329` contains such a branch, but AGY never reaches it: `bin/fm-quota-axi-lib.sh:116-134` has no AGY mapping and `tests/fm-quota-choose.test.sh:563-569` requires every AGY candidate to fail as an unknown harness. This is unreachable production logic and does not cover the authoritative fallback.
+- **Source-boundary note:** `.agents/skills/quota-array-dispatch/SKILL.md:24-30` documents the worker helper's narrow primary-provider contract. The current `bin/fm-quota-choose.sh` has no AGY auth-required branch; `bin/fm-quota-axi-lib.sh:116-134` has no AGY mapping and `tests/fm-quota-choose.test.sh:563-569` requires every AGY candidate to fail as an unknown harness. This resolver-only boundary does not cover the authoritative fallback.
 - **violatedCriterion:** AUTH-1
-- **evidencePointer:** `bin/fm-dispatch-resolve.sh:101-107`; `AGENTS.md:125-126,132`; `.agents/skills/quota-array-dispatch/SKILL.md:74,81-91`; `bin/fm-quota-choose.sh:329`; `bin/fm-quota-axi-lib.sh:116-134`; `tests/fm-quota-choose.test.sh:563-569`
+- **evidencePointer:** `bin/fm-dispatch-resolve.sh:101-107`; `AGENTS.md:125-126,132`; `.agents/skills/quota-array-dispatch/SKILL.md:74,81-91`; `bin/fm-quota-choose.sh:349-358`; `bin/fm-quota-axi-lib.sh:116-134`; `tests/fm-quota-choose.test.sh:563-569`
 
 ### FAIL-1 — alternate paths must not misclassify the terminal quota/auth condition
 
@@ -36,7 +36,7 @@ The branch does not close the authoritative fallback intake path, and aggregate 
 ## notes
 
 - No stale AGY percentage/profile exposure was found in the typed resolver or process-event detail paths. Resolver auth handling occurs before quota-row evidence is attached (`bin/fm-dispatch-resolve.sh:308-314`); process-event details emit `best: null` and the auth cause (`bin/fm-procevent-quota.sh:171-183`).
-- Direct remove-ai-slops pass: the resolver tests assert observable profile absence and exact auth disclosure, not implementation internals. The unreachable `fm-quota-choose.sh:329` branch and its contradictory documentation are maintenance burden and false confidence tied to AUTH-1. No unrelated style finding is promoted to a blocker.
+- Direct remove-ai-slops pass: the resolver tests assert observable profile absence and exact auth disclosure, not implementation internals. The current chooser rejects AGY before quota evaluation and contains no stale auth-required branch. No unrelated style finding is promoted to a blocker.
 - Direct programming pass: auth state is interpreted separately in three shell consumers instead of being enforced at the authoritative policy boundary. This duplication is relevant because one authoritative path remains unguarded; no architecture preference beyond the stated authorization criterion is used as a blocker.
 - `git diff --check` reports a pre-existing/new whitespace issue at `tests/fm-ensure-agents-md.test.sh:440`; it is outside the stated security criteria and is not a blocker.
 

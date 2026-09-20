@@ -4,7 +4,7 @@
 - blockers: []
 - originalIntent: Preserve AGY `auth_required` as eligible-but-unranked uncertainty, expose the exact authentication cause, fabricate no usable quota, and never emit an AGY dispatch profile; permit valid known sub-scopes beneath top-level `unknown`; keep tests behavioral rather than deletion/prose/implementation-only checks.
 - desiredOutcome: Typed resolution cannot dispatch AGY while authentication is required, worker-side quota choice rejects it, quota watches terminate as an error with the source cause, and valid known availability rows under top-level `unknown` remain usable.
-- userOutcomeReview: PASS. Static call-path review found no reachable sequence that violates the stated outcome. `fm-dispatch-resolve.sh` removes auth-required AGY from the rankable set; `fm-quota-choose.sh` converts it to unknown; `fm-procevent-quota.sh` returns terminal error details. Known sub-scopes under top-level unknown remain schema-validated and consumable.
+- userOutcomeReview: PASS. Static call-path review found no reachable sequence that violates the stated outcome. `fm-dispatch-resolve.sh` removes auth-required AGY from the rankable set; `fm-quota-choose.sh` rejects AGY before quota evaluation; `fm-procevent-quota.sh` returns terminal error details. Known sub-scopes under top-level unknown remain schema-validated and consumable.
 - checkedArtifacts:
   - `bin/fm-dispatch-resolve.sh:276-395`
   - `bin/fm-quota-choose.sh:320-390`

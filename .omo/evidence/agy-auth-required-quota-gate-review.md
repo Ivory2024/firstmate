@@ -4,13 +4,13 @@
 - blockers: []
 - originalIntent: Accept quota-axi schema v5 snapshots whose provider-level quota status is `unknown` while a structurally valid named sub-scope is `known`, then keep AGY `auth_required` evidence non-authorizing and cause-visible across dispatch and quota monitoring.
 - desiredOutcome: Live AGY snapshots no longer fail shared validation; known `gemini_only` evidence can be ranked when authentication is valid; `auth_required` AGY cannot produce a dispatch profile and produces a terminal quota error carrying the authentication cause.
-- userOutcomeReview: The shipped artifacts satisfy the stated behavior. The shared validator still applies unconditional per-row structural validation. The resolver treats `gemini_only` as applicable, but short-circuits AGY `auth_required` before quota evidence can rank. The simple chooser also converts AGY `auth_required` to unknown. Provider-specific and aggregate quota monitoring classify it as error and include the exact cause. No newly introduced reachable defect was found.
+- userOutcomeReview: The shipped artifacts satisfy the stated behavior. The shared validator still applies unconditional per-row structural validation. The resolver treats `gemini_only` as applicable, but short-circuits AGY `auth_required` before quota evidence can rank. The simple chooser rejects AGY before quota evaluation. Provider-specific and aggregate quota monitoring classify it as error and include the exact cause. No newly introduced reachable defect was found.
 
 ## Criteria checked
 
 - C1 — accept provider `unknown` plus valid known sub-scope: PASS. `bin/fm-quota-axi-lib.sh:45-91`; regression fixtures in `tests/fm-quota-choose.test.sh:285-302` and `tests/fm-dispatch-resolve.test.sh:310-318`.
 - C2 — preserve per-row structural validation: PASS. `bin/fm-quota-axi-lib.sh:65-88` still validates known percentages/runway and unknown-row shape unconditionally.
-- C3 — never authorize AGY while `state.status == auth_required`: PASS. `bin/fm-dispatch-resolve.sh:308-313,382-395`; `bin/fm-quota-choose.sh:323-346`; tests at `tests/fm-dispatch-resolve.test.sh:320-363`.
+- C3 — never authorize AGY while `state.status == auth_required`: PASS. `bin/fm-dispatch-resolve.sh:308-313,382-395`; `bin/fm-quota-choose.sh:349-358` rejects AGY before evaluation; tests at `tests/fm-dispatch-resolve.test.sh:320-363`.
 - C4 — surface exact authentication cause in quota monitoring: PASS. `bin/fm-procevent-quota.sh:114-184`; tests at `tests/fm-procevent-quota.test.sh:226-237`.
 - C5 — inspect relevant history, callers, and prior review decisions without executing tests: PASS. Commits `9e5fdbf..9dd1473`, resolver/chooser/process-event call sites, current no-mistakes review logs, and prior evidence were inspected. No tests were run.
 
