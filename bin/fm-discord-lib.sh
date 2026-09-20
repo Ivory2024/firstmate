@@ -36,6 +36,7 @@ fm_discord_poll_shim_content() {
 # FM_DISCORD_ALLOW_DMS (default "true")
 fm_discord_load_config() {
   local env_file="${FMX_ENV_FILE:-$FM_HOME/.env}"
+  # shellcheck disable=SC2034 # Output global, read by sourcing callers (fm-discord-poll.sh, fm-discord-reply.sh).
   if [ -n "${FM_DISCORD_BOT_TOKEN+x}" ]; then
     FM_DISCORD_TOKEN=${FM_DISCORD_BOT_TOKEN-}
   else
