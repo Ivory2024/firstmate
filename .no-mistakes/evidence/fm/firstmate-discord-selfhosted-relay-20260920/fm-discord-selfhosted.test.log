@@ -1,0 +1,8 @@
+ok - fm-discord-poll is a hard no-op without a token
+ok - self-hosted Discord ingestion writes x-inbox payload shape and fires x-mention wake
+fm-discord-reply: DRY RUN - would POST reply to Discord channel 1000000000000000001 (recorded: state/x-outbox/discord-sh-1352000000000000099.json)
+ok - fm-x-reply routes self-hosted Discord requests to self-hosted reply adapter
+ok - self-hosted reply rejects symlinked context identity
+ok - fm-bootstrap handles FM_DISCORD_BOT_TOKEN activation and artifact generation
+
+EXIT_CODE=
