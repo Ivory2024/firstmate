@@ -48,8 +48,12 @@ case "${QUOTA_AXI_MALFORMED:-}" in
     printf '{"schemaVersion":5,"providers":[{"provider":"codex","quotaSemantics":{"status":"known","effectiveAvailability":[]}}]}\n'
     exit 0
     ;;
-  semantics-mismatch)
-    printf '{"schemaVersion":5,"providers":[{"provider":"codex","quotaSemantics":{"status":"unknown","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":50,"runway":{"status":"through_reset"}}]}}]}\n'
+  malformed-unknown-row)
+    printf '{"schemaVersion":5,"providers":[{"provider":"codex","quotaSemantics":{"status":"unknown","effectiveAvailability":[{"scope":"all_models","status":"known"}]}}]}\n'
+    exit 0
+    ;;
+  auth-required-agy)
+    printf '{"schemaVersion":5,"providers":[{"provider":"agy","state":{"status":"auth_required","error":"Antigravity sign-in required"},"quotaSemantics":{"status":"unknown","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":0,"runway":{"status":"exhausted_now"}}]}}]}\n'
     exit 0
     ;;
   identity)
@@ -203,7 +207,7 @@ printf '%s\n' "$out" | grep -qx 'status: exhausted' || fail "bash timeout fallba
 printf '%s\n' "$out" | grep -qx 'condition_polls: 2' || fail "bash timeout fallback stopped before exhaustion"
 ok "quota polling uses the shared bash timeout fallback"
 
-for malformed in schema duplicate types range runway availability known-empty semantics-mismatch identity; do
+for malformed in schema duplicate types range runway availability known-empty malformed-unknown-row identity; do
   out=$(QUOTA_AXI_MALFORMED="$malformed" QUOTA_AXI_COUNT="$COUNT" PATH="$FAKEBIN:$PATH" "$BIN/fm-procevent-quota.sh" poll --interval 1 --threshold 10 --provider codex --timeout 1)
   printf '%s\n' "$out" | grep -qx 'status: error' || fail "$malformed snapshot did not report an error"
   printf '%s\n' "$out" | grep -qx 'condition_polls: 1' || fail "$malformed snapshot did not stop immediately"
@@ -221,5 +225,17 @@ out=$(QUOTA_AXI_KNOWN_UNKNOWN_FIRST=1 QUOTA_AXI_COUNT="$COUNT" PATH="$FAKEBIN:$P
 printf '%s\n' "$out" | grep -qx 'status: exhausted' || fail "known semantics with unknown headroom did not continue polling"
 printf '%s\n' "$out" | grep -qx 'condition_polls: 2' || fail "known semantics with unknown headroom stopped early"
 ok "poll preserves unknown headroom under known semantics"
+
+out=$(QUOTA_AXI_MALFORMED=auth-required-agy QUOTA_AXI_COUNT="$COUNT" PATH="$FAKEBIN:$PATH" \
+  "$BIN/fm-procevent-quota.sh" poll --interval 1 --threshold 10 --provider agy --timeout 1)
+printf '%s\n' "$out" | grep -qx 'status: error' || fail "auth-required AGY quota unexpectedly triggered a wake"
+detail=$(printf '%s\n' "$out" | sed -n 's/^detail: //p')
+printf '%s\n' "$detail" | jq -e '.best == null and .error == "Antigravity sign-in required"' >/dev/null || fail "auth-required AGY detail hid the authentication cause: $detail"
+out=$(QUOTA_AXI_MALFORMED=auth-required-agy QUOTA_AXI_COUNT="$COUNT" PATH="$FAKEBIN:$PATH" \
+  "$BIN/fm-procevent-quota.sh" poll --interval 1 --threshold 10 --timeout 1)
+printf '%s\n' "$out" | grep -qx 'status: error' || fail "aggregate auth-required AGY quota did not surface an error"
+detail=$(printf '%s\n' "$out" | sed -n 's/^detail: //p')
+printf '%s\n' "$detail" | jq -e '.summary[0].best == null and .summary[0].error == "Antigravity sign-in required"' >/dev/null || fail "aggregate auth-required AGY detail hid the authentication cause: $detail"
+ok "auth-required AGY stays out of wake classification and surfaces its cause"
 
 printf '# all fm-procevent-quota tests passed\n'
