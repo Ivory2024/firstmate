@@ -3,7 +3,7 @@
  * Self-hosted Discord connector reply helper.
  * Posts reply messages directly to Discord API using native Node 22 fetch.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
 const token = process.env.FM_DISCORD_BOT_TOKEN || process.env.FM_DISCORD_TOKEN;
@@ -89,8 +89,20 @@ async function main() {
 		"User-Agent": "FirstmateDiscordSelfHosted/1.0",
 	};
 
+	// Per-request send progress so a retry after a partial failure does not
+	// repost chunks that already reached Discord.
+	const progressFile = join(outboxDir, `${reqId}.progress.json`);
+	let startIndex = 0;
 	let lastMsgId = messageId;
-	for (let i = 0; i < chunks.length; i++) {
+	if (existsSync(progressFile)) {
+		try {
+			const progress = JSON.parse(readFileSync(progressFile, "utf8"));
+			if (Number.isInteger(progress.nextIndex)) startIndex = progress.nextIndex;
+			if (progress.lastMsgId) lastMsgId = progress.lastMsgId;
+		} catch (_err) {}
+	}
+
+	for (let i = startIndex; i < chunks.length; i++) {
 		const chunkText = chunks[i];
 		const isFirst = i === 0;
 
@@ -135,7 +147,14 @@ async function main() {
 		if (sentMsg && sentMsg.id) {
 			lastMsgId = sentMsg.id;
 		}
+
+		if (!existsSync(outboxDir)) mkdirSync(outboxDir, { recursive: true, mode: 0o700 });
+		writeFileSync(progressFile, JSON.stringify({ nextIndex: i + 1, lastMsgId }), { mode: 0o600 });
 	}
+
+	try {
+		if (existsSync(progressFile)) unlinkSync(progressFile);
+	} catch (_err) {}
 
 	console.log(reqId);
 }

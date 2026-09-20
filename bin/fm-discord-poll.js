@@ -26,6 +26,25 @@ const excludeIds = (process.env.FM_DISCORD_EXCLUDES || process.env.FM_DISCORD_EX
 	.map((s) => s.trim())
 	.filter(Boolean);
 
+const allowDMs = (process.env.FM_DISCORD_ALLOW_DMS || process.env.FM_DISCORD_DMS || "true").toLowerCase() !== "false";
+
+const cursorDir = join(stateDir, "x-context");
+function cursorFile(chId) {
+	return join(cursorDir, `discord-cursor-${chId}.json`);
+}
+function readCursor(chId) {
+	try {
+		const raw = readFileSync(cursorFile(chId), "utf8");
+		return JSON.parse(raw).last_id || null;
+	} catch (_err) {
+		return null;
+	}
+}
+function writeCursor(chId, lastId) {
+	if (!existsSync(cursorDir)) mkdirSync(cursorDir, { recursive: true, mode: 0o700 });
+	writeFileSync(cursorFile(chId), JSON.stringify({ last_id: lastId }), { mode: 0o600 });
+}
+
 const apiHeaders = {
 	Authorization: `Bot ${token}`,
 	"User-Agent": "FirstmateDiscordSelfHosted/1.0",
@@ -68,16 +87,28 @@ async function main() {
 		// 3. Poll each target channel
 		for (const chId of targetChannels) {
 			if (excludeIds.includes(chId)) continue;
-			const msgsRes = await fetch(`https://discord.com/api/v10/channels/${chId}/messages?limit=10`, { headers: apiHeaders });
+			const cursor = readCursor(chId);
+			const url = cursor
+				? `https://discord.com/api/v10/channels/${chId}/messages?after=${cursor}&limit=100`
+				: `https://discord.com/api/v10/channels/${chId}/messages?limit=10`;
+			const msgsRes = await fetch(url, { headers: apiHeaders });
 			if (!msgsRes.ok) continue;
 			const msgs = await msgsRes.json();
 			if (!Array.isArray(msgs)) continue;
 
-			for (const msg of msgs) {
+			// Discord returns newest-first; process oldest-first so the cursor
+			// only advances past messages actually handled.
+			const ordered = [...msgs].reverse();
+			if (ordered.length > 0) {
+				writeCursor(chId, ordered[ordered.length - 1].id);
+			}
+
+			for (const msg of ordered) {
 				if (msg.author?.bot) continue;
 
 				// Check if mentioned or DM
 				const isDM = !msg.guild_id;
+				if (isDM && !allowDMs) continue;
 				const isMentioned = Array.isArray(msg.mentions) && msg.mentions.some((m) => m.id === botId);
 				const contentHasBotMention = msg.content && (msg.content.includes(`<@${botId}>`) || msg.content.includes(`<@!${botId}>`));
 
