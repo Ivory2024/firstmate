@@ -1,0 +1,10 @@
+== tool availability ==
+no-mistakes version v1.79.0 (fc540ac) 2026-09-19T09:34:44Z
+herdr=
+== guarded Herdr live attempt ==
+fm-herdr-lab: herdr is required
+prepare_exit=1
+== real dispatch resolver without credentials ==
+dispatch-resolve: off (TYPESAFE_API_KEY absent from the environment and /tmp/fm-dispatch-home.zP1fKR/.env)
+dispatch_exit=0
+== worktree status ==
