@@ -242,7 +242,8 @@ Portable shard evidence and coverage rules are in [fm-test-portable-shards.md](f
 ## Jev review assist (optional, per-operator)
 
 no-mistakes v1.79.0+ can send each review turn's diff to TypeSafe's Jev model to rank which surrounding files are worth reading first; the ranked list only enriches the review prompt, the ordinary cold complete review remains authoritative, and Jev is advisory only and never gates delivery.
-This repository opts in through its tracked `.no-mistakes.yaml`:
+`jev.review_assist` is global-only and cannot be enabled from this repository's tracked `.no-mistakes.yaml`.
+An operator opts in locally, per machine, in their own `~/.no-mistakes/config.yaml`:
 
 ```yaml
 jev:
@@ -254,7 +255,7 @@ On every call failure, oversized reply, or missing key, no-mistakes falls back t
 
 **What is sent.** Per review turn, no-mistakes sends only the diff of reviewable files plus up to 40 candidate file paths - paths only, never their content - ranked by name rarity and directory proximity. No project name, PR body, or brief text is part of this call.
 
-**Data boundary.** This repository's captain-private and gitignored paths (`.env`, `data/`, `state/`, `config/`, `projects/`, `.no-mistakes/`) are untracked, so they can never appear in a git diff and are never reachable by this or any other diff-based review path.
+**Data boundary.** The review step selects reviewable files according to its diff and ignore rules; paths matched by those rules are not sent to Jev. Gitignored status alone is not a guarantee, because tracked or force-added files can still be reviewable.
 The remaining operator responsibility is ordinary git hygiene: keep secrets out of tracked files, since no-mistakes has no Jev-specific secret redaction beyond the review step's existing findings pipeline.
 
 **Audit.** The review step log already records whether a pre-brief was requested, whether it was used, and the reason for any fallback (`no-mistakes axi logs --step review --full`); no separate Jev-specific audit log exists in this repo, since the call itself happens inside the no-mistakes daemon process, outside firstmate's own scripts.
