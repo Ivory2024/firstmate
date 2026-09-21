@@ -798,7 +798,7 @@ fm_backend_send_text_submit() {  # <backend> <target> <text> <retries> <enter-sl
 # docs/verification/runtime-backends.md "Endpoint close" is the per-backend
 # record.
 fm_backend_kill() {  # <backend> <target>
-  local backend=$1
+  local backend=$1 kill_status
   shift
   [ -n "${1:-}" ] || { echo "error: refusing empty backend kill target" >&2; return 1; }
   fm_backend_source "$backend" || return 1
@@ -810,6 +810,8 @@ fm_backend_kill() {  # <backend> <target>
     cmux) fm_backend_cmux_kill "$@" ;;
     *) echo "error: no kill implementation for backend '$backend'" >&2; return 1 ;;
   esac
+  kill_status=$?
+  [ "$kill_status" -eq 0 ] || return 1
   fm_backend_endpoint_confirmed_gone "$backend" "$@" && return 0
   return 1
 }
@@ -817,6 +819,8 @@ fm_backend_kill() {  # <backend> <target>
 fm_backend_endpoint_confirmed_gone() {
   local backend=$1
   shift
+  local helper="fm_backend_${backend}_endpoint_confirmed_gone"
+  declare -F "$helper" >/dev/null 2>&1 || return 0
   case "$backend" in
     tmux) fm_backend_tmux_endpoint_confirmed_gone "$@" ;;
     herdr) fm_backend_herdr_endpoint_confirmed_gone "$@" ;;
