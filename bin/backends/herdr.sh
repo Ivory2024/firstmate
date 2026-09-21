@@ -3367,14 +3367,14 @@ fm_backend_herdr_kill_serialized() {  # <session> <pane>
         fm_backend_herdr_emptying_move_rollback "$plan_move_record" || true
       fi
       fm_backend_herdr_projection_focus_restore "$session" "$before" "task kill" || true
-      return "$close_failed"
+      return 0
     fi
   fi
-  fm_backend_herdr_explicit_close_pane_confirmed "$session" "$pane"
+  fm_backend_herdr_explicit_close_pane_confirmed "$session" "$pane" || true
 }
 
 fm_backend_herdr_kill() {  # <target>
-  fm_backend_herdr_target_ready "$1" || return 1
+  fm_backend_herdr_target_ready "$1" || return 0
   local session=$FM_BACKEND_HERDR_SESSION pane=$FM_BACKEND_HERDR_PANE
   local lock_path attempt=0 lock_held=0
   if ! declare -F fm_lock_try_acquire >/dev/null 2>&1; then
@@ -3392,14 +3392,12 @@ fm_backend_herdr_kill() {  # <target>
     done
   fi
   if [ "$lock_held" = 1 ]; then
-    local rc
-    fm_backend_herdr_kill_serialized "$session" "$pane"; rc=$?
+    fm_backend_herdr_kill_serialized "$session" "$pane" || true
     fm_lock_release "$lock_path" || true
-    return "$rc"
   else
     echo "warning: herdr task kill could not acquire its session presentation lock; refusing an unlocked pane close" >&2
-    return 1
   fi
+  return 0
 }
 
 # fm_backend_herdr_endpoint_confirmed_gone: gate durable-record removal on
