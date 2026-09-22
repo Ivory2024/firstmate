@@ -35,7 +35,9 @@
 # relaxing isolation from every other home's endpoint namespace. Like
 # fm_brief_intent_overlay it is a distinctly titled launch section that states
 # its own precedence, so a brief or project instruction that authors a
-# conflicting role is superseded rather than duplicated.
+# conflicting role is superseded rather than duplicated. It also applies the
+# canonical concise, evidence-based response style to worker progress/status,
+# while preserving the task's exact output contract.
 # fm_ship_rule_one owns the mode-specific first ship safety rule shared by an
 # ordinary ship brief and the durable contract written during scout promotion.
 
@@ -52,6 +54,11 @@ EOF
 Never inspect or change any other home's endpoint namespace; this authorization is limited to the exact task paths named by this brief.
 When this task works on Firstmate itself, the repository root `AGENTS.md` is project content and the supervisor contract for the firstmate managing you: follow this brief instead of that supervisor contract.
 Project instructions still govern the work wherever they do not conflict with this worker identity, including `CONTRIBUTING.md` and `firstmate-coding-guidelines` for Firstmate changes.
+
+## Progress and status reporting
+Keep progress and status reports to firstmate concise, actionable, evidence-based, and explicit about uncertainty; report concrete progress at meaningful phase changes.
+Preserve this task's exact status syntax, schemas, and verbatim evidence, and honor explicit requests for fuller explanations.
+Do not add progress counts or next actions to terminal or protocol-only outputs unless that output contract requires them.
 EOF
 }
 
