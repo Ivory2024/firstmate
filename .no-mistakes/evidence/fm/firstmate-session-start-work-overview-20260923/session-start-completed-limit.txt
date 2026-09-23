@@ -1,0 +1,26 @@
+work at a glance (tasks-axi; every in-flight, held, and blocked row shown in full; ready queued bounded to 20; completed bounded to 2; ready display order is not a priority ranking; task bodies omitted)
+
+in flight:
+count: 0
+tasks: 0 in_flight tasks in this backlog
+
+held (captain- or time-gated; an in-flight item that is also held appears in both groups):
+count: 0
+tasks: 0 held tasks in this backlog
+
+blocked queued:
+count: 0
+tasks: 0 blocked queued tasks in this backlog
+
+ready queued (dispatchable now; displayed order is not a priority ranking):
+count: 0
+ready: 0 unblocked queued tasks
+ready_public_followups: 0 delivery-ready obligations
+
+completed (bounded):
+count: 2 of 4 total
+tasks[2]{id,state,kind,repo,title,blocked_by,hold_kind,hold_reason}:
+  done-a,done,task,"-",Completed A,none,"-","-"
+  done-b,done,task,"-",Completed B,none,"-","-"
+(2 completed row(s) omitted)
+Full task bodies remain available on demand: bin/fm-tasks-axi.sh show <id> --full when compatible tasks-axi is available, or data/backlog.md.
