@@ -65,6 +65,7 @@ async function main() {
 
 		// 2. Resolve channels to scan
 		let targetChannels = [...channelIds];
+		const explicitTargetIds = new Set(targetChannels);
 		if (targetChannels.length === 0) {
 			// If no channel is explicitly listed, try fetching bot's guilds and their channels
 			const guildsRes = await fetch("https://discord.com/api/v10/users/@me/guilds", { headers: apiHeaders });
@@ -99,7 +100,7 @@ async function main() {
 
 		// 3. Poll each target channel
 		for (const chId of targetChannels) {
-			if (excludeIds.includes(chId)) continue;
+			if (excludeIds.includes(chId) && !explicitTargetIds.has(chId)) continue;
 			const cursor = readCursor(chId);
 			const url = cursor
 				? `https://discord.com/api/v10/channels/${chId}/messages?after=${cursor}&limit=100`
