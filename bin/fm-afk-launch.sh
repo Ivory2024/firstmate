@@ -330,6 +330,43 @@ fm_afk_launch_close_recorded() {
   return 1
 }
 
+fm_afk_launch_reconcile() {
+  local read_result
+  if daemon_lock_held_by_live_daemon; then
+    return 0
+  fi
+  fm_afk_launch_record_read
+  read_result=$?
+  if [ "$read_result" -eq 0 ]; then
+    fm_afk_launch_log "reconciling leaked daemon terminal ${FM_AFK_REC_BACKEND}:${FM_AFK_REC_TARGET}"
+    fm_afk_launch_close_recorded
+  elif [ "$read_result" -eq 2 ]; then
+    return 1
+  fi
+}
+
+fm_afk_launch_restore_backup() {
+  local backup=$1 had_afk=$2 artifact result=0
+  rm -f "$FM_AFK_LAUNCH_STATE/.afk" \
+    "$FM_AFK_LAUNCH_STATE/.subsuper-escalations" \
+    "$FM_AFK_LAUNCH_STATE/.subsuper-escalations.since" \
+    "$FM_AFK_LAUNCH_STATE/.subsuper-inject-wedged" || result=1
+  if [ "$had_afk" -eq 1 ]; then
+    cp "$backup/.afk" "$FM_AFK_LAUNCH_STATE/.afk" || result=1
+  fi
+  for artifact in .subsuper-escalations .subsuper-escalations.since .subsuper-inject-wedged; do
+    if [ -e "$backup/$artifact" ]; then
+      cp -p "$backup/$artifact" "$FM_AFK_LAUNCH_STATE/$artifact" || result=1
+    fi
+  done
+  if [ "$result" -eq 0 ]; then
+    rm -rf "$backup" || return 1
+  else
+    fm_afk_launch_log "rollback restoration incomplete; backup retained at $backup"
+  fi
+  return "$result"
+}
+
 fm_afk_launch_terminal_alive() {  # <backend> <target>
   local backend=$1 target=$2
   case "$backend" in
