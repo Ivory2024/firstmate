@@ -484,7 +484,7 @@ print_ready_queued_bounded() {
 }
 
 print_backlog_tasks_axi_compact() {
-  local path=$1 in_flight held blocked ready done err done_total
+  local path=$1 in_flight held blocked ready completed err done_total
   if ! in_flight=$(tasks-axi list --file "$path" --state in_flight --fields "$BACKLOG_FIELDS" 2>&1); then
     err=$in_flight
   elif ! held=$(tasks-axi list --file "$path" --state held --fields "$BACKLOG_FIELDS" 2>&1); then
@@ -494,8 +494,8 @@ print_backlog_tasks_axi_compact() {
   elif ! ready=$(tasks-axi ready --file "$path" 2>&1); then
     err=$ready
   else
-    if ! done=$(tasks-axi list --file "$path" --state done --limit "$DONE_LIMIT" --fields "$BACKLOG_FIELDS" 2>&1); then
-      err=$done
+    if ! completed=$(tasks-axi list --file "$path" --state 'done' --limit "$DONE_LIMIT" --fields "$BACKLOG_FIELDS" 2>&1); then
+      err=$completed
       printf 'tasks-axi completed listing failed; falling back to title-line rendering.\n'
       printf '%s\n' "$err"
       print_backlog_manual_compact "$path" "fallback"
@@ -512,8 +512,8 @@ print_backlog_tasks_axi_compact() {
     printf '\nready queued (dispatchable now; displayed order is not a priority ranking):\n'
     print_ready_queued_bounded "$ready"
     printf '\ncompleted (bounded):\n'
-    printf '%s\n' "$done" | strip_axi_help
-    done_total=$(printf '%s\n' "$done" | awk -F': ' '/^count: / { if ($2 ~ / of /) { split($2, counts, " of "); split(counts[2], total, " "); print total[1] } else { print $2 }; exit }')
+    printf '%s\n' "$completed" | strip_axi_help
+    done_total=$(printf '%s\n' "$completed" | awk -F': ' '/^count: / { if ($2 ~ / of /) { split($2, counts, " of "); split(counts[2], total, " "); print total[1] } else { print $2 }; exit }')
     done_total=${done_total:-0}
     if [ "$done_total" -gt "$DONE_LIMIT" ]; then
       printf '(%s completed row(s) omitted)\n' "$((done_total - DONE_LIMIT))"
