@@ -232,7 +232,7 @@ fm_backend_tmux_current_command() {  # <target>
 
 # The process-name classifier every liveness signal below feeds
 # (fm_agent_process_classify_name) is owned by bin/fm-agent-process-lib.sh,
-# shared with the Herdr adapter so both backends mean the same thing by
+# shared with the the removed adapter adapter so both backends mean the same thing by
 # `agent`, `shell`, and `other`.
 
 # fm_backend_tmux_foreground_comms: the kernel-side names of every process in

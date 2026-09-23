@@ -53,7 +53,7 @@
 # dark/muted truecolor foreground (grok's placeholder) - from one captured,
 # styled composer line and prints the plain, real-typed text. Kept as a named
 # tmux entry point (and for existing callers/tests) but owns no logic of its own,
-# so the tmux and herdr adapters cannot drift apart on what counts as ghost text.
+# so the tmux and the removed adapter adapters cannot drift apart on what counts as ghost text.
 fm_tmux_strip_ghost() { fm_composer_strip_ghost; }
 
 # --- tmux composer capture and capability primitives ------------------------
@@ -85,7 +85,7 @@ fm_tmux_composer_caps() {
 }
 
 # fm_tmux_composer_identity: the tmux agent-identity probe backing the
-# separated (pi) composer shape, tmux's analogue of herdr's native
+# separated (pi) composer shape, tmux's analogue of the removed adapter's native
 # `agent get`. It answers only for pi, from two live signals:
 #   - identity: the pane tty's FOREGROUND process group (pgid = tpgid, the
 #     same scoping as fm_backend_tmux_foreground_comms) contains a pi-family
@@ -96,7 +96,7 @@ fm_tmux_composer_caps() {
 #     which is exactly what keeps the strict blank-row rule honest: a blank
 #     row between two stale rules stays unknown.
 #   - status: pi's verified busy footer via fm_pane_is_busy, mapped onto the
-#     idle/working vocabulary herdr's probe reports natively.
+#     idle/working vocabulary the removed adapter's probe reports natively.
 # Prints "pi<TAB>idle" or "pi<TAB>working"; exits 1 when the pane is not a
 # live pi.
 fm_tmux_composer_identity() {  # <target>
@@ -155,7 +155,7 @@ fm_tmux_composer_state() {  # <target> -> empty|pending|pending-unproven|unknown
   # a composer locator and the cursor-anchored read can only ever answer
   # `unknown`. Reclassify that pane the way every cursorless backend already
   # classifies it, letting the bottom-most shape win, which is the same rule
-  # herdr, zellij, cmux, and orca use for every harness including this one.
+  # the removed adapter, zellij, cmux, and orca use for every harness including this one.
   # Gated on Cursor's own structural process identity, never on the verdict
   # alone, so the strict blank-row posture that owns `unknown` for every other
   # harness is untouched.
@@ -232,7 +232,7 @@ fm_pane_is_busy() {  # <target> [harness]
 # replaces its separated composer while working) reads `unknown` right after a
 # successful submit. When and only when the pane was IDLE before the text was
 # typed, an idle-to-busy transition across our Enter is proof the harness
-# accepted the submission - the same semantic signal herdr's native
+# accepted the submission - the same semantic signal the removed adapter's native
 # agent-state confirmation uses, read from the pane's verified busy footer.
 # The busy read is polled across the remaining retry budget because the turn
 # takes a beat to render. Without the baseline (a direct

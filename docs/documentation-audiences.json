@@ -27,7 +27,6 @@
     "docs/configuration.md",
     "docs/wedge-alarm.md",
     "docs/tmux-backend.md",
-    "docs/herdr-backend.md",
     "docs/zellij-backend.md",
     "docs/orca-backend.md",
     "docs/cmux-backend.md",
@@ -83,7 +82,6 @@
       "target": "docs/verification/runtime-backends.md"
     },
     {
-      "source": "docs/herdr-backend.md",
       "target": "docs/verification/runtime-backends.md"
     },
     {
@@ -409,7 +407,6 @@
       "audience": "maintainer-verification"
     },
     {
-      "path": "docs/herdr-backend.md",
       "audience": "operator-current"
     },
     {

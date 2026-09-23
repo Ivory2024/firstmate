@@ -3,22 +3,22 @@
 #
 # Design: data/fm-backend-design-d7/report.md ("Zellij Backend" section - the
 # interface mapping, implementation choices, and "Zellij gaps to verify" list)
-# and herdr-addendum.md D2/D3 (zellij is P3, after herdr; treehouse stays the
+# and the removed adapter-addendum.md D2/D3 (zellij is P3, after the removed adapter; treehouse stays the
 # worktree provider). Zellij is a session provider ONLY: the worktree provider
-# stays treehouse, exactly like tmux and herdr. Sourced only through
+# stays treehouse, exactly like tmux and the removed adapter. Sourced only through
 # bin/fm-backend.sh's fm_backend_source in normal operation; the unit tests
 # source it directly.
 #
 # Session shape (report "Zellij implementation choices" #1, unchanged by
 # empirical verification): ONE zellij session (default name "firstmate",
-# overridable via FM_ZELLIJ_SESSION for test isolation - mirrors herdr's
-# HERDR_SESSION), ONE tab per task, with caller-facing label "fm-<id>" and a
-# home-scoped actual title. No per-home workspace split (unlike herdr's later
+# overridable via FM_ZELLIJ_SESSION for test isolation - a per-process
+# override), ONE tab per task, with caller-facing label "fm-<id>" and a
+# home-scoped actual title. No per-home workspace split (unlike the removed adapter's later
 # P3 refinement): zellij has no workspace concept, only sessions/tabs/panes,
 # so this stays exactly the report's original choice. Target string shape:
 # "<zellij-session>:<pane-id>" (pane id is a bare non-negative integer with no
 # embedded colon, so splitting on the FIRST colon is trivially correct and
-# mirrors herdr's target-string convention).
+# mirrors the removed adapter's target-string convention).
 #
 # Home-scoped tab titles (closes a cross-home collision gap): because every
 # task in every firstmate home - primary or secondmate - shares this ONE
@@ -56,7 +56,7 @@
 #      launched as a foreground command (verified: `treehouse get` opens
 #      exactly such a subshell). `pane_cwd` stays frozen at wherever the
 #      pane's shell was when it invoked that foreground command - worse than
-#      herdr's frozen-cwd trap (herdr at least exposes a `foreground_cwd`
+#      the removed adapter's frozen-cwd trap (the removed adapter at least exposes a `foreground_cwd`
 #      that tracks this; zellij's CLI exposes no live-process cwd field and
 #      no per-pane pid to read it from `/proc`/`lsof` either). This directly
 #      contradicts the design report's assumption ("acceptable for tmux and
@@ -64,7 +64,7 @@
 #      fm_backend_zellij_current_path below and docs/zellij-backend.md
 #      "Worktree-path discovery: pane_cwd does not track a subshell".
 #   5. `new-tab` DOES steal focus from an attached client with NO flag to
-#      suppress it (unlike herdr's --no-focus and tmux's new-window -d).
+#      suppress it (unlike the removed adapter's --no-focus and tmux's new-window -d).
 #      Mitigated (fm_backend_zellij_create_task): capture the previously
 #      active tab id before creating, restore it with go-to-tab-by-id
 #      afterward - verified to correctly restore an attached client's view
@@ -92,10 +92,10 @@
 #     pane can still die between the preflight check and the operation call;
 #     docs/zellij-backend.md records that residual race.
 #   - `zellij list-tabs`/`new-tab` does NOT enforce unique tab names (same as
-#     herdr's tabs, unlike tmux's own window-name uniqueness), so the
+#     the removed adapter's tabs, unlike tmux's own window-name uniqueness), so the
 #     duplicate check below is ours, mirroring both prior adapters.
 #   - Closing a tab's only pane (`close-pane`) does NOT close the now-empty
-#     tab (unlike herdr, where the analogous close DOES remove the tab) - an
+#     tab (unlike the removed adapter, where the analogous close DOES remove the tab) - an
 #     empty "ghost" tab survives in `list-tabs` until explicitly closed. Kill
 #     therefore always resolves the owning tab id and calls
 #     `close-tab-by-id`, which verified cleanly removes a live tab (pane and
@@ -108,7 +108,7 @@
 # FM_HOME fallback: every real caller already sets FM_HOME as a global before
 # sourcing fm-backend.sh (which sources this file); this exists only so this
 # file's own unit tests, which source it directly, resolve sanely. Mirrors
-# bin/backends/herdr.sh's identical fallback; unlike herdr this adapter still
+# bin/backends/the removed adapter.sh's identical fallback; unlike the removed adapter this adapter still
 # has no per-home CONTAINER split (one shared session for every home), but
 # FM_HOME/FM_ROOT now also feed fm_backend_zellij_home_label's tab-title tag
 # below.
@@ -131,11 +131,11 @@ FM_BACKEND_ZELLIJ_MIN_MAJOR=0
 FM_BACKEND_ZELLIJ_MIN_MINOR=44
 
 # fm_backend_zellij_session: the session name this spawn/op uses.
-# FM_ZELLIJ_SESSION mirrors herdr's HERDR_SESSION ambient-selection knob: an
+# FM_ZELLIJ_SESSION selects the session by an ambient environment variable: an
 # operator (or firstmate's own isolated test harness) sets it explicitly;
 # absent means the shared "firstmate" session. Do not use this alone for
 # destructive test cleanup; tests/zellij-test-safety.sh documents and guards
-# that path (mirrors tests/herdr-test-safety.sh).
+# that path (mirrors tests/the removed adapter-test-safety.sh).
 fm_backend_zellij_session() {
   printf '%s' "${FM_ZELLIJ_SESSION:-firstmate}"
 }
@@ -202,9 +202,9 @@ fm_backend_zellij_version_check() {
 # fm_backend_zellij_cli: run `zellij --session <session> action <args...>`,
 # setting BOTH the ZELLIJ_SESSION_NAME env var AND the leading global
 # `--session <name>` flag (zellij's session-target flag is GLOBAL, before the
-# subcommand - unlike herdr's trailing --session - verified both forms
+# subcommand - unlike the removed adapter's trailing --session - verified both forms
 # independently route correctly on the installed 0.44.0 client; kept together
-# for defense in depth, mirroring bin/backends/herdr.sh's fm_backend_herdr_cli
+# for defense in depth, mirroring bin/backends/the removed adapter.sh's fm_backend_the removed adapter_cli
 # rationale even though no equivalent env-var-unreliable incident has been
 # observed for zellij).
 fm_backend_zellij_cli() {  # <session> <action-subcommand-and-args...>
@@ -214,8 +214,8 @@ fm_backend_zellij_cli() {  # <session> <action-subcommand-and-args...>
 }
 
 # fm_backend_zellij_session_exists: passive, READ-ONLY liveness check - never
-# starts or creates a session (unlike herdr's target_ready, which DOES
-# auto-start its server: a herdr server restart is non-destructive and
+# starts or creates a session (unlike the removed adapter's target_ready, which DOES
+# auto-start its server: a the removed adapter server restart is non-destructive and
 # recovers persisted state, but zellij's `kill-session` is destructive and
 # recreating an unrelated target session under the same name would silently
 # orphan whatever the caller actually meant to reach). Every op below calls
@@ -226,7 +226,7 @@ fm_backend_zellij_session_exists() {  # <session>
 
 # fm_backend_zellij_server_ensure: create the named session in the background,
 # headless (no attached client), if it does not already exist - mirrors
-# tmux's `tmux has-session || tmux new-session -d` and herdr's server_ensure.
+# tmux's `tmux has-session || tmux new-session -d` and the removed adapter's server_ensure.
 # Verified: `zellij attach -b <name>` with stdin redirected from /dev/null and
 # no controlling TTY creates the session and returns promptly (it cannot
 # actually attach without a TTY, so it exits after creating); running it again
@@ -247,7 +247,7 @@ fm_backend_zellij_server_ensure() {  # <session>
 
 # fm_backend_zellij_container_ensure: the full spawn-time container-ensure
 # sequence (version gate, session). Echoes the session name (no second
-# "workspace" component - zellij has no such concept, unlike herdr).
+# "workspace" component - zellij has no such concept, unlike the removed adapter).
 fm_backend_zellij_container_ensure() {
   local session
   fm_backend_zellij_version_check || return 1
@@ -273,7 +273,7 @@ fm_backend_zellij_pane_for_tab() {  # <session> <tab_id>
 # fm_backend_zellij_tab_for_pane: the owning tab id for <pane_id> in
 # <session>, the reverse lookup kill needs (meta stores only the pane in the
 # target string; the tab id is looked up fresh rather than trusted stale,
-# mirroring herdr's label-based, never-trust-a-stored-id recovery posture).
+# mirroring the removed adapter's label-based, never-trust-a-stored-id recovery posture).
 fm_backend_zellij_tab_for_pane() {  # <session> <pane_id>
   local session=$1 pane_id=$2
   fm_backend_zellij_cli "$session" action list-panes --json 2>/dev/null \
@@ -316,7 +316,7 @@ fm_backend_zellij_tab_matches_label() {  # <session> <tab_id> <label>
 # fm_backend_zellij_create_task: create the task's tab (one terminal pane) in
 # <session>, refusing an existing <label>. Zellij does NOT enforce tab-name
 # uniqueness itself (verified: two tabs can share a name), so the duplicate
-# check is ours, mirroring both tmux's and herdr's adapters. The tab is
+# check is ours, mirroring both tmux's and the removed adapter's adapters. The tab is
 # always created with the home-scoped, tagged title
 # (fm_backend_zellij_scoped_title), never the bare caller-facing label - see
 # the file header's "Home-scoped tab titles" note.
@@ -361,7 +361,7 @@ fm_backend_zellij_create_task() {  # <session> <label> <cwd>
 
 # fm_backend_zellij_parse_target: split "<session>:<pane_id>" on the FIRST
 # colon (the pane id is a bare integer with no embedded colon, so this is
-# simpler than herdr's equivalent but kept structurally parallel). Sets
+# simpler than the removed adapter's equivalent but kept structurally parallel). Sets
 # FM_BACKEND_ZELLIJ_SESSION and FM_BACKEND_ZELLIJ_PANE for the caller.
 fm_backend_zellij_parse_target() {  # <target>
   local target=$1
@@ -398,7 +398,7 @@ fm_backend_zellij_target_ready() {  # <target> [expected-label]
 # into the acquired worktree, even after the subshell is fully interactive and
 # a `pwd` typed into it prints the correct live path on screen. Zellij's CLI
 # exposes no per-pane pid and no live-process cwd field to read instead
-# (unlike herdr's `foreground_cwd`), so passive JSON polling cannot solve
+# (unlike the removed adapter's `foreground_cwd`), so passive JSON polling cannot solve
 # this. Active probe instead: print the pane's `$PWD` with a unique marker
 # (atomically submitted, mirroring send_text_line), briefly settle, then capture
 # and read only that marker line. Scoped to fm-spawn.sh's own worktree-discovery
@@ -431,9 +431,9 @@ EOF
 
 # fm_backend_zellij_send_literal: send TEXT as literal, UNSUBMITTED input via
 # bracketed paste - the caller sends Enter separately. Mirrors tmux's
-# `send-keys -t T -l text` / herdr's `pane send-text`. Verified: `action
+# `send-keys -t T -l text` / the removed adapter's `pane send-text`. Verified: `action
 # paste` does NOT auto-submit and uses bracketed paste mode (the report's
-# recommendation over write-chars, for popup-safety parity with tmux/herdr).
+# recommendation over write-chars, for popup-safety parity with tmux/the removed adapter).
 fm_backend_zellij_send_literal() {  # <target> <text> [expected-label]
   fm_backend_zellij_target_ready "$1" "${3:-}" || return 1
   fm_backend_zellij_cli "$FM_BACKEND_ZELLIJ_SESSION" action paste --pane-id "$FM_BACKEND_ZELLIJ_PANE" -- "$2" >/dev/null 2>&1
@@ -506,7 +506,7 @@ fm_backend_zellij_visible_capture() {  # <target> [expected-label]
 # `zellij action dump-screen --ansi` ("Preserve ANSI styling in the dump
 # output", verified live at zellij 0.44.0 against real Claude Code) gives
 # zellij a styled capture, so the shared classifier reads its composer with
-# the same ghost-stripping confidence as tmux and herdr. Every shape lives in
+# the same ghost-stripping confidence as tmux and the removed adapter. Every shape lives in
 # the shared owner (bin/fm-composer-lib.sh, fm_composer_classify_screen);
 # this adapter contributes only the capture and its capability facts.
 
@@ -588,8 +588,8 @@ fm_backend_zellij_send_text_submit() {  # <target> <text> <retries> <enter-sleep
 }
 
 # fm_backend_zellij_kill: remove the task's tab, best-effort (mirrors
-# tmux-kill-window's/herdr-pane-close's `|| true` contract). Verified: unlike
-# herdr, closing a zellij tab's only PANE does NOT close the tab itself (an
+# tmux-kill-window's/the removed adapter-pane-close's `|| true` contract). Verified: unlike
+# the removed adapter, closing a zellij tab's only PANE does NOT close the tab itself (an
 # empty tab survives in list-tabs); `close-tab-by-id` on a live tab DOES
 # cleanly remove both the pane and the tab in one call, verified to need no
 # separate pane-close first. The owning tab id is looked up fresh from the
@@ -671,15 +671,15 @@ fm_backend_zellij_list_live() {  # <session>
 
 # fm_backend_zellij_resolve_bare_selector: the live-tab-listing fallback for
 # an ad hoc selector with no meta (mirrors tmux's list-windows grep and
-# herdr's equivalent). Searches every active zellij session for a tab
+# the removed adapter's equivalent). Searches every active zellij session for a tab
 # matching <name>: the home-scoped, tagged title first
 # (fm_backend_zellij_scoped_title), then falls back to an exact bare <name>
 # match ONLY when unambiguous - exactly one tab across every active session
 # carries it - mirroring fm_backend_zellij_tab_matches_label's migration
 # posture. Rare path in practice (zellij tasks normally carry meta);
 # best-effort. Not wired into fm_backend_resolve_selector's dispatcher
-# (bin/fm-backend.sh), mirroring herdr: that bare-selector fallback stays
-# tmux-only by design, and zellij/herdr tasks are targeted via task-selector
+# (bin/fm-backend.sh), mirroring the removed adapter: that bare-selector fallback stays
+# tmux-only by design, and zellij/the removed adapter tasks are targeted via task-selector
 # meta or an explicit recorded target.
 fm_backend_zellij_resolve_bare_selector() {  # <name>
   local name=$1 scoped sessions session tabs tab_id count=0 pane_id bare_session='' bare_tab_id=''

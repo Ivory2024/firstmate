@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Backend-neutral harness-process identity.
-# Sourced by bin/backends/tmux.sh and bin/backends/herdr.sh. This file is
+# Sourced by bin/backends/tmux.sh. This file is
 # sourced by scripts and has no side effects on source.
 #
 # Why one owner: every runtime backend that proves an agent is alive does it by
 # attributing operating-system processes - the pane's foreground process group
-# on tmux, Herdr's `pane process-info` view plus the pane shell's descendants
-# on Herdr - and the two must agree on what a given process name means, or a
+# on tmux's kernel process table and the pane shell's descendants. These must
+# agree on what a given process name means, or a
 # harness one backend recognizes silently reads as a dead pane on the other.
 # The classifier moved here verbatim from the tmux adapter, where it was born;
 # docs/tmux-backend.md "Agent liveness probe" owns the empirical basis for the
@@ -75,7 +75,7 @@ fm_agent_process_classify_name() {  # <path> [argv0] -> agent|shell|other
 # that launches a duplicate agent onto a live worktree; `shell` needs every
 # readable surface to agree the process is a shell; anything else is `other`.
 #
-#   <name>   the kernel process name (ps comm, or Herdr's process-info .name):
+#   <name>   the kernel process name (ps comm):
 #            on Linux the exec name, on macOS argv[0] truncated to 16 bytes.
 #   <argv0>  argv[0] as the process reports it - a bare name or an install
 #            path, whichever the launcher used (empty when unknown).

@@ -12,7 +12,7 @@
 # secondmate request delivers only marker and correlation bytes and leaves the
 # parent waiting on a reply to nothing.
 # Special keys instead of text: fm-send.sh <target> --key Enter
-# Key support is backend-specific: tmux/herdr support Escape, Enter, and C-c;
+# Key support is backend-specific: tmux supports Escape, Enter, and C-c;
 # Orca currently supports Enter and C-c only, and rejects Escape.
 #
 # Two data planes:
@@ -382,26 +382,12 @@ fm_send_resolve_target() { # <raw-target>
   fi
 
   case "$raw" in
-  fm-*:*)
-    # A named Herdr session may itself begin with "fm-". Keep that explicit
-    # session:pane target on the validated backend-target path below rather
-    # than mistaking it for an unresolved task selector.
-    ;;
   fm-*)
     RESOLUTION_TRIED="meta=$STATE/$raw.meta; legacy-meta=$STATE/${raw#fm-}.meta; backend=none"
     echo "error: no metadata for $raw in $STATE (tried $RESOLUTION_TRIED); pass a well-formed explicit backend target only when targeting outside this firstmate home" >&2
     return 1
     ;;
   esac
-
-  pane_meta=$(fm_send_meta_for_key_value "$STATE" herdr_pane_id "$raw" 2>/dev/null || true)
-  if [ -n "$pane_meta" ]; then
-    session=$(fm_meta_get "$pane_meta" herdr_session)
-    hint="${session:-<herdr-session>}:$raw"
-    id=$(fm_send_id_from_meta "$pane_meta")
-    echo "error: target '$raw' matches herdr_pane_id in $pane_meta but is missing its herdr session prefix; expected <herdr-session>:<pane-id> such as '$hint' or use 'fm-$id' (tried meta=$STATE/$raw.meta; backend=herdr)" >&2
-    return 1
-  fi
 
   meta=$(fm_backend_meta_for_window "$raw" "$STATE" 2>/dev/null || true)
   if [ -n "$meta" ]; then
@@ -420,12 +406,7 @@ fm_send_resolve_target() { # <raw-target>
 
   case "$raw" in
   *:*)
-    colons=$(fm_send_count_colons "$raw")
-    if [ "$colons" -ge 2 ]; then
-      assumed=herdr
-    else
-      assumed=tmux
-    fi
+    assumed=tmux
     if ! fm_backend_target_exists "$assumed" "$raw"; then
       echo "error: explicit target '$raw' is not a live $assumed endpoint (tried meta=$STATE/$raw.meta; metadata window/terminal lookup; backend=$assumed). Use fm-<id> for a recorded task/lane, or pass a target whose backend endpoint can be verified." >&2
       return 1
@@ -752,9 +733,7 @@ fm_send_feed_resolved_holds() { # <answer-text>
 # The target's BACKEND comes from selector meta, from matching an explicit target
 # back to recorded meta, or from strict explicit-target shape validation.
 # Do not add a separate passive liveness preflight here. Active send paths own
-# backend readiness: herdr, for example, must route through its session-aware
-# target_ready path before sending, while zellij verifies pane labels in its
-# send implementation. A failed backend send is still surfaced below as a hard
+# backend readiness: zellij verifies pane labels in its send implementation. A failed backend send is still surfaced below as a hard
 # error with the attempted resolution attached.
 
 if [ "${1:-}" = "--key" ]; then

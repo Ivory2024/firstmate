@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # fm-install-treehouse.sh - install CI's pinned, verified Treehouse build.
 #
-# Used only by the required real-Herdr CI lane for E2E scripts that genuinely
+# Used only by the required real-the removed adapter CI lane for E2E scripts that genuinely
 # need treehouse (spawn worktree acquisition). Same pin/checksum discipline as
-# fm-install-herdr.sh: official release URL, exact asset, SHA-256, bounded
+# fm-install-the removed adapter.sh: official release URL, exact asset, SHA-256, bounded
 # download, post-install version check. Never a floating package-manager latest.
 #
 # Usage:
 #   fm-install-treehouse.sh <destination-directory>
 #
-# Pins Treehouse v2.0.1, the version exercised by the local real-Herdr suite.
+# Pins Treehouse v2.0.1, the version exercised by the local real-the removed adapter suite.
 set -eu
 
 FM_TREEHOUSE_CI_VERSION=2.0.1

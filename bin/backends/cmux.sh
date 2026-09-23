@@ -4,12 +4,12 @@
 # Design: data/cmux-backend-feasibility-c7/report.md (adapter design sketch,
 # section 4) plus the live-app verification pass recorded in
 # docs/cmux-backend.md (real cmux 0.64.17, macOS aarch64, 2026-07-03). cmux is
-# a session provider ONLY, exactly like herdr/zellij: the worktree provider
+# a session provider ONLY, exactly like the removed adapter/zellij: the worktree provider
 # stays treehouse. Sourced only through bin/fm-backend.sh's fm_backend_source
 # in normal operation; the unit tests source it directly.
 #
 # Container shape: cmux has no "session" layer to multiplex the way
-# tmux/herdr/zellij do - there is just "the app" (one running GUI instance).
+# tmux/the removed adapter/zellij do - there is just "the app" (one running GUI instance).
 # ONE cmux workspace PER TASK (mirrors tmux's one-window-per-task / zellij's
 # one-tab-per-task), with exactly one surface inside it. cmux has no session
 # layer, so workspace titles are scoped by firstmate home and installation
@@ -17,7 +17,7 @@
 #
 # Target string shape: "<workspace_uuid>:<surface_uuid>" - both bare UUIDs
 # with no embedded colon, so splitting on the FIRST colon is trivially
-# correct (mirrors herdr's/zellij's target-string convention).
+# correct (mirrors the removed adapter's/zellij's target-string convention).
 #
 # GUI-first, macOS-only (docs/cmux-backend.md "Setup"): explicit selection or
 # runtime auto-detection when firstmate itself is already running inside a
@@ -33,7 +33,7 @@
 #   1. `send` (literal) does NOT auto-submit - confirmed, matches every other
 #      backend's "literal-then-separate-Enter" contract.
 #   2. Surface cwd is CREATION-TIME-FROZEN (zellij-shape), not live-tracking
-#      (herdr-shape): `workspace list`'s `current_directory` field reflects a
+#      (the removed adapter-shape): `workspace list`'s `current_directory` field reflects a
 #      `cd` run directly in the surface's own top-level shell, but stays
 #      frozen at wherever that shell was when it launched a foreground
 #      subshell (exactly what `treehouse get` does) - verified live: a nested
@@ -41,7 +41,7 @@
 #      the PARENT shell's last cwd, never following into the subshell. Fixed
 #      with zellij's own pwd-marker-probe workaround, reused verbatim in
 #      spirit (fm_backend_cmux_current_path below).
-#   3. `read-screen --lines N` has NO herdr-style small-N empty-result bug -
+#   3. `read-screen --lines N` has NO the removed adapter-style small-N empty-result bug -
 #      verified N=1..10 all return correctly-clamped, non-empty content. The
 #      "fetch generous, trim locally" pattern is still used for consistency
 #      and because the actual viewport height (not a bug - real behavior) can
@@ -60,7 +60,7 @@
 #      gap and is used instead (fm_backend_cmux_surface_exists), mirroring
 #      zellij's own structural pane_exists check.
 #   4. Closing a workspace's LAST surface is a THIRD shape, matching neither
-#      herdr (auto-closes the workspace) nor zellij (leaves a ghost tab):
+#      the removed adapter (auto-closes the workspace) nor zellij (leaves a ghost tab):
 #      `close-surface` REFUSES outright with a typed error
 #      (`invalid_state: Cannot close the last surface`), leaving both the
 #      surface and the workspace untouched. `close-workspace` removes the
@@ -75,7 +75,7 @@
 #      No live app restart of the captain's own content was performed to
 #      confirm this; see docs/cmux-backend.md for the reasoning. Recovery
 #      therefore uses scoped-title matching from the caller-facing fm-<id>
-#      label, never a stored uuid, mirroring herdr's/zellij's own recovery
+#      label, never a stored uuid, mirroring the removed adapter's/zellij's own recovery
 #      posture.
 #   6. NO title uniqueness enforcement for workspaces OR surfaces/tabs -
 #      verified live (two workspaces, and two surfaces in one workspace, all
@@ -293,7 +293,7 @@ fm_backend_cmux_ensure_running() {
 
 # fm_backend_cmux_container_ensure: the full spawn-time container-ensure
 # sequence (version gate, reachability/launch-if-needed). No per-home
-# container to stand up - cmux has no session layer (unlike herdr/zellij),
+# container to stand up - cmux has no session layer (unlike the removed adapter/zellij),
 # the app itself is the only container. Nothing to echo; callers proceed
 # straight to fm_backend_cmux_create_task.
 fm_backend_cmux_container_ensure() {
@@ -327,7 +327,7 @@ fm_backend_cmux_scoped_title() {  # <fm-task-label>
 
 # fm_backend_cmux_workspace_id_for_label: the live workspace id whose title
 # equals <label>, or empty. cmux enforces no title uniqueness (finding #6),
-# so this adopts the FIRST match `jq` returns, mirroring herdr's/zellij's own
+# so this adopts the FIRST match `jq` returns, mirroring the removed adapter's/zellij's own
 # duplicate-check posture.
 fm_backend_cmux_workspace_id_for_label() {  # <label>
   local label=$1
@@ -440,7 +440,7 @@ fm_backend_cmux_target_ready() {  # <target> [expected-label]
 # FROZEN at whatever directory that shell was in when it launched `treehouse
 # get` as a foreground command - it never follows that command's own internal
 # `cd` into the acquired worktree. cmux's control socket exposes no
-# live-process cwd field either (unlike herdr's `foreground_cwd`), so passive
+# live-process cwd field either (unlike the removed adapter's `foreground_cwd`), so passive
 # polling cannot solve this here any more than it could for zellij. Active
 # probe instead: print the surface's `$PWD` with a unique marker (atomically
 # submitted via send_text_line), briefly settle, then capture and read only
@@ -518,9 +518,9 @@ fm_backend_cmux_send_text_line() {  # <target> <text> [expected-label]
 # viewport-only primitive is offered for cmux (see FM_BACKEND_VISIBLE_CAPTURE in
 # bin/fm-backend.sh). Finding #3's viewport-height cap was observed on
 # read-screen calls; whether a call WITHOUT --scrollback is strictly bounded to
-# the viewport is plausible but has not been live-verified. No herdr-style
+# the viewport is plausible but has not been live-verified. No the removed adapter-style
 # small-N empty-result bug was found (finding #3); "fetch generous, trim
-# locally" is kept for parity with herdr and so a small caller bound never
+# locally" is kept for parity with the removed adapter and so a small caller bound never
 # depends on how read-screen clamps a small --lines value.
 fm_backend_cmux_capture() {  # <target> <lines> [expected-label]
   fm_backend_cmux_target_ready "$1" "${3:-}" || return 1
