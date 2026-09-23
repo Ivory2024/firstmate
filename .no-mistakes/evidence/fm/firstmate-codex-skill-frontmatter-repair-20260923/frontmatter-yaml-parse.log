@@ -1,0 +1,4 @@
+.agents/skills/firstmate-layout/SKILL.md: current frontmatter parses; base frontmatter rejected (expected a comment or a line break, but found 'F')
+  loaded name=firstmate-layout; description starts 'Full FM_HOME directory and file lay'
+.agents/skills/task-steering/SKILL.md: current frontmatter parses; base frontmatter rejected (expected a comment or a line break, but found 'A')
+  loaded name=task-steering; description starts 'Agent-only reference for steering a'
