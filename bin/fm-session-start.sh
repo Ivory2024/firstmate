@@ -513,7 +513,7 @@ print_backlog_tasks_axi_compact() {
     print_ready_queued_bounded "$ready"
     printf '\ncompleted (bounded):\n'
     printf '%s\n' "$done" | strip_axi_help
-    done_total=$(printf '%s\n' "$done" | awk -F: '/^count: / { print $2; exit }' | tr -d ' ')
+    done_total=$(printf '%s\n' "$done" | awk -F': ' '/^count: / { if ($2 ~ / of /) { split($2, counts, " of "); split(counts[2], total, " "); print total[1] } else { print $2 }; exit }')
     done_total=${done_total:-0}
     if [ "$done_total" -gt "$DONE_LIMIT" ]; then
       printf '(%s completed row(s) omitted)\n' "$((done_total - DONE_LIMIT))"
