@@ -1326,6 +1326,9 @@ SH
     assert_grep "$inbox" "$prompt" "$kind command did not name the worker's own steering inbox"
     assert_grep "do not reject it as another home's state" "$prompt" "$kind command did not distinguish its inbox from another home's namespace"
     assert_grep "Never inspect or change any other home's endpoint namespace" "$prompt" "$kind command weakened cross-home isolation"
+    assert_grep '## Progress and status reporting' "$prompt" "$kind command did not receive the response-style contract"
+    assert_grep "Preserve this task's exact status syntax, schemas, and verbatim evidence" "$prompt" \
+      "$kind command's response style did not preserve task output contracts"
     assert_grep 'brief for' "$prompt" "$kind command lost the task"
     [ "$(grep -c '^# Current worker role contract$' "$prompt")" -eq 1 ] ||
       fail "$brief_kind $kind duplicated the delivered worker contract"

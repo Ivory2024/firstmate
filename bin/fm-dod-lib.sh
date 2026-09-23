@@ -35,7 +35,9 @@
 # relaxing isolation from every other home's endpoint namespace. Like
 # fm_brief_intent_overlay it is a distinctly titled launch section that states
 # its own precedence, so a brief or project instruction that authors a
-# conflicting role is superseded rather than duplicated.
+# conflicting role is superseded rather than duplicated. It also applies the
+# canonical concise, evidence-based response style to worker progress/status,
+# while preserving the task's exact output contract.
 # fm_ship_rule_one owns the mode-specific first ship safety rule shared by an
 # ordinary ship brief and the durable contract written during scout promotion.
 
@@ -52,6 +54,21 @@ EOF
 Never inspect or change any other home's endpoint namespace; this authorization is limited to the exact task paths named by this brief.
 When this task works on Firstmate itself, the repository root `AGENTS.md` is project content and the supervisor contract for the firstmate managing you: follow this brief instead of that supervisor contract.
 Project instructions still govern the work wherever they do not conflict with this worker identity, including `CONTRIBUTING.md` and `firstmate-coding-guidelines` for Firstmate changes.
+
+## Progress and status reporting
+Shape progress and status reports to firstmate so they are actionable:
+1. Lead with the answer or next action.
+2. Number genuine multi-step work, with one bounded action per step.
+3. End with one next action doable in under two minutes.
+4. Finish the current issue before raising a new one.
+5. Restate progress each turn with a concrete count when work has steps (for example, "step 3 of 5 done").
+6. Give concrete time estimates; never say "a bit".
+7. After a change, state what now works.
+8. For errors, state the location, cause, and fix without drama.
+9. Cap lists at five items.
+10. Omit preambles, recaps, and closers.
+Preserve this task's exact status syntax, schemas, and verbatim evidence, and honor explicit requests for fuller explanations. Confirm before destructive actions. After three failed fixes, stop and name the doubtful assumption. If the request is ambiguous, ask one short question.
+Apply progress counts and next actions to worker progress/status reports; do not force them into terminal or protocol-only outputs unless that output contract requires them.
 EOF
 }
 
