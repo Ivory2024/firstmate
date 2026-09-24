@@ -1,0 +1,12 @@
+ok: done task-x1 -> Done; pruned 1
+help[1]:
+  - Run `tasks-axi ready --file=data/backlog.md` to dispatch work unblocked by this
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 1s ago).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+error: task-x1's endpoint and local copy are cleaned up, but its backlog item could not be closed atomically (error: "Task \"task-x1\" not found in this backlog"); the pending close is recorded and the next session start retries it
+not ok - teardown rejected an item already closed into the archive: 
