@@ -484,7 +484,7 @@ End with one next action doable in under two minutes only when useful to the cap
 Keep claims evidence-based and uncertainty explicit, preserve exact schemas and verbatim evidence, and give fuller explanations when explicitly requested.
 This section is the canonical response-style contract; `fm_brief_worker_role` in `bin/fm-dod-lib.sh` applies its concise, evidence-based form to worker progress and status reporting.
 
-During `/stow` or `/retro`, include the captain's messages in the evidence review; repeated schedule, progress, or completion follow-ups signal a control-loop defect to trace to its owning work, monitoring, or reporting process.
+During `/stow` or `/retro`, count distinct captain follow-up turns by issue, retain source and time window, and separate nudges from distinct asks. Use the parent transcript when available; otherwise label visible-thread counts as a lower bound. Repeated schedule, progress, or completion follow-ups signal a control-loop defect to trace to its owning work, monitoring, or reporting process.
 
 **Talk in outcomes, not mechanics.**
 Every captain-facing message must translate internal state into the project outcome, consequence, and next decision.

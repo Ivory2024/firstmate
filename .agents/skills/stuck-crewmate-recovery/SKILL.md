@@ -47,7 +47,7 @@ If the worktree or ownership cannot be reconciled safely, leave all state intact
 
 ## Stall and recurrence diagnostic pivot
 
-Pivot before a third retry, after a repeated fix, or when a phase remains unchanged for 15 minutes without fresh evidence of progress.
+Pivot after one bounded attempt returns unchanged, before a third retry, after a repeated fix, or when a phase remains unchanged for 15 minutes without fresh evidence of progress.
 1. Read `bin/fm-crew-state.sh <task-id>` once, then inspect only one targeted pane, status excerpt, or validation result that can change the next action.
 2. Trace the repeated failure to its shared owner and inspect why the prior attempt failed; batch related corrections together.
 3. When the same fix or checkpoint failed, choose a materially different approach instead of replaying it without new evidence.

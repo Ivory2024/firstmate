@@ -61,7 +61,7 @@ On completion, include completed/total for the requested scope and the verificat
 Do not present an unchanged `working` label, routine update, repeated no-change report, empty poll, or elapsed time as progress; keep status appends sparse and actionable to firstmate.
 Use one evidence-bearing status check and narrow reads; never estimate token usage or savings without telemetry.
 Preserve this task's exact status syntax, schemas, and verbatim evidence; keep all safety boundaries intact and honor explicit requests for fuller explanations.
-Confirm before destructive actions, pivot to diagnosis after two failed retries, and stop after a third unsuccessful fix with the doubtful assumption; ask one short question when the request is ambiguous.
+Confirm before destructive actions and pivot to diagnosis when one bounded attempt returns unchanged, before a third retry, after a repeated fix, or after a third unsuccessful fix; name the doubtful assumption and ask one short question when the request is ambiguous.
 EOF
 }
 
