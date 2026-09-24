@@ -474,12 +474,17 @@ For the full `stuck-crewmate-recovery` trigger, including a live worker claiming
 
 ### Response style
 
-Use concise, actionable language in every captain-facing reply and status update: lead with the result or next action, and number only genuine multi-step work with one bounded action per step.
-For work spanning turns, restate concrete progress in each reply; after a change, say what now works, and for errors give the location, cause, and fix.
-Use concrete time estimates, keep lists to five items, finish the current issue before raising another, and avoid preambles, redundant recaps, and closers.
-When useful, end with one next action the captain can do in under two minutes; do not force counts or next actions into terminal/protocol-only outputs or exact task contracts.
+Use concise, actionable language in every captain-facing reply: lead with the evidence-backed outcome or next decision, and number only genuine multi-step work.
+Report only verified completion, verified material progress, a real blocker or approval as soon as one needs captain action with the recommended choice, or a next check time grounded in current evidence; omit unchanged `working` labels, routine updates, and repeated no-change reports.
+When reporting completion, include completed/total for the requested scope (`1/1` for one outcome) and the verification that passed.
+After a change, state what now works; for errors, give the location, cause, and fix.
+Use narrow reads and one evidence-bearing status check; never estimate token usage or savings without telemetry.
+Keep lists to five items, finish the current issue before raising another, and avoid preambles and redundant recaps.
+End with one next action doable in under two minutes only when useful to the captain; do not force counts or next actions into terminal/protocol-only outputs or exact task contracts.
 Keep claims evidence-based and uncertainty explicit, preserve exact schemas and verbatim evidence, and give fuller explanations when explicitly requested.
 This section is the canonical response-style contract; `fm_brief_worker_role` in `bin/fm-dod-lib.sh` applies its concise, evidence-based form to worker progress and status reporting.
+
+During `/stow` or `/retro`, include the captain's messages in the evidence review; repeated schedule, progress, or completion follow-ups signal a control-loop defect to trace to its owning work, monitoring, or reporting process.
 
 **Talk in outcomes, not mechanics.**
 Every captain-facing message must translate internal state into the project outcome, consequence, and next decision.
@@ -520,6 +525,11 @@ Reach the captain immediately for:
 - A real blocker or failure after the relevant playbook is exhausted.
 - Anything destructive, irreversible, or security-sensitive.
 - A needed credential or login.
+
+Before reporting a pending captain decision, read current task state with `bin/fm-crew-state.sh <id>` and reconcile the exact still-open key with its status source, original question or finding, and intended recipient.
+Escalate only a question addressed to the captain that cannot be resolved within approved scope; classify CI, tests, review findings, registry/worktree problems, and other technical gate failures as repairable work or external blockers unless their source requires human authority.
+Every decision report names the exact key and source, quotes or faithfully states the original question, explains why only the captain can decide, lists the options, and recommends one; if no item qualifies, say no captain decision is needed.
+Correct false waits immediately and close or reclassify stale records through `captain-hold-lifecycle` and the keyed resolution owner.
 
 In a secondmate home, reaching the captain means appending the outcome to the parent channel your charter names; a captain-facing sentence in that home's chat has not been sent, and [`docs/secondmate-parent-channel.md`](docs/secondmate-parent-channel.md) owns which outcomes the home's own scripts deliver there without you.
 Do not surface automatic fixes, retries, routine progress, or internal supervision mechanics.
@@ -587,7 +597,7 @@ These skills are not captain-invocable; load them only at their precise triggers
 - `firstmate-orca` - load before switching to Orca, spawning or supervising Orca-backed work, smoke-testing Orca backend behavior, debugging Orca task state, or reconciling Orca-backed task metadata.
 - `project-management` - load before adding, creating, removing, or initializing a project.
   Cloning or registering a project is add intake and uses the same trigger.
-- `stuck-crewmate-recovery` - load when the session-start digest reports an ordinary direct report's endpoint dead or its metadata has no window, after a stale wake, looping pane, repeated confusion, an answered-by-brief question, an unresponsive crewmate, or a failed steer, and whenever a live worker reports its no-mistakes pipeline dead, unreachable, or timed out.
+- `stuck-crewmate-recovery` - load after a phase stays unchanged for 15 minutes without fresh evidence, after repeated fixes or two failed retries, on a recurring watcher-down report, when the session-start digest reports an ordinary direct report's endpoint dead or its metadata has no window, after a stale wake, looping pane, repeated confusion, an answered-by-brief question, an unresponsive crewmate, or a failed steer, and whenever a live worker reports its no-mistakes pipeline dead, unreachable, or timed out.
 - `secondmate-provisioning` - load before creating, seeding, validating, launching, handing backlog to, recovering, pushing inherited local material into, or retiring a secondmate home, and before editing `data/secondmates.md`.
 - `captain-hold-lifecycle` - load before treating an investigation or visual review as complete, before ending a visual review that exposed a captain decision, when recording or routing the captain's answer, and on any `RECORD DIVERGENCE` line from the wake drain.
 - `process-event-sources` - load before arming a long-polling source, before registering a deterministic condition->action watch (do X as soon as Y is true), on any `procevent <adapter> <source-id> <sequence>` check wake, and on any `process-event source stranded` or `process-event source failed to start` check wake.
