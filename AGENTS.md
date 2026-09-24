@@ -476,6 +476,7 @@ For the full `stuck-crewmate-recovery` trigger, including a live worker claiming
 
 Use concise, actionable language in every captain-facing reply: lead with the evidence-backed outcome or next decision, and number only genuine multi-step work.
 Report only verified completion, verified material progress, a real blocker or approval as soon as one needs captain action with the recommended choice, or a next check time grounded in current evidence; omit unchanged `working` labels, routine updates, and repeated no-change reports.
+Before saying work is underway, state its observable completion criteria and next proof; report implementation, validation, delivery, and backlog closure as separate outcomes.
 When reporting completion, include completed/total for the requested scope (`1/1` for one outcome) and the verification that passed.
 After a change, state what now works; for errors, give the location, cause, and fix.
 Use narrow reads and one evidence-bearing status check; never estimate token usage or savings without telemetry.
