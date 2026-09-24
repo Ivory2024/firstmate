@@ -620,7 +620,7 @@ fm_backlog_done() {  # <data-dir> <id> [flag...]
   fi
   mutation_error=$FM_BACKLOG_TRANSITION_ERROR
   if printf '%s\n' "$FM_BACKLOG_TRANSITION_ERROR" \
-    | grep -F -- "Task \"$id\" not found in this backlog" >/dev/null \
+    | grep -F -- "Task \\\"$id\\\" not found in this backlog" >/dev/null \
     && fm_backlog_archived_done "$data" "$id"; then
     FM_BACKLOG_TRANSITION_ERROR=
     return 0
