@@ -2,7 +2,7 @@
 name: stuck-crewmate-recovery
 description: >-
   Agent-only playbook for stuck or missing ordinary Firstmate direct reports.
-  Use after a phase stays unchanged for 15 minutes without fresh evidence, repeated fixes or two failed retries, a recurring watcher-down report, a stale wake, looping pane, repeated confusion, an answered-by-brief question, an unresponsive crewmate, or a failed steer.
+  Use after one bounded attempt returns unchanged, after a phase stays unchanged for 15 minutes without fresh evidence, after repeated fixes or two failed retries, on a recurring watcher-down report, a stale wake, looping pane, repeated confusion, an answered-by-brief question, an unresponsive crewmate, or a failed steer.
   Also use when the session-start digest reports an ordinary direct report's endpoint dead or its metadata has no window, or a live crewmate reports the no-mistakes pipeline dead, unreachable, or timed out.
   Reconciles recorded work before escalating from targeted inspection through safe relaunch or failure.
 user-invocable: false
