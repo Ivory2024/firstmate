@@ -727,6 +727,33 @@ test_teardown_closes_the_backlog_item_itself() {
   pass "teardown closes its own backlog item before reporting success"
 }
 
+test_teardown_accepts_an_already_archived_done_item() {
+  local case_dir out pr='https://github.com/example/repo/pull/7'
+  case_dir=$(make_case tasks-axi-close-archived)
+  write_meta "$case_dir" no-mistakes ship
+  printf 'pr=%s\n' "$pr" >> "$case_dir/state/task-x1.meta"
+  seed_backlog_in_flight "$case_dir"
+  cat > "$case_dir/.tasks.toml" <<'EOF'
+backend = "markdown"
+
+[markdown]
+path = "data/backlog.md"
+archive = "data/done-archive.md"
+done_keep = 0
+EOF
+  (cd "$case_dir" && tasks-axi update task-x1 --pr "$pr" --file data/backlog.md >/dev/null \
+    && tasks-axi 'done' task-x1 --keep 0 --file data/backlog.md) \
+    || fail "could not stage the fixture's already-closed archived row"
+  grep -F -- "- [x] task-x1" "$case_dir/data/done-archive.md" >/dev/null \
+    || fail "fixture task was not pruned into the configured archive"
+  out=$(run_teardown "$case_dir") || fail "teardown rejected an item already closed into the archive: $out"
+  assert_absent "$case_dir/state/task-x1.backlog-close" \
+    "teardown retained a pending-close marker for an already-archived Done item"
+  grep -F -- "$pr" "$case_dir/data/done-archive.md" >/dev/null \
+    || fail "archived Done item lost its existing PR link"
+  pass "teardown treats its already-archived Done item as an idempotent close"
+}
+
 test_teardown_manual_backend_leaves_the_backlog_to_the_operator() {
   local case_dir out backlog_path
   case_dir=$(make_case tasks-axi-manual-optout)
@@ -3668,6 +3695,7 @@ EOF
 
 test_local_only_fork_remote_allows
 test_teardown_closes_the_backlog_item_itself
+test_teardown_accepts_an_already_archived_done_item
 test_teardown_manual_backend_leaves_the_backlog_to_the_operator
 test_local_only_truly_unpushed_refuses
 test_local_only_merged_to_local_main_allows
