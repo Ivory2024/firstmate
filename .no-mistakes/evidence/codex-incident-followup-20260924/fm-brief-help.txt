@@ -1,0 +1,84 @@
+Scaffold a crewmate brief or persistent secondmate charter at
+data/<task-id>/brief.md under the active firstmate home.
+For ordinary tasks, the standard Setup/Rules/Definition-of-done contract is
+filled in. Ship and scout `# Task` sections have two subsections Firstmate
+fills before dispatch: `{TASK}` under `## Captain's intent` (the captain's
+own ask plus the context needed to read it, including the substance of any
+report, decision, or PR the ask refers to, without added speaker labels or
+direct address). Any text the captain pasted or attached in the current
+request (a proposal, a diff, a link, quoted external material) goes into
+`{TASK}` verbatim, never summarized or paraphrased; a link is preserved as
+the link; never rewrite, paraphrase, or replace the captain's words with a
+fetched summary. Investigate and add the referenced substance required above
+separately alongside the preserved text. When it will not fit, say what was
+cut rather than silently condensing or inventing a summary in its place.
+`{FIRSTMATE_SPEC}`
+under `## Firstmate spec` (build instructions, which are never the captain's
+intent). bin/fm-dod-lib.sh owns the no-mistakes `--intent` contract those
+subsections feed; bin/fm-spawn.sh refuses leftover placeholders and a
+`## Captain's intent` line opening with a Captain label or address. Secondmate
+charters still use a single `{TASK}` charter fill. Firstmate may adjust other
+sections when the task genuinely deviates (e.g. working an existing external
+PR instead of shipping a new one).
+Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--herdr-lab]
+       fm-brief.sh <task-id> <repo-name> --scout [--herdr-lab]
+       fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
+  --scout writes the scout contract instead: the deliverable is a report at
+  data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
+  It offers the Lavish review loop only when `fm-bootstrap.sh lavish-compatible`
+  confirms the supported lavish-axi floor; otherwise it asks for a text report.
+  --secondmate writes a persistent secondmate charter. The project list
+  is cloned into the secondmate home, while the natural-language scope
+  tells the main firstmate when to route work there; routine churn stays in its own home;
+  captain-relevant escalations and marked from-firstmate replies append to this
+  home's status file.
+  --no-projects writes a project-less charter for a domain whose subject is the
+  firstmate repo itself (its home is a firstmate worktree, its crews take pooled
+  worktrees of the same repo). It is mutually exclusive with a project list, and
+  omitting both still fails loudly so an accidental omission is never silent.
+  Set FM_SECONDMATE_CHARTER='<charter>' to fill the charter text.
+  Set FM_SECONDMATE_SCOPE='<scope>' to write a routing scope distinct from the charter text.
+  --herdr-lab is mandatory when the task will issue Herdr lifecycle commands.
+  It adds the hard isolation contract backed by bin/fm-herdr-lab.sh.
+  The flag must be explicit because {TASK} and {FIRSTMATE_SPEC} are filled
+  after scaffolding and the caller-supplied repo string cannot reliably
+  identify this repo. Briefs made without it carry a loud declaration so an
+  omitted contract cannot be silent.
+For ship tasks, --mode is REQUIRED and shapes the definition of done. Firstmate
+resolves it per task at intake (AGENTS.md section 7); data/projects.md holds the
+captain's standing posture as context, and this script never reads it:
+  no-mistakes  implement -> /no-mistakes pipeline -> PR -> configured merge authority
+  direct-PR    implement -> push + open PR via gh-axi (no pipeline) -> configured merge authority
+  local-only   implement on branch, stop and report "ready in branch" (no push/PR);
+               the configured merge authority approves, firstmate merges to local main
+no-mistakes-prod-only is a registry policy, not a task mode; resolve it to one of
+the three concrete modes at intake before calling this script.
+The generated ship brief records the chosen mode as a fixed machine-readable
+"Delivery contract: mode=<mode>" line. bin/fm-spawn.sh reads that line and refuses
+to launch a ship task whose explicit --mode disagrees, so an adjusted brief and the
+recorded task metadata cannot drift apart.
+Ship briefs begin with a worktree-isolation assertion before the branch step.
+--mode is refused on scout and secondmate scaffolds: a scout's deliverable is a
+report rather than a merge, and a charter is not a delivery contract.
+There is no --yolo flag here. The worker never owns merge decisions, so yolo is
+a spawn-time and firstmate-side input only (AGENTS.md section 7).
+Every scaffold's status protocol distinguishes the configured
+declared-external-wait verb (FM_CLASSIFY_PAUSED_VERB, default "paused") from
+"blocked:": pause for a known external wait expected to clear on its own,
+blocked when firstmate must act.
+Emission-time syntax and legacy unknown-time handling are owned by
+bin/fm-classify-lib.sh; each scaffold renders the stamp as a literal <epoch>
+placeholder the worker replaces with a numeric Unix time as it appends, so a
+scaffold never emits a substitution a file-write tool would copy through.
+Every scaffold also carries the steering-inbox receive-and-ack section:
+process state/<id>.inbox/*.msg in order and acknowledge each by moving it to
+handled/ (record, doorbell, and ladder owned by bin/fm-task-inbox-lib.sh).
+Ship tasks include a project-memory section so durable project-intrinsic
+learnings can be committed to AGENTS.md through the project's delivery path;
+it carries the AGENTS.md authoring bar (widely useful knowledge only, pointers
+over copied detail) and defers self-governance recognition and insertion to
+fm-ensure-agents-md.sh's contract.
+Scaffolds carry no role scope: fm-spawn.sh supplies fm_brief_worker_role from
+fm-dod-lib.sh to every ship/scout launch brief, so this file never becomes a
+second owner of a contract that must stay current across relaunches.
+Refuses to overwrite an existing brief.
