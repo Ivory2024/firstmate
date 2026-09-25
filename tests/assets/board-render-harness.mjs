@@ -113,7 +113,10 @@ const rowsOf = (container) =>
         title: main?.children.find((c) => c.className.includes("bb-row__title"))?.textContent ?? "",
         sub: main?.children.find((c) => c.className.includes("bb-row__sub"))?.textContent ?? "",
         badges: badgesOf(row),
-        pickable: row.children.some((c) => c.className.includes("bb-pick") && !c.className.includes("spacer")),
+        pickable: row.children.some((c) => c.className.includes("bb-pick") && !c.className.includes("spacer"))
+          || (container === byId.get("bb-charted") && [...(byId.get("bb-tasks")?.children ?? [])].some((t) =>
+            t.children[2]?.textContent === main?.children.find((c) => c.className.includes("bb-row__title"))?.textContent
+            && t.children[0]?.querySelectorAll(".bb-pick").length > 0)),
         blocker: blockerEl ? blockerEl.textContent : null,
         blockerNone: blockerEl ? blockerEl.className.includes("bb-row__blocker--none") : null,
       };
@@ -141,21 +144,22 @@ const errorText = [...byId.entries()]
 const empty = ch.children.filter((c) => c.className.includes("bb-empty")).map((c) => c.textContent);
 const more = ch.children.filter((c) => c.className.includes("bb-morechip")).map((c) => c.textContent);
 
+const tasks = (byId.get("bb-tasks") || new Node("tbody")).children.map((row) => row.children.map((c) => c.textContent));
 const statsCost = btStatsOf(byId.get("bt-stats-cost") || new Node("div"));
 const statsFleet = btStatsOf(byId.get("bt-stats-fleet") || new Node("div"));
 const qContainer = byId.get("bb-questions") || new Node("div");
 const questionRows = qContainer.children
-  .filter((r) => r.className.split(/\s+/).includes("bb-row"))
+  .filter((r) => r.className.split(/\s+/).includes("bb-question-row"))
   .map((row) => ({
-    id: row.children.find((c) => c.className.includes("bb-row__q"))?.textContent ?? "",
-    question: row.children.find((c) => c.className.includes("bb-row__main"))
-      ?.children.find((c) => c.className.includes("bb-row__title"))?.textContent ?? "",
-    action: row.children.find((c) => c.className.includes("bb-row__action"))?.textContent ?? "",
+    id: row.children[0]?.textContent ?? "",
+    urgency: row.children[1]?.textContent ?? "",
+    question: row.children[2]?.textContent ?? "",
+    action: row.children[3]?.textContent ?? "",
   }));
 const questionsEmpty = qContainer.children.filter((c) => c.className.includes("bb-empty")).map((c) => c.textContent);
 
 process.stdout.write(
   JSON.stringify({
-    stats, underway, charted, empty, more, error: errorText,
+    stats, underway, charted, tasks, empty, more, error: errorText,
     statsCost, statsFleet, questions: questionRows, questionsEmpty,
   }) + "\n");

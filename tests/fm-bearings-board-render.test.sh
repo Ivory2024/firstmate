@@ -279,10 +279,40 @@ test_unanswered_questions_count_and_table_read_off_captains_call() {
     (.error == "")
     and ([.statsFleet[] | select(.label == "unanswered questions") | .value] == ["2"])
     and (.questions | length) == 2
-    and (.questions[0] == {id:"decision-one", question:"Adopt the new cache?", action:"ages to Charted Next"})
-    and (.questions[1] == {id:"merge.sample-task", question:"Merge: sample change", action:"PR stays unmerged"})
+    and (.questions[0] == {id:"decision-one", question:"Adopt the new cache?", urgency:"-", action:"ages to Charted Next"})
+    and (.questions[1] == {id:"merge.sample-task", question:"Merge: sample change", urgency:"-", action:"PR stays unmerged"})
   ' >/dev/null || fail "the unanswered-questions count or table did not read off captains_call: $out"
-  pass "the unanswered questions stat and table read off captains_call with no urgency column invented"
+  pass "the unanswered questions table reads real call data and reports unavailable urgency honestly"
+}
+
+
+test_unified_task_table_maps_real_states_and_question_urgency() {
+  local home out
+  home=$(make_home unified-table)
+  out=$(render_full "$home" '[
+    {"key":"fresh","type":"decision","repo":"sample","title":"Fresh question?","filed":"2026-09-25","blocking":false,"options":[{"value":"yes","label":"Yes"}]},
+    {"key":"old-blocker","type":"decision","repo":"sample","title":"Old blocking question?","filed":"2026-09-20","blocking":true,"options":[{"value":"yes","label":"Yes"}]},
+    {"key":"undated","type":"decision","repo":"sample","title":"Undated?","blocking":true,"options":[{"value":"yes","label":"Yes"}]}
+  ]' '[
+    {"id":"run-1","repo":"sample","name":"Running","state":"validating","kind":"ship","doing":"checking"}
+  , {"id":"run-2","repo":"sample","name":"Blocked","state":"working","kind":"ship","doing":"waiting","blocker":"blocked by gate"}
+  ]' '{}')
+  printf '%s' "$out" | jq -e '
+    (.error == "")
+    and (.tasks | any(.[]; . == ["run-1","진행중","Running","-"]))
+    and (.tasks | any(.[]; . == ["run-2","대기","Blocked","blocked by gate"]))
+    and ([.questions[].urgency] == ["보통","높음","-"])
+  ' >/dev/null || fail "task mapping or urgency did not match real fields: $out"
+  pass "unified table maps underway states and urgency uses filed age/blocking"
+}
+
+test_zero_tool_calls_have_no_percentage() {
+  local home out
+  home=$(make_home zero-tool-calls)
+  out=$(render_full "$home" '[]' '[]' '{"tool_error_rate":{"errors":0,"total":0}}')
+  printf '%s' "$out" | jq -e '[.statsCost[] | select(.label == "tool error rate") | .value] == ["0 / 0 (-)"]' >/dev/null \
+    || fail "zero calls rendered a percentage: $out"
+  pass "zero tool calls show unavailable percentage with real counts"
 }
 
 test_underway_and_charted_blocker_columns_render_real_or_honest_absence() {
@@ -320,3 +350,5 @@ test_an_omitted_kind_keeps_the_existing_queued_rendering
 test_present_metrics_render_real_values_and_absent_ones_say_no_data
 test_unanswered_questions_count_and_table_read_off_captains_call
 test_underway_and_charted_blocker_columns_render_real_or_honest_absence
+test_unified_task_table_maps_real_states_and_question_urgency
+test_zero_tool_calls_have_no_percentage

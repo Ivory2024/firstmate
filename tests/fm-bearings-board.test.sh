@@ -784,7 +784,8 @@ test_optional_metrics_and_underway_blocker_are_validated() {
   data="$home/payload.json"
 
   write_valid_payload "$data"
-  jq '.underway = [{"id":"sample-task","repo":"sample","name":"Sample task","state":"working",
+  jq '.captains_call[0].filed = "2026-09-20" | .captains_call[0].blocking = true
+      | .underway = [{"id":"sample-task","repo":"sample","name":"Sample task","state":"working",
         "kind":"ship","doing":"implementing","blocker":"waiting on sample-decision"}]
       | .metrics = {
           cost_cumulative: {spent: 90.71, cap: 300.0},
@@ -808,7 +809,9 @@ test_optional_metrics_and_underway_blocker_are_validated() {
     '.metrics.milestone_tasks = {label: "", done: 1, total: 2}' \
     '.metrics.milestone_tasks = {label: "x", done: 5, total: 2}' \
     '.metrics = "not an object"' \
-    '.underway[0].blocker = 5'
+    '.underway[0].blocker = 5' \
+    '.captains_call[0].filed = "yesterday"' \
+    '.captains_call[0].blocking = "yes"'
   do
     write_valid_payload "$data"
     jq '.underway = [{"id":"sample-task","repo":"sample","name":"Sample task","state":"working",
