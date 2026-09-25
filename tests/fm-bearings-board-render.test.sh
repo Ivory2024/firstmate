@@ -58,13 +58,14 @@ SH
 
 # Build the board from <underway-json> plus <charted-json> and return what the
 # renderer produced.
-render_board() {  # <home> <underway-json> <charted-json> [charted_more] [charted_warning_more]
-  local home=$1 underway=$2 charted=$3 more=${4:-0} warning_more=${5:-0} data="$1/payload.json"
+render_board() {  # <home> <underway-json> <charted-json> [charted_more] [charted_warning_more] [underway_more]
+  local home=$1 underway=$2 charted=$3 more=${4:-0} warning_more=${5:-0} underway_more=${6:-0} data="$1/payload.json"
   jq -n --argjson underway "$underway" --argjson charted "$charted" \
-    --argjson more "$more" --argjson warning_more "$warning_more" '{
+    --argjson more "$more" --argjson warning_more "$warning_more" --argjson underway_more "$underway_more" '{
     schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-26T00:00Z",
     prs_live:false, captains_call:[], underway:$underway, landed:[],
-    charted:$charted, charted_more:$more, charted_warning_more:$warning_more}' > "$data"
+    charted:$charted, charted_more:$more, charted_warning_more:$warning_more,
+    underway_more:$underway_more}' > "$data"
   PATH="$home/fakebin:$PATH" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
@@ -91,8 +92,8 @@ render_full() {  # <home> <captains_call-json> <underway-json> <metrics-json>
 }
 
 # Build the board from <charted-json> alone and return what the renderer produced.
-render() {  # <home> <charted-json> [charted_more] [charted_warning_more]
-  render_board "$1" '[]' "$2" "${3:-0}" "${4:-0}"
+render() {  # <home> <charted-json> [charted_more] [charted_warning_more] [underway_more]
+  render_board "$1" '[]' "$2" "${3:-0}" "${4:-0}" "${5:-0}"
 }
 
 test_unified_table_keeps_all_rows_and_maps_charted_states() {
@@ -102,16 +103,31 @@ test_unified_table_keeps_all_rows_and_maps_charted_states() {
     {"id":"queued","repo":"sample","title":"Queued","reason":"","dispatchable":true},
     {"id":"blocked","repo":"sample","title":"Blocked","reason":"waiting for gate","dispatchable":true},
     {"id":"warning","repo":"sample","title":"Warning","reason":"integrity issue","dispatchable":false,"kind":"warning"}
-  ]' 99 99)
+  ]' 3 2 4)
   printf '%s' "$out" | jq -e '
     (.error == "")
     and ([.tasks[].id] == ["queued","blocked","warning"])
     and ([.tasks[].state] == ["예정","대기","대기"])
     and ([.tasks[].blocker] == ["-","waiting for gate","integrity issue"])
+    and ([.tasks[] | select(.id == "warning") | .alarm] == [true])
+    and ([.tasks[] | select(.id == "warning") | .alarmText] == ["needs repair"])
+    and ([.stats[] | select(.label == "charted next") | .n] == [5])
     and (.legacyCopies == [])
-    and (.more == [])
+    and (.omitted == "Underway +4 more · Charted Next +3 more · repair warnings +2 more")
   ' >/dev/null || fail "unified task table truncated rows or kept duplicate list paths: $out"
-  pass "the single task table renders every charted row without duplicate list copies"
+  pass "the unified table discloses omitted rows and marks repair warnings"
+}
+
+test_unified_table_discloses_underway_rows_and_no_omissions() {
+  local home out
+  home=$(make_home underway-omissions)
+  out=$(render_board "$home" '[{"id":"run-task","repo":"sample","state":"working","kind":"ship","name":"Running","doing":"testing"}]' '[]' 0 0 2)
+  printf '%s' "$out" | jq -e '.omitted == "Underway +2 more" and .tasks[0].state == "진행중" and (.tasks[0].alarm == false)' >/dev/null \
+    || fail "underway omitted count was not disclosed: $out"
+  out=$(render_board "$home" '[]' '[]')
+  printf '%s' "$out" | jq -e '.omitted == "" and .omittedHidden == true' >/dev/null \
+    || fail "an empty omitted count was displayed: $out"
+  pass "underway omissions are disclosed only when the producer reports a count"
 }
 
 test_an_underway_row_leads_with_the_task_name_and_keeps_its_run_status() {
@@ -273,6 +289,7 @@ test_an_underway_identifier_label_is_not_replaced_by_run_status
 test_charted_next_reads_newest_filed_first
 test_charted_rows_without_a_filed_date_follow_the_dated_rows_in_payload_order
 test_unified_table_keeps_all_rows_and_maps_charted_states
+test_unified_table_discloses_underway_rows_and_no_omissions
 test_present_metrics_render_real_values_and_absent_ones_say_no_data
 test_unanswered_questions_count_and_table_read_off_captains_call
 test_underway_and_charted_blocker_columns_render_real_or_honest_absence

@@ -357,6 +357,7 @@ a { color: inherit; text-decoration: none; }
   <section class="bb-section">
     <div class="bb-section__head">
       <span class="fm-sign fm-sign--eyebrow">태스크 (M3)</span>
+      <span class="fm-sign fm-sign--muted" id="bb-task-omitted"></span>
     </div>
     <div class="fm-card fm-card--warm">
       <table class="bb-task-table"><thead><tr><th>ID</th><th>상태</th><th>제목</th><th>blocker</th></tr></thead><tbody id="bb-tasks"></tbody></table>
@@ -480,6 +481,7 @@ __FM_BEARINGS_BOARD_DATA__
     return dated.concat(undated);
   }
   var chartedMoreQueued = data.charted_more || 0;
+  var chartedMoreWarnings = data.charted_warning_more || 0;
   function utf8ByteLength(text) { return new TextEncoder().encode(text).length; }
   var CHECK_SVG = '<svg class="fm-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
 
@@ -777,17 +779,29 @@ __FM_BEARINGS_BOARD_DATA__
         refreshBar();
       });
     }
-    var row = el("tr", "bb-task-row");
+    var warning = isWarning(t);
+    var row = el("tr", "bb-task-row" + (warning ? " bb-task-row--warning" : ""));
     row.setAttribute("data-kind", "charted");
     var idCell = el("td", "bb-row__id");
     idCell.appendChild(el("span", "bb-task-id", t.id));
     if (pick) idCell.appendChild(pick);
     row.appendChild(idCell);
-    row.appendChild(el("td", "", isWarning(t) || t.reason ? "대기" : "예정"));
+    var stateCell = el("td", "");
+    if (warning) stateCell.appendChild(badge("danger", "needs repair"));
+    stateCell.appendChild(el("span", "", warning || t.reason ? "대기" : "예정"));
+    row.appendChild(stateCell);
     row.appendChild(el("td", "", t.title));
     row.appendChild(el("td", "", t.reason || "-"));
     taskBody.appendChild(row);
   });
+  var omitted = [];
+  var underwayMore = data.underway_more || 0;
+  if (underwayMore > 0) omitted.push("Underway +" + underwayMore + " more");
+  if (chartedMoreQueued > 0) omitted.push("Charted Next +" + chartedMoreQueued + " more");
+  if (chartedMoreWarnings > 0) omitted.push("repair warnings +" + chartedMoreWarnings + " more");
+  var omittedIndicator = document.getElementById("bb-task-omitted");
+  omittedIndicator.textContent = omitted.join(" · ");
+  omittedIndicator.hidden = omitted.length === 0;
   if (!taskBody.children.length) {
     var emptyTask = el("tr", "bb-empty");
     emptyTask.appendChild(el("td", "", "No tasks are underway or charted."));

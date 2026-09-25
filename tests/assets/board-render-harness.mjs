@@ -107,17 +107,25 @@ const btStatsOf = (container) =>
 const taskContainer = byId.get("bb-tasks") || new Node("tbody");
 const tasks = taskContainer.children
   .filter((row) => row.className.split(/\s+/).includes("bb-task-row"))
-  .map((row) => ({
-    id: row.children[0]?.textContent.trim() ?? "",
-    state: row.children[1]?.textContent ?? "",
-    title: row.children[2]?.textContent ?? "",
-    blocker: row.children[3]?.textContent ?? "",
-    kind: row.attributes["data-kind"] ?? "underway",
-    pickable: row.children[0]?.querySelectorAll(".bb-pick").length > 0,
-  }));
+  .map((row) => {
+    const stateCell = row.children[1];
+    const repairBadge = stateCell?.children.find((c) => c.className.includes("fm-badge--danger"));
+    const stateText = stateCell?.children.find((c) => c !== repairBadge)?.textContent ?? stateCell?.textContent ?? "";
+    return {
+      id: row.children[0]?.textContent.trim() ?? "",
+      state: stateText,
+      title: row.children[2]?.textContent ?? "",
+      blocker: row.children[3]?.textContent ?? "",
+      kind: row.attributes["data-kind"] ?? "underway",
+      alarm: Boolean(repairBadge),
+      alarmText: repairBadge?.textContent ?? "",
+      pickable: row.children[0]?.querySelectorAll(".bb-pick").length > 0,
+    };
+  });
 const legacyCopies = ["bb-charted", "bb-underway"].filter((id) => byId.has(id));
 const empty = taskContainer.children.filter((c) => c.className.includes("bb-empty")).map((c) => c.textContent);
-const more = [];
+const omittedIndicator = byId.get("bb-task-omitted");
+const omitted = omittedIndicator?.textContent ?? "";
 // A fail-closed render replaces the page body instead of the board sections, so
 // surface it rather than reporting an empty board as a successful render.
 const errorText = [...byId.entries()]
@@ -139,6 +147,6 @@ const questionsEmpty = qContainer.children.filter((c) => c.className.includes("b
 
 process.stdout.write(
   JSON.stringify({
-    stats, tasks, legacyCopies, empty, more, error: errorText,
+    stats, tasks, legacyCopies, empty, omitted, omittedHidden: omittedIndicator?.hidden ?? true, error: errorText,
     statsCost, statsFleet, questions: questionRows, questionsEmpty,
   }) + "\n");

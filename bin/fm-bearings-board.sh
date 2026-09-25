@@ -241,6 +241,8 @@ validate_payload() {  # <data.json>
     and (.landed | type == "array")
     and (.charted | type == "array")
     and optional_metrics
+    and ((has("underway_more") | not)
+      or ((.underway_more | type == "number") and (.underway_more >= 0) and (.underway_more | floor == .)))
     and ((has("charted_more") | not)
       or ((.charted_more | type == "number") and (.charted_more >= 0) and (.charted_more | floor == .)))
     and ((has("charted_warning_more") | not)

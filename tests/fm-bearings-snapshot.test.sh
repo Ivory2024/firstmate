@@ -1509,6 +1509,8 @@ test_section_caps_and_expansion_flags() {
   printf '%s' "$expanded" | jq -e '
     (.in_flight|length) == 5 and (.decisions_open|length) == 5 and (.gates|length) == 5
     and (.reports|length) == 5 and (.recorded_prs|length) == 5 and (.unhealthy_endpoints|length) == 5
+    and ([.omitted[].reveal] | index("--all-in-flight") == null)
+    and ([.omitted[].reveal] | index("--all-queued") == null)
   ' >/dev/null || fail "section expansion flags did not reveal full sets: $expanded"
   pass "all fleet-sized sections are capped with counted opt-in expansion"
 }

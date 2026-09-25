@@ -229,6 +229,13 @@ test_build_refuses_malformed_payloads_before_touching_the_board() {
   set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
   [ "$rc" -ne 0 ] || fail "a dispatchable warning row was accepted"
 
+  for invalid_more in -1 1.5 '"2"'; do
+    write_valid_payload "$data"
+    jq --argjson more "$invalid_more" '.underway_more = $more' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+    set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
+    [ "$rc" -ne 0 ] || fail "an invalid underway omitted count was accepted: $invalid_more"
+  done
+
   write_valid_payload "$data"
   jq '.charted_warning_more = -1' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
   set +e; out=$(run_board "$home" build "$data" 2>&1); rc=$?; set -e
@@ -509,14 +516,14 @@ test_charted_kind_is_optional_and_accepts_both_values() {
         {"id":"a","repo":"sample","title":"Queued","reason":"","dispatchable":true},
         {"id":"b","repo":"sample","title":"Queued too","reason":"gated","dispatchable":true,"kind":"queued"},
         {"id":"c","repo":"sample","title":"Integrity notice","reason":"main inventory","dispatchable":false,"kind":"warning"}
-      ] | .charted_warning_more = 2' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+      ] | .charted_warning_more = 2 | .underway_more = 4' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
   run_board "$home" build "$data" >/dev/null \
     || fail "an omitted, queued, and warning charted kind was refused"
   extract_payload "$home/.lavish/bearings-board.html" | jq -e '
     ([.charted[] | .kind // "queued"]) == ["queued", "queued", "warning"]
-      and .charted_warning_more == 2
-  ' >/dev/null || fail "the built board did not carry the charted kinds and omitted-warning count it was given"
-  pass "charted kind is optional and accepts queued and warning"
+      and .charted_warning_more == 2 and .underway_more == 4
+  ' >/dev/null || fail "the built board did not carry charted kinds and omitted counts it was given"
+  pass "charted kind and underway omitted count are retained"
 }
 
 
