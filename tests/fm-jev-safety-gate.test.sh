@@ -33,10 +33,17 @@ if ! grep -q '"reason":"sensitive_path"' "$TMP_ROOT/backlog.json"; then
 fi
 
 UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<'JSON' > "$TMP_ROOT/bash-cwd.json"
-{"tool_input":{"command":"cd data && cat captain.md; cd state && cat record; cd config && cat settings"},"tool_response":"plain non-secret fixture text"}
+{"tool_input":{"command":"cd data && cat captain.md; cd state && cat record.json; cd config && cat settings.json"},"tool_response":"plain non-secret fixture text"}
 JSON
 if ! grep -q '"reason":"sensitive_path"' "$TMP_ROOT/bash-cwd.json"; then
   fail "sensitive basenames in a Bash cd chain were not blocked"
+fi
+
+UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<'JSON' > "$TMP_ROOT/prose.json"
+{"content":"The state and config contain health settings."}
+JSON
+if ! grep -q '"reason":"clean"' "$TMP_ROOT/prose.json"; then
+  fail "ordinary prose was blocked as a sensitive basename"
 fi
 
 pass "jev outbound gate blocks synthetic secrets and excluded paths"

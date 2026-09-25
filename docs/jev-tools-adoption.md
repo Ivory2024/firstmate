@@ -7,6 +7,10 @@ Firstmate's `.env` reader, starts the local scanner, and starts winnow. The MCP
 launcher uses the same key reader and a Node fetch preloader. No credential is
 stored in tracked settings.
 
+The Jev MCP launcher requires its pinned submodule checkout. Initialize it in a
+fresh clone with `git submodule update --init .claude/upstreams/jev-mcp`; the
+launcher exits with this instruction if its built entrypoint is missing.
+
 The hooks scan each attempted Jev request body with Yelp
 detect-secrets and reject sensitive path references. A rejected or unavailable
 gate falls back to the tool's default behavior. The blocked fixture tests use a

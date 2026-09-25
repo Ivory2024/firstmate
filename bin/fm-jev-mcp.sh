@@ -2,6 +2,12 @@
 set -euo pipefail
 
 root=${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd -P)}
+entry="$root/.claude/upstreams/jev-mcp/dist/index.js"
+if [[ ! -f $entry ]]; then
+  printf 'Jev MCP server is missing: %s\nInitialize its pinned submodule with: git submodule update --init .claude/upstreams/jev-mcp\n' "$entry" >&2
+  exit 1
+fi
+
 uv run -q --project "$root/.claude/jev-safety" python "$root/.claude/jev-safety/server.py" --ensure
 
 if [[ -z ${TYPESAFE_API_KEY:-} ]]; then
@@ -14,4 +20,4 @@ fi
 
 export JEV_PROVIDER=typesafe
 exec node --import "$root/.claude/jev-safety/preload.mjs" \
-  "$root/.claude/upstreams/jev-mcp/dist/index.js"
+  "$entry"
