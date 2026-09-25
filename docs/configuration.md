@@ -1,7 +1,5 @@
 # Configuration
 
-For pushed Discord decisions, set `FM_DISCORD_AUTHORIZED_USER_IDS` in the Firstmate home's `.env` to a comma-separated list of Discord user IDs allowed to answer (the captain and any trusted operators). Replies from other channel members are ignored; an empty or unset list authorizes nobody.
-
 The files and environment variables you set to operate firstmate.
 
 ## Orchestrator behavior (AGENTS.md)
@@ -693,13 +691,14 @@ Optional configuration variables in `.env`:
 - `FM_DISCORD_CHANNEL_ID` / `FM_DISCORD_ALLOWED_CHANNELS`: comma-separated channel IDs to poll.
 - `FM_DISCORD_EXCLUDE_CHANNELS`: comma-separated channel IDs to ignore (defaults to `1551134713727426570` for collision prevention with gajae-way).
 - `FM_DISCORD_ALLOW_DMS`: `true` or `false` (defaults to `true`).
+- `FM_DISCORD_AUTHORIZED_USER_IDS`: comma-separated Discord user IDs allowed to answer pushed decisions, including the captain and any trusted operators; unset or empty authorizes nobody.
 Replies and follow-ups for self-hosted Discord mentions post directly to Discord's REST API using `FM_DISCORD_BOT_TOKEN`.
 
 When the self-hosted connector is enabled, firstmate also posts captain decisions to the first configured channel: a newly recorded captain hold, an `nm-` ask-user gate, or a pull request ready for review when `yolo=off`.
 Each message includes the task id, a plain-language summary, and the available choices.
-The configured channel must be private to the captain and trusted operators because replies to these messages are treated as captain decisions.
+Keep the configured channel private to the captain and trusted operators; only IDs in `FM_DISCORD_AUTHORIZED_USER_IDS` can answer decisions, and replies from other channel members are ignored.
 Reply directly to a decision message.
-The watcher captures that reply into the existing `state/x-inbox/` flow and `fmx-respond` applies it through `fm-captain-hold.sh answers` for a held task, or `fm-send.sh --resolve-key` for other keyed decisions.
+The watcher captures that reply into the existing `state/x-inbox/` flow and `fmx-respond` applies it through `fm-captain-hold.sh answer-one` for a held task, or `fm-send.sh --resolve-key` for other keyed decisions.
 Replies to ordinary messages do not resolve decisions.
 
 ## Relay (.env)
