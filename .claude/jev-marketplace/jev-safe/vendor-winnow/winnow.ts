@@ -86,7 +86,11 @@ async function whereami($: EngineInterface): Promise<{ session_id: string; cwd: 
 async function liveTask($: EngineInterface): Promise<Task | undefined> {
   const messages = await $.session.messages().catch(() => [])
   const lastText = (role: string) =>
-    [...messages].reverse().find((message) => message.role === role && message.text.trim())?.text.trim() ?? ''
+    [...messages].reverse().find((message) =>
+      message.role === role &&
+      message.text.trim() &&
+      (role !== 'user' || (message.toolResults ?? []).length === 0),
+    )?.text.trim() ?? ''
   const user_request = lastText('user')
   const assistant_intent = lastText('assistant')
   return user_request && assistant_intent ? { user_request, assistant_intent } : undefined

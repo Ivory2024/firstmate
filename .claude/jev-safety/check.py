@@ -110,7 +110,7 @@ def _python_inline_has_sensitive_path(command: str) -> bool:
         except SyntaxError:
             continue
         for node in ast.walk(tree):
-            if isinstance(node, ast.BinOp):
+            if isinstance(node, (ast.BinOp, ast.Constant)):
                 candidate = _constant_string(node)
                 if candidate is not None and _is_sensitive_path(candidate):
                     return True
@@ -120,7 +120,7 @@ def _python_inline_has_sensitive_path(command: str) -> bool:
 def _bash_command_has_sensitive_path(command: JsonValue) -> bool:
     match command:
         case str() as text:
-            if _is_sensitive_path(text) or _python_inline_has_sensitive_path(text):
+            if _python_inline_has_sensitive_path(text):
                 return True
             tokens = (
                 text.replace(">", " ")
@@ -157,15 +157,25 @@ def _bash_command_has_sensitive_path(command: JsonValue) -> bool:
                     return True
                 if _is_sensitive_path(target):
                     return True
-            for token in tokens:
+            path_argument_commands = {".", "cat", "head", "less", "ls", "more", "source", "tail"}
+            for index, token in enumerate(tokens):
                 candidate = token.rsplit("=", 1)[-1]
                 if candidate.startswith("-") and "/" not in candidate and "\\" not in candidate:
                     continue
                 if "/" in candidate or "\\" in candidate:
                     if _is_sensitive_path(candidate):
                         return True
-                elif _is_sensitive_path(candidate):
+                elif _is_sensitive_basename(candidate):
                     return True
+                elif candidate.casefold() in {"state", "config"}:
+                    segment_start = index - 1
+                    while segment_start >= 0 and tokens[segment_start] not in separators:
+                        segment_start -= 1
+                    command_index = segment_start + 1
+                    if command_index < len(tokens):
+                        command_name = tokens[command_index].strip("\"'`;,()")
+                        if command_name in path_argument_commands:
+                            return True
         case _:
             return False
     return False

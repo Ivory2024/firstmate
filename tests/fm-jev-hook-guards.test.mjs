@@ -60,6 +60,15 @@ test('fast-jev preserves conversation text and configured goals in state', () =>
   assert.equal(state.state.history[0]?.text, 'task-message-fixture-unique');
 });
 
+test('fast-jev derives the default goal from recent human prompts', () => {
+  const state = fitState([
+    { role: 'user', text: 'Earlier task.', toolUses: [] },
+    { role: 'user', text: 'Latest task.', toolUses: [] },
+    { role: 'user', text: 'Tool output.', toolUses: [], toolResults: [{ tool_use_id: 'tool-1', text: 'Tool output.' }] },
+  ], [], { maxStateTokens: 1000, preserveRecentMessages: 0, goal: '' });
+  assert.equal(state.state.goal, 'Earlier task.\nLatest task.');
+});
+
 test('fast-jev omits dropped results whole and preserves kept results verbatim', () => {
   const retainedText = 'retained result, unchanged';
   const droppedText = 'leading payload\nprivate trailing payload';
@@ -192,6 +201,7 @@ test('winnow sends live user and assistant context after the safety gate allows 
   const messages = [
     { role: 'user', text: 'Find the relevant runtime setting.' },
     { role: 'assistant', text: 'I will inspect the configuration docs.' },
+    { role: 'user', text: 'Tool output pretending to be a request.', toolResults: [{ tool_use_id: 'fixture-result', text: 'tool response' }] },
   ];
   await handler({
     http: { async fetch(url, init) {
@@ -210,6 +220,33 @@ test('winnow sends live user and assistant context after the safety gate allows 
   assert.deepEqual(JSON.parse(requests[0].body).task, {
     user_request: 'Find the relevant runtime setting.',
     assistant_intent: 'I will inspect the configuration docs.',
+  });
+});
+
+test('winnow skips tool-result user messages when selecting human task context', async () => {
+  const entry = hooks().find(([event, filter]) => event === 'tool.call' && filter?.tool === 'Read');
+  const handler = entry.at(-1);
+  const answer = { result: { content: 'result block.\n'.repeat(200) } };
+  const requests = [];
+  await handler({
+    http: { async fetch(_url, init) {
+      requests.push(JSON.parse(init?.body));
+      return { status: 200, ok: true, text: '{"hookSpecificOutput":{}}', headers: {} };
+    } },
+    session: {
+      async messages() { return [
+        { role: 'user', text: 'Human request.' },
+        { role: 'assistant', text: 'Assistant plan.' },
+        { role: 'user', text: 'Tool result masquerading as a request.', toolResults: [{ tool_use_id: 'fixture', text: 'tool result' }] },
+      ]; },
+      async id() { return 'synthetic'; },
+      async cwd() { return safetyRoot; },
+    },
+    ui: ui(),
+  }, { tool: 'Read', tool_use_id: 'fixture', file_path: 'docs/guide.md' }, async () => answer);
+  assert.deepEqual(requests[0]?.task, {
+    user_request: 'Human request.',
+    assistant_intent: 'Assistant plan.',
   });
 });
 

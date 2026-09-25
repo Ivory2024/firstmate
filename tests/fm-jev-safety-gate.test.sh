@@ -146,6 +146,13 @@ if ! assert_verdict "$TMP_ROOT/bash-cwd-residual.json" sensitive_path; then
   fail "unresolved Bash directory context was not blocked"
 fi
 
+UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<'JSON' > "$TMP_ROOT/bash-harmless-prose.json"
+{"tool_name":"Bash","tool_input":{"command":"printf 'state and config'"},"tool_response":"plain non-secret fixture text"}
+JSON
+if ! assert_verdict "$TMP_ROOT/bash-harmless-prose.json" clean; then
+  fail "harmless Bash output mentioning sensitive directory names was blocked"
+fi
+
 for directory in state config pipelines/health pipelines/health-manager pipelines/health-connect-sync pipelines/finance; do
   UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<JSON > "$TMP_ROOT/bash-cd.json"
 {"tool_name":"Bash","tool_input":{"command":"cd $directory && cat private.txt"},"tool_response":"plain non-secret fixture text"}

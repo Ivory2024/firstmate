@@ -170,6 +170,19 @@ function historyEntries(
   return entries;
 }
 
+export function goalFromMessages(messages: readonly Message[]): string {
+  return messages
+    .filter(
+      (message) =>
+        message.role === 'user' &&
+        message.text.trim().length > 0 &&
+        (message.toolResults ?? []).length === 0,
+    )
+    .slice(-3)
+    .map((message) => truncate(message.text, 500))
+    .join('\n');
+}
+
 /**
  * Builds the Jev state from the whole conversation and shrinks it in stages
  * until it fits `maxStateTokens`: tool inputs are truncated, then long texts
@@ -183,7 +196,7 @@ export function fitState(
   calls: readonly ToolCall[],
   options: Pick<ResolvedCompactOptions, 'maxStateTokens' | 'preserveRecentMessages' | 'goal'>,
 ): FittedState {
-  const goal = options.goal;
+  const goal = options.goal || goalFromMessages(messages);
   const stateOf = (history: HistoryEntry[]): CompactionState => ({
     context: STATE_CONTEXT,
     goal,
