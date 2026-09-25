@@ -76,7 +76,7 @@ function persistDecisionReply(notification, msg, reqId) {
 	const inboxFile = join(inboxDir, `${reqId}.json`);
 	const contextFile = join(contextDir, `${reqId}.json`);
 	const offeredFile = join(contextDir, `${reqId}.offered.json`);
-	if (existsSync(offeredFile) || existsSync(inboxFile)) return false;
+	if (existsSync(offeredFile)) return false;
 	const payload = {
 		request_id: reqId,
 		text: msg.content.trim(),
@@ -110,9 +110,36 @@ function persistDecisionReply(notification, msg, reqId) {
 		reply_max_chars: "1900",
 		recorded_at: Math.floor(Date.now() / 1000),
 	};
-	writeFileSync(inboxFile, JSON.stringify(payload, null, 2), { flag: "wx", mode: 0o600 });
-	writeFileSync(contextFile, JSON.stringify(context, null, 2), { flag: "wx", mode: 0o600 });
-	writeFileSync(offeredFile, JSON.stringify({ request_id: reqId, recorded_at: Math.floor(Date.now() / 1000) }), { flag: "wx", mode: 0o600 });
+	if (existsSync(inboxFile)) {
+		try {
+			const captured = JSON.parse(readFileSync(inboxFile, "utf8"));
+			if (
+				captured.request_id !== reqId ||
+				captured.source !== "discord-selfhosted-decision" ||
+				captured.message_id !== msg.id ||
+				captured.channel_id !== msg.channel_id ||
+				captured.decision?.task_id !== notification.record.task_id ||
+				captured.decision?.key !== notification.record.key
+			) return false;
+		} catch {
+			return false;
+		}
+	} else {
+		writeFileSync(inboxFile, JSON.stringify(payload, null, 2), { flag: "wx", mode: 0o600 });
+	}
+	if (!existsSync(contextFile)) {
+		try {
+			writeFileSync(contextFile, JSON.stringify(context, null, 2), { flag: "wx", mode: 0o600 });
+		} catch (error) {
+			if (error.code !== "EEXIST") throw error;
+		}
+	}
+	try {
+		writeFileSync(offeredFile, JSON.stringify({ request_id: reqId, recorded_at: Math.floor(Date.now() / 1000) }), { flag: "wx", mode: 0o600 });
+	} catch (error) {
+		if (error.code === "EEXIST") return false;
+		throw error;
+	}
 	const updated = {
 		...notification.record,
 		replied_to: { message_id: msg.id, author_id: msg.author?.id || "", recorded_at: Math.floor(Date.now() / 1000) },

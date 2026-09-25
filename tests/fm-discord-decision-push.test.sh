@@ -212,6 +212,43 @@ EOF
   assert_equals "1352000000000001000" "$(jq -r '.replied_to.message_id' "$record")" "notification accepts only one reply"
   pass "reply to a pushed decision enters x-inbox with keyed answer context"
 }
+test_captured_reply_without_offer_recovers_one_wake() {
+  local home record req inbox offered wake
+  home="$TMP_ROOT/recover-reply-wake"
+  mkdir -p "$home/state/x-context" "$home/state/x-inbox"
+  chmod 700 "$home/state" "$home/state/x-context" "$home/state/x-inbox"
+  make_fake_node "$home"
+  record="$home/state/x-context/discord-notify-test.json"
+  cat > "$record" <<'EOF'
+{"schema":"fm-discord-decision-notification.v1","kind":"decision-notification","state":"sent","task_id":"task-a","key":"captain-hold-task-a-1","trigger":"captain-hold","channel_id":"1000000000000000001","message_id":"1352000000000000999","summary":"Choose how to proceed","options":["Continue","Pause"],"recorded_at":1790319000}
+EOF
+  req=discord-sh-1352000000000001001
+  inbox="$home/state/x-inbox/$req.json"
+  jq -n --arg req "$req" --arg msg "1352000000000001001" \
+    '{request_id:$req,text:"Continue",source:"discord-selfhosted-decision",message_id:$msg,channel_id:"1000000000000000001",decision:{task_id:"task-a",key:"captain-hold-task-a-1"}}' \
+    > "$inbox"
+  chmod 600 "$record" "$inbox"
+  FM_TEST_REAL_NODE=$(command -v node) \
+    FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000001001","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"id":"8000000000000000001","username":"captain"},"content":"Continue","message_reference":{"message_id":"1352000000000000999","channel_id":"1000000000000000001"}}]' \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    FM_DISCORD_AUTHORIZED_USER_IDS=8000000000000000001 \
+    "$ROOT/bin/fm-discord-poll.sh" > "$home/wake.log" || fail "recovery poll failed"
+  wake=$(cat "$home/wake.log")
+  assert_equals "x-mention $req" "$wake" "captured reply is woken after replay"
+  offered="$home/state/x-context/$req.offered.json"
+  assert_present "$offered" "recovery records the one-wake marker"
+  assert_present "$home/state/x-context/$req.json" "recovery restores reply context"
+  assert_equals "1352000000000001001" "$(jq -r '.replied_to.message_id' "$record")" "recovery completes notification binding"
+  FM_TEST_REAL_NODE=$(command -v node) \
+    FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000001001","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"id":"8000000000000000001","username":"captain"},"content":"Continue","message_reference":{"message_id":"1352000000000000999","channel_id":"1000000000000000001"}}]' \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    FM_DISCORD_AUTHORIZED_USER_IDS=8000000000000000001 \
+    "$ROOT/bin/fm-discord-poll.sh" > "$home/replay.log" || fail "second recovery poll failed"
+  assert_equals "" "$(cat "$home/replay.log")" "an offered reply is not woken twice"
+  pass "a captured decision reply recovers its missing wake once"
+}
 test_unauthorized_decision_reply_is_ignored() {
   local home record wake
   home="$TMP_ROOT/unauthorized-reply"
@@ -306,6 +343,7 @@ test_profile_failure_keeps_retryable_intent
 test_stale_sending_notification_recovers_without_duplicate_post
 test_captain_hold_triggers_push
 test_reply_to_notification_enters_existing_inbox
+test_captured_reply_without_offer_recovers_one_wake
 test_unauthorized_decision_reply_is_ignored
 test_no_unrelated_reply_is_captured
 test_ask_user_gate_triggers_push
