@@ -583,7 +583,8 @@ __FM_BEARINGS_BOARD_DATA__
     var top = el("div", "bb-decision__top");
     if (item.type === "merge") {
       top.appendChild(badge("online", "검사 통과"));
-      top.appendChild(badge(item.risk === "low" ? "neutral" : "warn", "위험도 " + (item.risk === "low" ? "낮음" : "높음")));
+      var riskLabel = { low: "낮음", medium: "보통", high: "높음" }[item.risk] || item.risk;
+      top.appendChild(badge(item.risk === "low" ? "neutral" : "warn", "위험도 " + riskLabel));
     } else {
       top.appendChild(badge("solid", "결정 필요"));
       top.appendChild(el("span", "bb-decision__repo", item.repo));

@@ -227,6 +227,21 @@ test_unanswered_questions_count_and_table_read_off_captains_call() {
   pass "the unanswered questions table reads real call data and reports unavailable urgency honestly"
 }
 
+test_merge_risk_badges_preserve_each_level() {
+  local home out
+  home=$(make_home merge-risk-labels)
+  out=$(render_full "$home" '[
+    {"key":"merge-low","type":"merge","repo":"sample","title":"Low","risk":"low","options":[{"value":"merge","label":"Merge"}]},
+    {"key":"merge-medium","type":"merge","repo":"sample","title":"Medium","risk":"medium","options":[{"value":"merge","label":"Merge"}]},
+    {"key":"merge-high","type":"merge","repo":"sample","title":"High","risk":"high","options":[{"value":"merge","label":"Merge"}]},
+    {"key":"merge-unknown","type":"merge","repo":"sample","title":"Unknown","risk":"critical","options":[{"value":"merge","label":"Merge"}]}
+  ]' '[]' '{}')
+  printf '%s' "$out" | jq -e '
+    [.calls[].badges[1]] == ["위험도 낮음", "위험도 보통", "위험도 높음", "위험도 critical"]
+  ' >/dev/null || fail "merge risk labels did not preserve accepted levels: $out"
+  pass "merge risk badges preserve canonical levels and unknown values"
+}
+
 
 test_unified_task_table_maps_real_states_and_question_urgency() {
   local home out filed_today
@@ -296,6 +311,7 @@ test_unified_table_keeps_all_rows_and_maps_charted_states
 test_unified_table_discloses_underway_rows_and_no_omissions
 test_present_metrics_render_real_values_and_absent_ones_say_no_data
 test_unanswered_questions_count_and_table_read_off_captains_call
+test_merge_risk_badges_preserve_each_level
 test_underway_and_charted_blocker_columns_render_real_or_honest_absence
 test_unified_task_table_maps_real_states_and_question_urgency
 test_zero_tool_calls_have_no_percentage
