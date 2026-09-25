@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Add all currently supervised worktrees to Agenttrail Kitchen, on demand.
+# Usage: bin/fm-agenttrail-kitchen.sh [--dry-run|--run]
+# Default is --dry-run; --run launches or re-attaches the dashboard with the list.
+# At most 12 projects are passed. Working/validating tasks rank first; other states
+# follow in snapshot order. Overflow and missing worktrees are reported with reasons.
+# The helper reads `fm-bearings-snapshot.sh --json --all-in-flight --fields paths`.
+set -euo pipefail
+
+fm_agenttrail_select_json() {
+  local snapshot=$1 limit=${2:-12}
+  jq --argjson limit "$limit" '
+    [.in_flight as $tasks | .paths as $paths
+     | $tasks | to_entries[]
+     | .key as $index
+     | .value as $task
+     | (($paths | map(select(.id == $task.id)) | first) // {}) as $path
+     | {id:$task.id,
+        state:($task.state // "unknown"),
+        worktree:($path.worktree // null),
+        index:($index | tonumber),
+        rank:(if ($task.state == "working" or $task.state == "validating") then 0
+              elif ($task.state == "unknown" or $task.state == "failed" or $task.state == "done") then 2
+              else 1 end)}]
+    | sort_by(.rank, .index)
+    | {selected:.[0:$limit],
+       omitted:.[ $limit: ] | map({id,state,worktree,
+         reason:(if .rank == 2 then "12-project cap; current state is " + .state
+                 else "12-project cap; lower priority or later in snapshot order" end)})}
+  ' <<<"$snapshot"
+}
+
+fm_agenttrail_main() {
+  local mode=dry-run snapshot selection command_string path state id reason row
+  local -a project_args=()
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) mode=dry-run ;;
+      --run) mode=run ;;
+      -h|--help)
+        sed -n '1,9p' "${BASH_SOURCE[0]}"
+        exit 0
+        ;;
+      *) printf 'usage: %s [--dry-run|--run]\n' "$0" >&2; return 2 ;;
+    esac
+    shift
+  done
+
+  snapshot=$("$(dirname "${BASH_SOURCE[0]}")/fm-bearings-snapshot.sh" --json --all-in-flight --fields paths)
+  selection=$(fm_agenttrail_select_json "$snapshot" 12)
+
+  while IFS= read -r row; do
+    id=$(jq -r '.id' <<<"$row")
+    state=$(jq -r '.state' <<<"$row")
+    path=$(jq -r '.worktree // empty' <<<"$row")
+    if [ -z "$path" ] || [ "$path" = "-" ] || [ ! -d "$path" ]; then
+      printf 'omitted %s (%s): worktree path is missing or not an existing directory: %s\n' \
+        "$id" "$state" "${path:-(none)}" >&2
+      continue
+    fi
+    project_args+=(--project "$path")
+  done < <(jq -c '.selected[]' <<<"$selection")
+
+  if [ "${#project_args[@]}" -eq 0 ]; then
+    printf 'fm-agenttrail-kitchen: no existing in-flight worktrees to add\n' >&2
+    return 1
+  fi
+
+  while IFS=$'\t' read -r id state path reason; do
+    [ -n "$id" ] || continue
+    printf 'omitted %s (%s): %s\n' "$id" "$state" "$reason" >&2
+  done < <(jq -r '.omitted[] | [.id,.state,(.worktree // "(none)"),.reason] | @tsv' <<<"$selection")
+
+  local -a kitchen_args=(/Users/irene/.local/bin/agenttrail-kitchen "${project_args[@]}")
+  printf -v command_string '%q ' "${kitchen_args[@]}"
+  command_string=${command_string% }
+  printf '%s\n' "$command_string"
+  if [ "$mode" = run ]; then
+    /Users/irene/.local/bin/agenttrail-kitchen "${project_args[@]}"
+  fi
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  set -euo pipefail
+  fm_agenttrail_main "$@"
+fi
