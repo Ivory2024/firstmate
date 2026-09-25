@@ -1,0 +1,2 @@
+scenario: live quota snapshot with isolated empty FM_HOME
+exit=0

@@ -1,0 +1,8 @@
+$ tests/fm-quota-stop-compact.test.sh
+ok - healthy five-hour quotas stay silent and do not steer
+ok - Claude five-hour threshold steers its live task to compact at a breakpoint
+ok - threshold steering is idempotent within one low-quota episode
+Low quota: codex five-hour=9%; steered live task codex-task.
+ok - recovery above 10% starts a fresh alert episode
+ok - AGY threshold steering requests a durable checkpoint for fresh relaunch
+exit=0
