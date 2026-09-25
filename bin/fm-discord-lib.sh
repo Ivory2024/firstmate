@@ -72,6 +72,7 @@ fm_discord_load_config() {
   else
     FM_DISCORD_AUTHORIZED_USERS=$(fmx_env_get FM_DISCORD_AUTHORIZED_USER_IDS "$env_file")
   fi
+  export FM_DISCORD_AUTHORIZED_USERS
 }
 
 # Check if a request_id or context is from self-hosted Discord
