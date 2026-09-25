@@ -904,6 +904,10 @@ command_hold() {
   [ -n "$(body_hold_set_timestamp "$(show_field_value "$show" body)")" ] \
     || fail "task $id lost its hold-set stamp while being held"
   publish_parent_hold "$id" "$occurrence" needs-decision "$reason"
+  release_task_control_lock || fail "cannot release task control for $id"
+  "$SCRIPT_DIR/fm-discord-notify.sh" captain-hold "$id" "captain-hold-$id-$occurrence" \
+    "A task is waiting for your decision." "Continue with the request|Leave it on hold" >/dev/null \
+    || printf 'actionable: captain hold %s was recorded but Discord notification failed\n' "$id" >&2
   printf '%s\n' "$id"
 }
 
