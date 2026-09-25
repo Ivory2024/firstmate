@@ -844,7 +844,7 @@ __FM_BEARINGS_BOARD_DATA__
     row.appendChild(el("td", "bb-row__q", item.key));
     var age = item.filed ? Math.floor((Date.now() - Date.parse(item.filed)) / 86400000) : null;
     /* Urgency is high at age >= 3 days or when blocking is true; absent filed means unknown. */
-    row.appendChild(el("td", "bb-row__urgency", age === null || !isFinite(age) ? "-" : ((age >= 3 || item.blocking) ? "높음" : "보통")));
+    row.appendChild(el("td", "bb-row__urgency", age === null || !isFinite(age) || (age < 3 && typeof item.blocking !== "boolean") ? "-" : ((age >= 3 || item.blocking) ? "높음" : "보통")));
     row.appendChild(el("td", "", item.title));
     row.appendChild(el("td", "bb-row__action", DEFAULT_ACTION[item.type] || "stays open"));
     qs.appendChild(row);

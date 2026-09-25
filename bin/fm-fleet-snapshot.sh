@@ -1385,7 +1385,6 @@ length == 1 and (.[0] |
   and (.invalidity | type) == "object" and (.invalidity.ids | type) == "array"
   and (.active_children | type) == "array" and (.decisions_open | type) == "array"
   and (.holds | type) == "array" and (.queued | type) == "array"
-  and (.blocking_references | type) == "array"
   and (.landed | type) == "array" and (.endpoints | type) == "array"
   and (.counts | type) == "object" and (.omitted | type) == "array"
 )

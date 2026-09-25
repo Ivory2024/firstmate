@@ -233,7 +233,7 @@ write_remote_home_summary() {  # <remote-home> <generated-epoch>
     decisions_open:[
       {id:"remote-parked",key:"remote-parked",verb:"captain-hold",summary:"Remote parked hold",reason:"parked",hold_until:null,hold_bucket:"live",hold_age_days:null,source:"backlog"},
       {id:"remote-aged",key:"remote-aged",verb:"captain-hold",summary:"Remote aged hold",reason:"choose a route",hold_until:null,hold_bucket:"aged",hold_age_days:40,source:"backlog"}
-    ],holds:[],blocking_references:[],
+    ],holds:[],
     queued:[
       {id:"remote-parked",title:"Remote parked hold",blocked_by:null,blocked_by_ids:[],unresolved_blocker_ids:[],blocked_reason:null,hold_reason:"parked",hold_kind:"captain",hold_until:null,hold_bucket:"live",hold_age_days:null,captain_actionable:true,repo:"firstmate",kind:"captain"},
       {id:"remote-aged",title:"Remote aged hold",blocked_by:null,blocked_by_ids:[],unresolved_blocker_ids:[],blocked_reason:null,hold_reason:"choose a route",hold_kind:"captain",hold_until:null,hold_bucket:"aged",hold_age_days:40,captain_actionable:false,repo:"firstmate",kind:"captain"}
@@ -3194,6 +3194,7 @@ test_remote_ledgers_share_one_concurrent_budget_and_fall_back_to_cache() {
     (.secondmates | length) == 5
       and all(.secondmates[]; .freshness == "fresh" and .age_seconds == 100)
       and (.decisions_open | any(.id == "ledger-1/remote-parked" and .owner == "ledger-1"))
+      and ([.decisions_open[] | select(.id == "ledger-1/remote-parked" and has("blocking"))] | length) == 0
       and (.gates | all(.id != "remote-parked"))
       and (.gates | any(.id == "remote-aged" and .owner == "ledger-1" and (.reason | startswith("held 40d"))))
   ' >/dev/null || fail "healthy remote ledgers did not project their generated-epoch ages and bucketed holds: $json"
