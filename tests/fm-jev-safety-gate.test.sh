@@ -136,6 +136,13 @@ if ! assert_verdict "$TMP_ROOT/prose.json" clean; then
   fail "ordinary prose was blocked as a sensitive basename"
 fi
 
+UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<'JSON' > "$TMP_ROOT/record.json.json"
+{"content":"record.json is an ordinary artifact name."}
+JSON
+if ! assert_verdict "$TMP_ROOT/record.json.json" clean; then
+  fail "ordinary record.json filename was blocked"
+fi
+
 UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<'JSON' > "$TMP_ROOT/health.json"
 {"messages":[{"role":"user","content":"I have diabetes and use insulin."}]}
 JSON

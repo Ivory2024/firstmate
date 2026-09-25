@@ -29,7 +29,7 @@ SENSITIVE_PATHS = (
 )
 SENSITIVE_BASENAMES = frozenset(
     part for target in SENSITIVE_PATHS for part in target if "." in part
-) | {"record.json"}
+)
 SENSITIVE_PATH_FRAGMENTS = tuple(
     sorted(
         SENSITIVE_BASENAMES
@@ -76,6 +76,8 @@ def _is_sensitive_basename(candidate: str) -> bool:
 def _bash_command_has_sensitive_path(command: JsonValue) -> bool:
     match command:
         case str() as text:
+            if _is_sensitive_path(text):
+                return True
             tokens = (
                 text.replace(">", " ")
                 .replace("<", " ")
