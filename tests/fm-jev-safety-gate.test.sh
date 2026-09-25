@@ -96,6 +96,23 @@ if ! assert_verdict "$TMP_ROOT/bash-split-path-verdict.json" sensitive_path; the
   fail "Bash path assembled from separate literals was not blocked"
 fi
 
+python3 - > "$TMP_ROOT/bash-fragmented-path.json" <<'PY'
+import json
+
+print(json.dumps({
+    "tool_name": "Bash",
+    "tool_input": {
+        "command": "python -c 'print(open(\"data/cap\" + \"tain.md\").read())'"
+    },
+    "tool_response": "plain private fixture text",
+}))
+PY
+UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" \
+  < "$TMP_ROOT/bash-fragmented-path.json" > "$TMP_ROOT/bash-fragmented-path-verdict.json"
+if ! assert_verdict "$TMP_ROOT/bash-fragmented-path-verdict.json" sensitive_path; then
+  fail "Bash path assembled from partial basename literals was not blocked"
+fi
+
 for directory in state config; do
   UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<JSON > "$TMP_ROOT/bash-$directory.json"
 {"tool_name":"Bash","tool_input":{"command":"ls $directory"},"tool_response":"plain non-secret fixture text"}

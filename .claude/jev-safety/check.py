@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
+import shlex
 import sys
 import tempfile
 from pathlib import Path, PurePosixPath
@@ -73,10 +75,41 @@ def _is_sensitive_basename(candidate: str) -> bool:
     return len(parts) == 1 and parts[0] in SENSITIVE_BASENAMES
 
 
+def _constant_string(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _constant_string(node.left)
+        right = _constant_string(node.right)
+        if left is not None and right is not None:
+            return left + right
+    return None
+
+
+def _python_inline_has_sensitive_path(command: str) -> bool:
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return True
+    for index, token in enumerate(tokens[:-2]):
+        if Path(token).name not in {"python", "python3"} or tokens[index + 1] != "-c":
+            continue
+        try:
+            tree = ast.parse(tokens[index + 2])
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.BinOp):
+                candidate = _constant_string(node)
+                if candidate is not None and _is_sensitive_path(candidate):
+                    return True
+    return False
+
+
 def _bash_command_has_sensitive_path(command: JsonValue) -> bool:
     match command:
         case str() as text:
-            if _is_sensitive_path(text):
+            if _is_sensitive_path(text) or _python_inline_has_sensitive_path(text):
                 return True
             tokens = (
                 text.replace(">", " ")

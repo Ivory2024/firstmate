@@ -25,11 +25,10 @@ Each Jev caller runs the shared scanner as a local child process before sending
 the request body. No local HTTP listener receives payloads, so a port collision
 cannot impersonate the safety gate.
 
-The project plugin and MCP server remain disabled until the complete
-pre-activation gate passes. The canonical 25-fixture comparison was not found,
-and remaining account quota is unavailable; the synthetic measurements below
-do not establish those requirements. The focused safety checks do not replace
-the full pre-activation gate.
+The captain accepted the sanitized substitute sample below for the unavailable
+canonical 25-fixture comparison and quota check. With the focused safety and
+default-behavior tests passing, the project plugin and MCP server are enabled.
+Remaining account quota was not exposed by the tools.
 
 ## Pinned upstream revisions
 

@@ -4,6 +4,7 @@ import test from 'node:test';
 import { join } from 'node:path';
 import { register } from '../.claude/jev-marketplace/jev-safe/hooks/jev.ts';
 import { applyDecisions } from '../.claude/jev-marketplace/jev-safe/vendor-fast/src/compact.ts';
+import { noulAnswer } from '../.claude/jev-marketplace/jev-safe/vendor-fast/src/request.ts';
 import { fitState } from '../.claude/jev-marketplace/jev-safe/vendor-fast/src/state.ts';
 
 const safetyRoot = process.cwd();
@@ -93,6 +94,13 @@ test('fast-jev omits dropped results whole and preserves kept results verbatim',
   assert.equal(output[1]?.toolResults?.[1]?.text, '[omitted: result_dropped]');
   assert.equal(JSON.stringify(output).includes('leading payload'), false);
   assert.equal(JSON.stringify(output).includes('private trailing payload'), false);
+});
+
+test('fast-jev accepts only bounded Jev probabilities', () => {
+  assert.equal(noulAnswer({ score: { noul: 0 } }, 'score'), 0);
+  assert.equal(noulAnswer({ score: { noul: 1 } }, 'score'), 1);
+  assert.throws(() => noulAnswer({ score: { noul: -0.01 } }, 'score'), /Invalid Jev answer/);
+  assert.throws(() => noulAnswer({ score: { noul: 1.01 } }, 'score'), /Invalid Jev answer/);
 });
 
 test('fast-jev uses its default after a mocked invalid-key response', async () => {
