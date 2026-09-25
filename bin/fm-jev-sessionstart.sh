@@ -10,7 +10,6 @@ if [[ -z ${TYPESAFE_API_KEY:-} ]]; then
   if [[ -n $key ]]; then export TYPESAFE_API_KEY=$key; fi
 fi
 
-uv run -q --project "$root/.claude/jev-safety" \
-  python "$root/.claude/jev-safety/server.py" --ensure
+uv run -q --project "$root/.claude/jev-safety" python -c 'import detect_secrets'
 uv run -q --project "$root/.claude/upstreams/winnow/sidecar" \
   python -m winnow serve --ensure

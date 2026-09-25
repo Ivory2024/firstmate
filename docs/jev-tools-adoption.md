@@ -19,10 +19,9 @@ gate falls back to the tool's default behavior. The blocked fixture tests use a
 synthetic GitHub-key-shaped string, clean text with `data/captain.md` as its
 path, and synthetic health text independently.
 
-The local HTTP gate authenticates its health response with a random per-worktree
-key stored in `.claude/jev-safety/.gate-key` with owner-only permissions. The
-Jev clients verify a fresh nonce proof before sending the request body, so a
-listener that only imitates the former static health response is rejected.
+Each Jev caller runs the shared scanner as a local child process before sending
+the request body. No local HTTP listener receives payloads, so a port collision
+cannot impersonate the safety gate.
 
 The project plugin and MCP server remain disabled until the complete
 pre-activation gate passes. The canonical 25-fixture comparison was not found,

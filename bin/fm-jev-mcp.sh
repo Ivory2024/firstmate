@@ -8,7 +8,7 @@ if [[ ! -f $entry ]]; then
   exit 1
 fi
 
-uv run -q --project "$root/.claude/jev-safety" python "$root/.claude/jev-safety/server.py" --ensure
+uv run -q --project "$root/.claude/jev-safety" python -c 'import detect_secrets'
 
 if [[ -z ${TYPESAFE_API_KEY:-} ]]; then
   # The project's standard one-key .env reader does not log credential values.

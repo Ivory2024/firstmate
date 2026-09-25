@@ -123,32 +123,5 @@ if ! assert_verdict "$TMP_ROOT/health.json" health_data; then
   fail "common health data was not blocked independently of secret scanning"
 fi
 
-UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python - "$PROJECT/server.py" <<'PY'
-import importlib.util
-import json
-import sys
-import threading
-from http.server import ThreadingHTTPServer
-from urllib.request import urlopen
-
-spec = importlib.util.spec_from_file_location("jev_safety_server", sys.argv[1])
-server_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(server_module)
-key = b"synthetic-test-gate-key"
-server_module.GATE_KEY = key
-httpd = ThreadingHTTPServer(("127.0.0.1", 0), server_module.Handler)
-thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-thread.start()
-nonce = "a" * 64
-try:
-    with urlopen(f"http://127.0.0.1:{httpd.server_port}/health?nonce={nonce}") as response:
-        proof = json.loads(response.read())
-    assert proof == {"nonce": nonce, "proof": server_module.proof(nonce, key)}
-finally:
-    httpd.shutdown()
-    httpd.server_close()
-    thread.join()
-PY
-
 pass "jev outbound gate blocks secrets, private paths, and health text"
 node --experimental-strip-types --test "$ROOT/tests/fm-jev-hook-guards.test.mjs"

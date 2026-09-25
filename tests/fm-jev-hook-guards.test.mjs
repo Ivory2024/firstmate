@@ -1,22 +1,12 @@
 import assert from 'node:assert/strict';
-import { createHmac, randomBytes } from 'node:crypto';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import test, { after } from 'node:test';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import test from 'node:test';
 import { join } from 'node:path';
 import { register } from '../.claude/jev-marketplace/jev-safe/hooks/jev.ts';
 import { applyDecisions } from '../.claude/jev-marketplace/jev-safe/vendor-fast/src/compact.ts';
 import { fitState } from '../.claude/jev-marketplace/jev-safe/vendor-fast/src/state.ts';
 
-const safetyRoot = await mkdtemp(join(process.cwd(), '.jev-hook-gate-test-'));
-const safetyKey = randomBytes(32).toString('hex');
-await mkdir(join(safetyRoot, '.claude/jev-safety'), { recursive: true });
-await writeFile(join(safetyRoot, '.claude/jev-safety/.gate-key'), safetyKey, { mode: 0o600 });
-after(async () => rm(safetyRoot, { recursive: true, force: true }));
-
-function safetyProof(url) {
-  const nonce = new URL(url).searchParams.get('nonce');
-  return JSON.stringify({ nonce, proof: createHmac('sha256', safetyKey).update(nonce).digest('hex') });
-}
+const safetyRoot = process.cwd();
 
 function fixtureMessages() {
   return [
@@ -111,24 +101,15 @@ test('fast-jev uses its default after a mocked invalid-key response', async () =
   const requests = [];
   let fallback = false;
   await handler({
-    http: { async fetch(url) {
-      requests.push(url);
-      if (url.includes('/health?nonce=')) {
-        return { status: 200, ok: true, text: safetyProof(url) };
-      }
-      return url.endsWith('/check')
-        ? { status: 200, ok: true, text: '{"allowed":true,"reason":"clean"}' }
-        : { status: 401, ok: false, text: 'unauthorized' };
-    } },
+    http: { async fetch(url) { requests.push(url); return { status: 401, ok: false, text: 'unauthorized' }; } },
     env: { async get() { return 'invalid-test-key'; } },
     settings: { async read() { return {}; } },
     session: { async cwd() { return safetyRoot; } },
     ui: ui(),
   }, { messages: fixtureMessages() }, async () => { fallback = true; return 'default'; });
   assert.equal(fallback, true);
-  assert.equal(requests.length, 3);
-  assert.match(requests[0], /127\.0\.0\.1:48752\/health\?nonce=[a-f0-9]{64}$/);
-  assert.match(requests[1], /127\.0\.0\.1:48752\/check$/);
+  assert.equal(requests.length, 1);
+  assert.match(requests[0], /^https:\/\/api\.typesafe\.ai\//);
 });
 
 test('fast-jev falls back to the authorized .env key after env and settings', async () => {
@@ -141,10 +122,6 @@ test('fast-jev falls back to the authorized .env key after env and settings', as
     await handler({
       http: { async fetch(url, init) {
         requests.push({ url, init });
-        if (url.includes('/health?nonce=')) {
-          return { status: 200, ok: true, text: safetyProof(url) };
-        }
-        if (url.endsWith('/check')) return { status: 200, ok: true, text: '{"allowed":true}' };
         return { status: 401, ok: false, text: 'unauthorized' };
       } },
       env: { async get(name) { return name === 'FM_HOME' ? root : undefined; } },
@@ -159,24 +136,20 @@ test('fast-jev falls back to the authorized .env key after env and settings', as
   }
 });
 
-test('fast-jev rejects a spoofed static safety identity before posting the payload', async () => {
+test('fast-jev fails closed when the local scanner is unavailable', async () => {
   const entry = hooks().find(([event]) => event === 'session.compact');
   const handler = entry.at(-1);
   const requests = [];
   let fallback = false;
   await handler({
-    http: { async fetch(url) {
-      requests.push(url);
-      return { status: 200, ok: true, text: '{"service":"firstmate-jev-safety","protocol":1}' };
-    } },
+    http: { async fetch(url) { requests.push(url); return { status: 200, ok: true, text: '{}' }; } },
     env: { async get() { return 'synthetic-key'; } },
     settings: { async read() { return {}; } },
-    session: { async cwd() { return safetyRoot; } },
+    session: { async cwd() { return join(safetyRoot, '.missing-safety-scanner-fixture'); } },
     ui: ui(),
   }, { messages: fixtureMessages() }, async () => { fallback = true; return 'default'; });
   assert.equal(fallback, true);
-  assert.equal(requests.length, 1);
-  assert.match(requests[0], /127\.0\.0\.1:48752\/health\?nonce=[a-f0-9]{64}$/);
+  assert.equal(requests.length, 0);
 });
 
 test('winnow preserves the original result when the safety gate blocks its path', async () => {
@@ -186,13 +159,7 @@ test('winnow preserves the original result when the safety gate blocks its path'
   const requests = [];
   const event = { tool: 'Read', tool_use_id: 'fixture', file_path: 'data/captain.md' };
   const returned = await handler({
-    http: { async fetch(url) {
-      requests.push(url);
-      if (url.includes('/health?nonce=')) {
-        return { status: 200, ok: true, text: safetyProof(url) };
-      }
-      return { status: 200, ok: true, text: '{"allowed":false,"reason":"sensitive_path"}' };
-    } },
+    http: { async fetch(url) { requests.push(url); return { status: 200, ok: true, text: '{}' }; } },
     session: {
       async messages() {
         return [
@@ -206,9 +173,7 @@ test('winnow preserves the original result when the safety gate blocks its path'
     ui: ui(),
   }, event, async () => answer);
   assert.equal(returned, answer);
-  assert.equal(requests.length, 2);
-  assert.match(requests[0], /127\.0\.0\.1:48752\/health\?nonce=[a-f0-9]{64}$/);
-  assert.match(requests[1], /127\.0\.0\.1:48752\/check$/);
+  assert.equal(requests.length, 0);
 });
 
 test('winnow sends live user and assistant context after the safety gate allows it', async () => {
@@ -223,12 +188,7 @@ test('winnow sends live user and assistant context after the safety gate allows 
   await handler({
     http: { async fetch(url, init) {
       requests.push({ url, body: init?.body });
-      if (url.includes('/health?nonce=')) {
-        return { status: 200, ok: true, text: safetyProof(url) };
-      }
-      return url.endsWith('/check')
-        ? { status: 200, ok: true, text: '{"allowed":true}' }
-        : { status: 200, ok: true, text: '{"hookSpecificOutput":{}}', headers: {} };
+      return { status: 200, ok: true, text: '{"hookSpecificOutput":{}}', headers: {} };
     } },
     session: {
       async messages() { return messages; },
@@ -237,41 +197,57 @@ test('winnow sends live user and assistant context after the safety gate allows 
     },
     ui: ui(),
   }, { tool: 'Read', tool_use_id: 'fixture', file_path: 'docs/configuration.md' }, async () => answer);
-  assert.equal(requests.length, 3);
-  assert.match(requests[0].url, /127\.0\.0\.1:48752\/health\?nonce=[a-f0-9]{64}$/);
-  assert.match(requests[1].url, /127\.0\.0\.1:48752\/check$/);
-  assert.match(requests[2].url, /127\.0\.0\.1:47311\/hook\/post-tool-use$/);
-  assert.deepEqual(JSON.parse(requests[2].body).task, {
+  assert.equal(requests.length, 1);
+  assert.match(requests[0].url, /127\.0\.0\.1:47311\/hook\/post-tool-use$/);
+  assert.deepEqual(JSON.parse(requests[0].body).task, {
     user_request: 'Find the relevant runtime setting.',
     assistant_intent: 'I will inspect the configuration docs.',
   });
 });
 
-test('winnow rejects a spoofed static safety identity before posting to the sidecar', async () => {
+test('winnow fails closed when the local scanner is unavailable', async () => {
   const entry = hooks().find(([event, filter]) => event === 'tool.call' && filter?.tool === 'Read');
   const handler = entry.at(-1);
   const answer = { result: { content: 'result block.\n'.repeat(200) } };
   const requests = [];
   const returned = await handler({
-    http: { async fetch(url) {
-      requests.push(url);
-      return { status: 200, ok: true, text: '{"service":"firstmate-jev-safety","protocol":1}' };
-    } },
+    http: { async fetch(url) { requests.push(url); return { status: 200, ok: true, text: '{}' }; } },
     session: {
       async messages() { return [
         { role: 'user', text: 'Find a setting.' },
         { role: 'assistant', text: 'I will inspect the docs.' },
       ]; },
       async id() { return 'synthetic'; },
-      async cwd() { return safetyRoot; },
+      async cwd() { return join(safetyRoot, '.missing-safety-scanner-fixture'); },
     },
     ui: ui(),
   }, { tool: 'Read', tool_use_id: 'fixture', file_path: 'docs/guide.md' }, async () => answer);
   assert.equal(returned, answer);
-  assert.equal(requests.length, 1);
-  assert.match(requests[0], /127\.0\.0\.1:48752\/health\?nonce=[a-f0-9]{64}$/);
+  assert.equal(requests.length, 0);
 });
 
 test('winnow does not register prompt submission transmission', () => {
   assert.equal(hooks().some(([event]) => event === 'prompt.submit'), false);
+});
+
+test('MCP preload blocks an excluded path before invoking fetch', async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    return { ok: true, status: 200, text: async () => '{}' };
+  };
+  try {
+    await import('../.claude/jev-safety/preload.mjs');
+    await assert.rejects(
+      globalThis.fetch('https://api.typesafe.ai/v1/judgment', {
+        method: 'POST',
+        body: JSON.stringify({ file_path: 'data/captain.md', content: 'plain clean fixture' }),
+      }),
+      /Jev safety gate blocked or was unavailable/,
+    );
+    assert.equal(requests, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
