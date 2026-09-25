@@ -69,6 +69,12 @@ assert_contains "$out" 'advisory' 'proposal was not identified as advisory'
 assert_grep 'ready' "$TASKS_CALL_LOG" 'candidate scan did not use tasks-axi ready'
 pass 'a queued, unblocked, unheld item is proposed with a harness that has quota headroom'
 
+quota_fixture 60 -0.4627 through_reset
+out=$("$ROOT/bin/fm-autostart-proposal.sh") || fail "negative-priority proposal command failed: $out"
+assert_contains "$out" 'ready-ship' 'negative spendPriority suppressed a headroom proposal'
+assert_contains "$out" 'codex (all_models)' 'negative spendPriority suppressed the headroom harness'
+pass 'spendPriority sign does not suppress known through-reset headroom'
+
 # The fixture is the canonical `ready` response; held and blocked rows are
 # excluded by tasks-axi before this script receives the candidate set.
 assert_no_grep '--include-held' "$TASKS_CALL_LOG" 'candidate scan explicitly included held work'

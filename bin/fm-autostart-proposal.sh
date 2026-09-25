@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-# fm-autostart-proposal.sh - suggest ready backlog work when quota has real headroom.
-#
-# Usage: fm-autostart-proposal.sh
-#
-# Called during the heartbeat fleet review. It reads only tasks-axi's unblocked,
-# unheld `ready` group and one `quota-axi --full --json` snapshot. It prints an
-# advisory proposal when at least one ready task and one mapped harness have a
-# known positive effectivePercentRemaining, positive spendPriority, and a
-# through_reset runway. Unknown, projected-exhaustion, and exhausted runways do
-# not establish headroom. It never starts or mutates a task.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,8 +36,6 @@ while read -r harness provider; do
     | select(.status == "known"
         and (.effectivePercentRemaining | type) == "number"
         and .effectivePercentRemaining > 0
-        and (.selection.spendPriority | type) == "number"
-        and .selection.spendPriority > 0
         and .runway.status == "through_reset")
     | .scope
   ')
