@@ -28,7 +28,7 @@ selection=$(fm_agenttrail_select_json "$snapshot" 12) || fail "selection failed"
   || fail "overflow did not identify every lower-priority task"
 pass "Agenttrail Kitchen selection caps at 12 and prioritizes working/validating tasks"
 
-dedup_snapshot=$(jq -n '{in_flight:[{id:"late",state:"queued"},{id:"best",state:"working"},{id:"missing",state:"working"}],paths:[{id:"late",worktree:"/shared"},{id:"best",worktree:"/shared"},{id:"missing",worktree:null}] }') \
+dedup_snapshot=$(jq -n '{in_flight:[{id:"late",state:"queued"},{id:"best",state:"working"},{id:"missing",state:"working"},{id:"mate/child",state:"working"}],paths:[{id:"late",worktree:"/shared"},{id:"best",worktree:"/shared"},{id:"missing",worktree:null},{id:"mate/child",worktree:"/child-worktree"}] }') \
   || fail "could not build duplicate-path fixture"
 dedup_selection=$(fm_agenttrail_select_json "$dedup_snapshot" 1) || fail "deduplicated selection failed"
 [ "$(jq -r '.selected[0].id' <<<"$dedup_selection")" = best ] \
@@ -36,3 +36,6 @@ dedup_selection=$(fm_agenttrail_select_json "$dedup_snapshot" 1) || fail "dedupl
 [ "$(jq '.selected | length' <<<"$dedup_selection")" -eq 1 ] \
   || fail "missing or duplicate paths consumed selection slots"
 pass "Agenttrail Kitchen selection filters empty paths and deduplicates after ranking"
+[ "$(jq '.selected | any(.id == "mate/child" and .worktree == "/child-worktree")' <<<"$(fm_agenttrail_select_json "$dedup_snapshot" 3)")" = true ] \
+  || fail "composite secondmate child ID did not resolve its worktree path"
+pass "Agenttrail Kitchen selection resolves composite secondmate child IDs"
