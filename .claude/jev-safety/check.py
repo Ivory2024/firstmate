@@ -19,6 +19,7 @@ SENSITIVE_PATHS = (
     ("config",),
     ("data", "captain.md"),
     ("data", "captain-shared.md"),
+    ("data", "learnings.md"),
     ("data", "backlog.md"),
     ("pipelines", "health"),
     ("pipelines", "health-manager"),

@@ -25,6 +25,13 @@ if ! grep -q '"reason":"sensitive_path"' "$TMP_ROOT/path.json"; then
   fail "sensitive path was not blocked independently of the secret scanner"
 fi
 
+UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<'JSON' > "$TMP_ROOT/learnings.json"
+{"paths":["data/learnings.md"],"content":"plain non-secret fixture text"}
+JSON
+if ! grep -q '"reason":"sensitive_path"' "$TMP_ROOT/learnings.json"; then
+  fail "home-local learnings path was not blocked independently of the secret scanner"
+fi
+
 UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<'JSON' > "$TMP_ROOT/backlog.json"
 {"paths":["data/backlog.md"],"content":"plain non-secret fixture text"}
 JSON
