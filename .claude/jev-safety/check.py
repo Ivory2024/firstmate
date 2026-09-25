@@ -26,6 +26,7 @@ SENSITIVE_PATHS = (
     ("pipelines", "health-connect-sync"),
     ("pipelines", "finance"),
 )
+SENSITIVE_BASENAMES = frozenset(target[-1] for target in SENSITIVE_PATHS) | {"record"}
 
 
 def _path_parts(candidate: str) -> tuple[str, ...]:
@@ -36,8 +37,9 @@ def _path_parts(candidate: str) -> tuple[str, ...]:
 
 
 def _is_sensitive_path(candidate: str) -> bool:
-    """Match only named private roots and pipelines, not ordinary prose."""
     parts = _path_parts(candidate)
+    if any(part in SENSITIVE_BASENAMES for part in parts):
+        return True
     for target in SENSITIVE_PATHS:
         width = len(target)
         if any(parts[index : index + width] == target for index in range(len(parts) - width + 1)):
@@ -66,7 +68,6 @@ def _contains_sensitive_path(value: JsonValue, parent_key: str = "") -> bool:
             return any(
                 _is_sensitive_path(token)
                 for token in tokens
-                if "/" in token or "\\" in token or token.casefold().endswith(".env")
             )
         case _:
             return False
