@@ -1159,6 +1159,7 @@ test_collapsed_captain_call_deferral_and_landed() {
 
 ## Queued
 - [ ] work-gate - Captain-gated ship work (repo: firstmate) (kind: ship) (hold: captain go needed) (hold-kind: captain)
+- [ ] ordinary-dependent - Ordinary queued task (repo: firstmate) (kind: ship) blocked-by: work-gate
 - [ ] later-call - Deferred captain call (repo: firstmate) (kind: captain) (hold: revisit with the captain) (hold-kind: captain) (hold-until: 2026-08-01)
 - [ ] due-call - Due captain call (repo: firstmate) (kind: captain) (hold: overdue captain choice) (hold-kind: captain) (hold-until: 2026-07-11)
 - [ ] parked-call - Prose-parked captain call (repo: firstmate) (kind: ship) (hold: DEFERRED by captain revisit later) (hold-kind: captain)
@@ -1171,7 +1172,7 @@ EOF
   fakebin=$(make_fakebin "$home")
   json=$(run "$home" "$fakebin" --json)
   printf '%s' "$json" | jq -e '
-    (.decisions_open | any(.[]; .id == "work-gate"))
+    (.decisions_open | any(.[]; .id == "work-gate" and .blocking == true))
       and (.decisions_open | any(.[]; .id == "due-call"))
       and (.decisions_open | any(.[]; .id == "later-call") | not)
       and (.decisions_open | any(.[]; .id == "parked-call"))

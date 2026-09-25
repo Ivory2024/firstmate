@@ -357,11 +357,9 @@ a { color: inherit; text-decoration: none; }
   <section class="bb-section">
     <div class="bb-section__head">
       <span class="fm-sign fm-sign--eyebrow">태스크 (M3)</span>
-      <span class="fm-sign fm-sign--muted" id="bb-charted-sub"></span>
     </div>
     <div class="fm-card fm-card--warm">
       <table class="bb-task-table"><thead><tr><th>ID</th><th>상태</th><th>제목</th><th>blocker</th></tr></thead><tbody id="bb-tasks"></tbody></table>
-      <div class="bb-rows" id="bb-charted" hidden></div><div class="bb-rows" id="bb-underway" hidden></div>
       <div class="bb-dispatch" id="bb-dispatch" hidden>
         <span class="bb-dispatch__count" id="bb-dispatch-count">nothing picked</span>
         <span class="bb-queued" id="bb-dispatch-queued">
@@ -482,7 +480,6 @@ __FM_BEARINGS_BOARD_DATA__
     return dated.concat(undated);
   }
   var chartedMoreQueued = data.charted_more || 0;
-  var chartedMoreWarnings = data.charted_warning_more || 0;
   function utf8ByteLength(text) { return new TextEncoder().encode(text).length; }
   var CHECK_SVG = '<svg class="fm-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
 
@@ -718,31 +715,15 @@ __FM_BEARINGS_BOARD_DATA__
     stackNav.hidden = true;
   }
 
-  /* Underway */
-  var uw = document.getElementById("bb-underway");
-  if (!data.underway.length) uw.appendChild(el("div", "bb-empty", "Nothing is underway."));
+  var taskBody = document.getElementById("bb-tasks");
   data.underway.forEach(function (t) {
-    var row = el("div", "bb-row");
-    row.appendChild(badge(t.state === "working" ? "online" : "info", t.state));
-    var main = el("div", "bb-row__main");
-    /* the snapshot's durable name-or-id label leads the row so a scan says
-       WHICH task this is; the run status keeps its place on the second line */
-    main.appendChild(el("div", "bb-row__title", t.name));
-    /* captain-facing rows name the repo; the internal task id shows only when
-       no repo is known */
-    main.appendChild(el("div", "bb-row__sub",
-      t.doing + " · " + t.kind + " · " + (t.repo || t.id)));
-    row.appendChild(main);
-    /* the blocker column: real structured text when the snapshot cross-
-       referenced one for this task id, otherwise nothing is fabricated */
-    if (t.blocker) row.appendChild(el("span", "bb-row__blocker", t.blocker));
-    uw.appendChild(row);
-    var taskRow = el("tr", "bb-task-row");
-    taskRow.appendChild(el("td", "bb-row__id", t.id));
-    taskRow.appendChild(el("td", "", t.blocker ? "대기" : "진행중"));
-    taskRow.appendChild(el("td", "", t.name));
-    taskRow.appendChild(el("td", "", t.blocker || "-"));
-    document.getElementById("bb-tasks").appendChild(taskRow);
+    var row = el("tr", "bb-task-row");
+    row.setAttribute("data-kind", "underway");
+    row.appendChild(el("td", "bb-row__id", t.id));
+    row.appendChild(el("td", "", t.blocker ? "대기" : "진행중"));
+    row.appendChild(el("td", "", t.name));
+    row.appendChild(el("td", "", t.blocker || "-"));
+    taskBody.appendChild(row);
   });
 
   /* Landed */
@@ -765,8 +746,7 @@ __FM_BEARINGS_BOARD_DATA__
     ld.appendChild(row);
   });
 
-  /* Charted Next + dispatch picker */
-  var ch = document.getElementById("bb-charted");
+  /* Dispatch picker for charted rows in the task table. */
   var bar = document.getElementById("bb-dispatch");
   var barCount = document.getElementById("bb-dispatch-count");
   var barBtn = document.getElementById("bb-dispatch-btn");
@@ -781,11 +761,7 @@ __FM_BEARINGS_BOARD_DATA__
     barBtn.disabled = !n;
   }
 
-  if (!chartedQueued(data.charted).length && !chartedMoreQueued) {
-    ch.appendChild(el("div", "bb-empty", "Nothing is queued."));
-  }
   chartedOrder(data.charted).forEach(function (t) {
-    var row = el("div", "bb-row");
     var pick = null;
     if (t.dispatchable && !isWarning(t)) {
       anyPickable = true;
@@ -800,45 +776,22 @@ __FM_BEARINGS_BOARD_DATA__
         }
         refreshBar();
       });
-    } else {
-      row.appendChild(el("span", "bb-pick-spacer"));
     }
-    var main = el("div", "bb-row__main");
-    main.appendChild(el("div", "bb-row__title", t.title));
-    /* second line keeps the title uncrowded in the half-width column */
-    var chSub = t.repo || t.id;
-    main.appendChild(el("div", "bb-row__sub", t.reason ? t.reason + " · " + chSub : chSub));
-    row.appendChild(main);
-    if (isWarning(t)) row.appendChild(badge("danger", "needs repair"));
-    else if (t.reason) row.appendChild(badge("warn", "waiting"));
-    /* the blocker column: the row's own structured reason field, labeled
-       distinctly from the badge above rather than only folded into the
-       subtitle */
-    row.appendChild(t.reason
-      ? el("span", "bb-row__blocker", t.reason)
-      : el("span", "bb-row__blocker bb-row__blocker--none", "no blocker"));
-    ch.appendChild(row);
-    var taskRow = el("tr", "bb-task-row");
+    var row = el("tr", "bb-task-row");
+    row.setAttribute("data-kind", "charted");
     var idCell = el("td", "bb-row__id");
     idCell.appendChild(el("span", "bb-task-id", t.id));
     if (pick) idCell.appendChild(pick);
-    var taskState = isWarning(t) || t.reason ? "대기" : "예정";
-    idCell.appendChild(el("span", "", " "));
-    taskRow.appendChild(idCell);
-    taskRow.appendChild(el("td", "", taskState));
-    taskRow.appendChild(el("td", "", t.title));
-    taskRow.appendChild(el("td", "", t.reason || "-"));
-    document.getElementById("bb-tasks").appendChild(taskRow);
+    row.appendChild(idCell);
+    row.appendChild(el("td", "", isWarning(t) || t.reason ? "대기" : "예정"));
+    row.appendChild(el("td", "", t.title));
+    row.appendChild(el("td", "", t.reason || "-"));
+    taskBody.appendChild(row);
   });
-  var chartedShown = chartedQueued(data.charted).length;
-  var chartedTotal = chartedShown + chartedMoreQueued;
-  document.getElementById("bb-charted-sub").textContent =
-    chartedMoreQueued ? "showing " + chartedShown + " of " + chartedTotal : "";
-  if (chartedMoreQueued) {
-    ch.appendChild(el("span", "bb-morechip", "+" + chartedMoreQueued + " more queued - ask firstmate for the full chart"));
-  }
-  if (chartedMoreWarnings) {
-    ch.appendChild(el("span", "bb-morechip", "+" + chartedMoreWarnings + " more repair warning" + (chartedMoreWarnings === 1 ? "" : "s") + " - ask firstmate for the full chart"));
+  if (!taskBody.children.length) {
+    var emptyTask = el("tr", "bb-empty");
+    emptyTask.appendChild(el("td", "", "No tasks are underway or charted."));
+    taskBody.appendChild(emptyTask);
   }
 
   if (anyPickable) {

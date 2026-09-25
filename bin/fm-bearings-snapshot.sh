@@ -519,7 +519,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
          | {id,key:.id,verb:"captain-hold",
             summary:hold_summary(.title; .hold_reason),owner:"(main)",
             filed:(.since // null),
-            blocking:any($backlog_records[]; .hold_bucket == "live" and .id != $record.id and ((.unresolved_blocker_ids // []) | index($record.id) != null))} ]
+            blocking:any($backlog_records[]; .id != $record.id and ((.unresolved_blocker_ids // []) | index($record.id) != null))} ]
      + [ (.secondmate_current.records // [])[] as $m
          | ([ $m.decisions_open[]?
               | . as $decision
@@ -529,7 +529,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
                  summary:hold_summary((.summary // .id);
                                       (.reason // "captain decision pending")),owner:$m.id,
                  filed:([$m.queued[]? | select(.id == $decision.id) | .since][0] // null),
-                 blocking:any($m.queued[]?; .hold_bucket == "live" and .id != $decision.id and ((.unresolved_blocker_ids // []) | index($decision.id) != null))} ]
+                 blocking:any($m.queued[]?; .id != $decision.id and ((.unresolved_blocker_ids // []) | index($decision.id) != null))} ]
             + [ $m.queued[]?
                 | . as $queued_record
                 | select($all_decisions == 1 and .hold_kind == "captain")
@@ -540,7 +540,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
                    summary:hold_summary(($queued_record.title // $queued_record.id);
                                         ($queued_record.hold_reason // "captain decision pending")),owner:$m.id,
                    filed:($queued_record.since // null),
-                   blocking:any($m.queued[]?; .hold_bucket == "live" and .id != $queued_record.id and ((.unresolved_blocker_ids // []) | index($queued_record.id) != null))} ])[] ]) as $decisions_all
+                   blocking:any($m.queued[]?; .id != $queued_record.id and ((.unresolved_blocker_ids // []) | index($queued_record.id) != null))} ])[] ]) as $decisions_all
   | ([ .backlog.records[]
          | . as $record
          | select(.structured and projected_deferred_hold) ]
