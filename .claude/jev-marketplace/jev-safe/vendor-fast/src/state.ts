@@ -163,7 +163,7 @@ function historyEntries(
       result: resultNote(call),
     }));
     if (message.text.trim().length === 0 && toolCalls.length === 0) return;
-    const entry: HistoryEntry = { i, role: message.role, text: '' };
+    const entry: HistoryEntry = { i, role: message.role, text: message.text };
     if (toolCalls.length > 0) entry.tool_calls = toolCalls;
     entries.push(entry);
   });
@@ -183,7 +183,7 @@ export function fitState(
   calls: readonly ToolCall[],
   options: Pick<ResolvedCompactOptions, 'maxStateTokens' | 'preserveRecentMessages' | 'goal'>,
 ): FittedState {
-  const goal = '';
+  const goal = options.goal;
   const stateOf = (history: HistoryEntry[]): CompactionState => ({
     context: STATE_CONTEXT,
     goal,

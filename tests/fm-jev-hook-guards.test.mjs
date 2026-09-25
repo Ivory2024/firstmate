@@ -45,13 +45,12 @@ test('fast-jev falls back without a key and sends no request', async () => {
   assert.equal(requests, 0);
 });
 
-test('fast-jev omits free-text conversation and configured goals from state', () => {
+test('fast-jev preserves conversation text and configured goals in state', () => {
   const state = fitState([
-    { role: 'user', text: 'private-health-fixture-unique', toolUses: [] },
-  ], [], { maxStateTokens: 1000, preserveRecentMessages: 0, goal: 'private-goal-fixture-unique' });
-  assert.equal(state.state.goal, '');
-  assert.equal(JSON.stringify(state.state).includes('private-health-fixture-unique'), false);
-  assert.equal(JSON.stringify(state.state).includes('private-goal-fixture-unique'), false);
+    { role: 'user', text: 'task-message-fixture-unique', toolUses: [] },
+  ], [], { maxStateTokens: 1000, preserveRecentMessages: 0, goal: 'task-goal-fixture-unique' });
+  assert.equal(state.state.goal, 'task-goal-fixture-unique');
+  assert.equal(state.state.history[0]?.text, 'task-message-fixture-unique');
 });
 
 test('fast-jev uses its default after a mocked invalid-key response', async () => {

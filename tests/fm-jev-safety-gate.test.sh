@@ -39,6 +39,15 @@ if ! grep -q '"reason":"sensitive_path"' "$TMP_ROOT/bash-cwd.json"; then
   fail "sensitive Bash path and redirection target were not blocked"
 fi
 
+for directory in state config; do
+  UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<JSON > "$TMP_ROOT/bash-$directory.json"
+{"tool_name":"Bash","tool_input":{"command":"ls $directory"},"tool_response":"plain non-secret fixture text"}
+JSON
+  if ! grep -q '"reason":"sensitive_path"' "$TMP_ROOT/bash-$directory.json"; then
+    fail "direct Bash argument for $directory was not blocked"
+  fi
+done
+
 UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<'JSON' > "$TMP_ROOT/bash-cwd-residual.json"
 {"tool_name":"Bash","tool_input":{"command":"cd state && cat private.txt"},"tool_response":"plain non-secret fixture text"}
 JSON

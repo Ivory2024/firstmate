@@ -57,14 +57,17 @@ def _bash_command_has_sensitive_path(command: JsonValue) -> bool:
     # Residual: `cd dir && cat relative-file` can evade this direct path check.
     match command:
         case str() as text:
-            for token in text.replace(">", " ").replace("<", " ").split():
+            tokens = text.replace(">", " ").replace("<", " ").split()
+            for index, token in enumerate(tokens):
                 candidate = token.rsplit("=", 1)[-1]
                 if candidate.startswith("-") and "/" not in candidate and "\\" not in candidate:
+                    continue
+                if candidate.casefold() in {"state", "config"} and index > 0 and tokens[index - 1] == "cd":
                     continue
                 if "/" in candidate or "\\" in candidate:
                     if _is_sensitive_path(candidate):
                         return True
-                elif _is_sensitive_basename(candidate):
+                elif _is_sensitive_path(candidate):
                     return True
         case _:
             return False
