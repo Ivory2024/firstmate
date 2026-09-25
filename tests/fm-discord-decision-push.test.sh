@@ -180,7 +180,7 @@ test_captain_hold_triggers_push() {
   record=$(find "$home/state/x-context" -name 'discord-notify-*.json' -print -quit)
   assert_equals "captain-hold" "$(jq -r '.trigger' "$record")" "captain-hold trigger type"
   assert_equals "task-hold" "$(jq -r '.task_id' "$record")" "captain-hold task id"
-  assert_equals "A task is waiting for your decision." "$(jq -r '.summary' "$record")" "hold summary uses plain language"
+  assert_equals "작업에 대한 결정이 필요합니다." "$(jq -r '.summary' "$record")" "hold summary uses plain language"
   pass "a durable captain hold triggers a Discord decision push"
 }
 test_reply_to_notification_enters_existing_inbox() {

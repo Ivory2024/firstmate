@@ -56,7 +56,7 @@ async function sendRecord(path, record, botId, recover) {
 	const sending = { ...record, state: "sending", attempted_at: Math.floor(Date.now() / 1000) };
 	saveRecord(path, sending);
 	const payload = {
-		content: `Task: ${record.task_id}\n${record.summary}\nOptions: ${record.options.join("; ")}\nReply directly to this message with your answer.`,
+		content: `작업: ${record.task_id}\n${record.summary}\n선택지: ${record.options.join(" / ")}\n이 메시지에 바로 답장해 주세요.`,
 		allowed_mentions: { parse: [] },
 		nonce: record.nonce,
 		enforce_nonce: true,
