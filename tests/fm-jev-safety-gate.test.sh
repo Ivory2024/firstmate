@@ -33,10 +33,17 @@ if ! grep -q '"reason":"sensitive_path"' "$TMP_ROOT/backlog.json"; then
 fi
 
 UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<'JSON' > "$TMP_ROOT/bash-cwd.json"
-{"tool_input":{"command":"cd state && cat private.txt"},"tool_response":"plain non-secret fixture text"}
+{"tool_name":"Bash","tool_input":{"command":"cat pipelines/health/patient.txt > /tmp/result.txt"},"tool_response":"plain non-secret fixture text"}
 JSON
-if ! grep -q '"reason":"clean"' "$TMP_ROOT/bash-cwd.json"; then
-  fail "shell command text was parsed as a sensitive path"
+if ! grep -q '"reason":"sensitive_path"' "$TMP_ROOT/bash-cwd.json"; then
+  fail "sensitive Bash path and redirection target were not blocked"
+fi
+
+UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<'JSON' > "$TMP_ROOT/bash-cwd-residual.json"
+{"tool_name":"Bash","tool_input":{"command":"cd state && cat private.txt"},"tool_response":"plain non-secret fixture text"}
+JSON
+if ! grep -q '"reason":"clean"' "$TMP_ROOT/bash-cwd-residual.json"; then
+  fail "documented shell-state residual changed unexpectedly"
 fi
 
 UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<'JSON' > "$TMP_ROOT/result-path.json"

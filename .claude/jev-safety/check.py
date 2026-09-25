@@ -53,17 +53,44 @@ def _is_sensitive_basename(candidate: str) -> bool:
     return len(parts) == 1 and parts[0] in SENSITIVE_BASENAMES
 
 
-def _contains_sensitive_path(value: JsonValue, parent_key: str = "") -> bool:
+def _bash_command_has_sensitive_path(command: JsonValue) -> bool:
+    # Residual: `cd dir && cat relative-file` can evade this direct path check.
+    match command:
+        case str() as text:
+            for token in text.replace(">", " ").replace("<", " ").split():
+                candidate = token.rsplit("=", 1)[-1]
+                if candidate.startswith("-") and "/" not in candidate and "\\" not in candidate:
+                    continue
+                if "/" in candidate or "\\" in candidate:
+                    if _is_sensitive_path(candidate):
+                        return True
+                elif _is_sensitive_basename(candidate):
+                    return True
+        case _:
+            return False
+    return False
+
+
+def _contains_sensitive_path(
+    value: JsonValue, parent_key: str = "", bash_tool: bool = False
+) -> bool:
     """Check path metadata and path-shaped text before inspecting payload secrets."""
     match value:
         case dict() as mapping:
+            is_bash = (
+                bash_tool
+                or mapping.get("tool") == "Bash"
+                or mapping.get("tool_name") == "Bash"
+            )
             return any(
-                _contains_sensitive_path(child, key.casefold())
+                _bash_command_has_sensitive_path(child)
+                if key.casefold() == "command" and is_bash
+                else _contains_sensitive_path(child, key.casefold(), is_bash)
                 for key, child in mapping.items()
-                if key.casefold() != "command"
+                if key.casefold() != "command" or is_bash
             )
         case list() as items:
-            return any(_contains_sensitive_path(item, parent_key) for item in items)
+            return any(_contains_sensitive_path(item, parent_key, bash_tool) for item in items)
         case str() as text:
             if any(word in parent_key for word in ("path", "file", "cwd", "directory")):
                 if _is_sensitive_path(text):
