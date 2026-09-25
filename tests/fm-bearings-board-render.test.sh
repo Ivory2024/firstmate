@@ -229,15 +229,17 @@ test_unanswered_questions_count_and_table_read_off_captains_call() {
 
 
 test_unified_task_table_maps_real_states_and_question_urgency() {
-  local home out
+  local home out filed_today
   home=$(make_home unified-table)
+  filed_today=$(date -u +%Y-%m-%d)
   out=$(render_full "$home" '[
-    {"key":"fresh","type":"decision","repo":"sample","title":"Fresh question?","filed":"2026-09-25","blocking":false,"options":[{"value":"yes","label":"Yes"}]},
+    {"key":"fresh","type":"decision","repo":"sample","title":"Fresh question?","filed":"'"$filed_today"'","blocking":false,"options":[{"value":"yes","label":"Yes"}]},
     {"key":"old-blocker","type":"decision","repo":"sample","title":"Old blocking question?","filed":"2026-09-20","blocking":true,"options":[{"value":"yes","label":"Yes"}]},
     {"key":"undated","type":"decision","repo":"sample","title":"Undated?","blocking":true,"options":[{"value":"yes","label":"Yes"}]}
   ]' '[
     {"id":"run-1","repo":"sample","name":"Running","state":"validating","kind":"ship","doing":"checking"}
   , {"id":"run-2","repo":"sample","name":"Blocked","state":"working","kind":"ship","doing":"waiting","blocker":"blocked by gate"}
+  , {"id":"run-3","repo":"sample","name":"Blocked without reason","state":"blocked","kind":"ship","doing":"waiting"}
   ]' '{}' '[
     {"id":"queued","repo":"sample","title":"Queued","reason":"","dispatchable":true},
     {"id":"waiting","repo":"sample","title":"Waiting","reason":"not ready","dispatchable":true}
@@ -248,6 +250,7 @@ test_unified_task_table_maps_real_states_and_question_urgency() {
     and (.tasks | any(.[]; .id == "queued" and .state == "예정"))
     and (.tasks | any(.[]; .id == "waiting" and .state == "대기"))
     and (.tasks | any(.[]; .id == "run-2" and .state == "대기" and .title == "Blocked" and .blocker == "blocked by gate"))
+    and (.tasks | any(.[]; .id == "run-3" and .state == "차단됨" and .title == "Blocked without reason" and .blocker == "사유 미상"))
     and ([.questions[].urgency] == ["보통","높음","-"])
   ' >/dev/null || fail "task mapping or urgency did not match real fields: $out"
   pass "unified table maps underway states and urgency uses filed age/blocking"
