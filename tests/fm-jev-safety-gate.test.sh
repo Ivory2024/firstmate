@@ -39,6 +39,13 @@ if ! grep -q '"reason":"sensitive_path"' "$TMP_ROOT/bash-cwd.json"; then
   fail "sensitive basenames in a Bash cd chain were not blocked"
 fi
 
+UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<'JSON' > "$TMP_ROOT/result-path.json"
+{"tool_response":{"content":"Read from /workspace/state/private.txt: clean fixture data"}}
+JSON
+if ! grep -q '"reason":"sensitive_path"' "$TMP_ROOT/result-path.json"; then
+  fail "sensitive source path in the post-execution result was not blocked"
+fi
+
 UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<'JSON' > "$TMP_ROOT/prose.json"
 {"content":"The state and config contain health settings."}
 JSON
