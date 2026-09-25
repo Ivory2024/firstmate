@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path, PurePosixPath
@@ -29,6 +30,13 @@ SENSITIVE_PATHS = (
 SENSITIVE_BASENAMES = frozenset(
     part for target in SENSITIVE_PATHS for part in target if "." in part
 ) | {"record.json"}
+HEALTH_DATA = re.compile(
+    r"\b(?:diagnos(?:ed|is)|symptoms?|medical history|health condition|"
+    r"patient|prescri(?:bed|ption)|medication|insulin|diabetes|asthma|cancer|"
+    r"epilepsy|hiv|pregnan(?:t|cy)|hypertension|depression|anxiety|bipolar|"
+    r"arthritis|migraine|allerg(?:y|ies)|fever|nausea|chest pain|shortness of breath)\b",
+    re.IGNORECASE,
+)
 
 
 def _path_parts(candidate: str) -> tuple[str, ...]:
@@ -55,15 +63,14 @@ def _is_sensitive_basename(candidate: str) -> bool:
 
 
 def _bash_command_has_sensitive_path(command: JsonValue) -> bool:
-    # Residual: `cd dir && cat relative-file` can evade this direct path check.
     match command:
         case str() as text:
             tokens = text.replace(">", " ").replace("<", " ").split()
-            for index, token in enumerate(tokens):
+            if any(token.strip("\"'`;,()") in {"cd", "pushd", "popd"} for token in tokens):
+                return True
+            for token in tokens:
                 candidate = token.rsplit("=", 1)[-1]
                 if candidate.startswith("-") and "/" not in candidate and "\\" not in candidate:
-                    continue
-                if candidate.casefold() in {"state", "config"} and index > 0 and tokens[index - 1] == "cd":
                     continue
                 if "/" in candidate or "\\" in candidate:
                     if _is_sensitive_path(candidate):
@@ -73,6 +80,18 @@ def _bash_command_has_sensitive_path(command: JsonValue) -> bool:
         case _:
             return False
     return False
+
+
+def _contains_health_data(value: JsonValue) -> bool:
+    match value:
+        case dict() as mapping:
+            return any(_contains_health_data(item) for item in mapping.values())
+        case list() as items:
+            return any(_contains_health_data(item) for item in items)
+        case str() as text:
+            return HEALTH_DATA.search(text) is not None
+        case _:
+            return False
 
 
 def _contains_sensitive_path(
@@ -143,6 +162,8 @@ def check(raw: str, root: Path) -> dict[str, str | bool]:
         return {"allowed": False, "reason": "invalid_payload"}
     if _contains_sensitive_path(value):
         return {"allowed": False, "reason": "sensitive_path"}
+    if _contains_health_data(value):
+        return {"allowed": False, "reason": "health_data"}
     payload = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     try:
         if _has_detected_secret(payload, root / ".claude" / "jev-safety" / ".tmp"):

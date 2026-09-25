@@ -12,10 +12,12 @@ fresh clone with `git submodule update --init .claude/upstreams/jev-mcp`; the
 launcher exits with this instruction if its built entrypoint is missing.
 
 The hooks scan each attempted Jev request body with Yelp
-detect-secrets and reject sensitive path references. A rejected or unavailable
+detect-secrets, reject sensitive path references, and block common health terms
+and medical-context phrases. Health matching is best-effort and is not a
+complete detector for free-text health information. A rejected or unavailable
 gate falls back to the tool's default behavior. The blocked fixture tests use a
-synthetic GitHub-key-shaped string and clean text with `data/captain.md` as its
-path, independently.
+synthetic GitHub-key-shaped string, clean text with `data/captain.md` as its
+path, and synthetic health text independently.
 
 The project plugin and MCP server remain disabled until the complete
 pre-activation gate passes. The canonical 25-fixture comparison was not found,
