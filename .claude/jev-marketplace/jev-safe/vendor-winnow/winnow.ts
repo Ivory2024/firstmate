@@ -86,6 +86,15 @@ async function whereami($: EngineInterface): Promise<{ session_id: string; cwd: 
   return { session_id, cwd }
 }
 
+async function liveTask($: EngineInterface): Promise<Task | undefined> {
+  const messages = await $.session.messages().catch(() => [])
+  const lastText = (role: string) =>
+    [...messages].reverse().find((message) => message.role === role && message.text.trim())?.text.trim() ?? ''
+  const user_request = lastText('user')
+  const assistant_intent = lastText('assistant')
+  return user_request && assistant_intent ? { user_request, assistant_intent } : undefined
+}
+
 export const register: Register = (on) => {
   const base = `http://127.0.0.1:${PORT}`
 
@@ -97,6 +106,8 @@ export const register: Register = (on) => {
 
       const { tool: toolName, tool_use_id, agentId, ...input } = e as ToolCallEvent
       const where = await whereami($)
+      const task = await liveTask($)
+      if (!task) return answer
       const res = await post($, `${base}/hook/post-tool-use`, {
         hook_event_name: 'PostToolUse',
         source: 'function-hook',
@@ -106,7 +117,7 @@ export const register: Register = (on) => {
         tool_input: input,
         tool_response: answer.result,
         tool_use_id,
-        task: { user_request: '', assistant_intent: '' },
+        task,
       })
       if (typeof res?.output?.systemMessage === 'string') $.ui.toast(res.output.systemMessage)
       const updated = res?.output?.hookSpecificOutput?.updatedToolOutput

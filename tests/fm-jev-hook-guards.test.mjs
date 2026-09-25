@@ -86,7 +86,12 @@ test('winnow preserves the original result when the safety gate blocks its path'
       return { status: 200, ok: true, text: '{"allowed":false,"reason":"sensitive_path"}' };
     } },
     session: {
-      async messages() { return []; },
+      async messages() {
+        return [
+          { role: 'user', text: 'Find the captain preferences.' },
+          { role: 'assistant', text: 'I will read the requested file.' },
+        ];
+      },
       async id() { return 'synthetic'; },
       async cwd() { return '/synthetic'; },
     },
@@ -95,6 +100,38 @@ test('winnow preserves the original result when the safety gate blocks its path'
   assert.equal(returned, answer);
   assert.equal(requests.length, 1);
   assert.match(requests[0], /127\.0\.0\.1:48752\/check$/);
+});
+
+test('winnow sends live user and assistant context after the safety gate allows it', async () => {
+  const entry = hooks().find(([event, filter]) => event === 'tool.call' && filter?.tool === 'Read');
+  const handler = entry.at(-1);
+  const answer = { result: { content: 'result block.\n'.repeat(200) } };
+  const requests = [];
+  const messages = [
+    { role: 'user', text: 'Find the relevant runtime setting.' },
+    { role: 'assistant', text: 'I will inspect the configuration docs.' },
+  ];
+  await handler({
+    http: { async fetch(url, init) {
+      requests.push({ url, body: init?.body });
+      return url.endsWith('/check')
+        ? { status: 200, ok: true, text: '{"allowed":true}' }
+        : { status: 200, ok: true, text: '{"hookSpecificOutput":{}}', headers: {} };
+    } },
+    session: {
+      async messages() { return messages; },
+      async id() { return 'synthetic'; },
+      async cwd() { return '/synthetic'; },
+    },
+    ui: ui(),
+  }, { tool: 'Read', tool_use_id: 'fixture', file_path: 'docs/configuration.md' }, async () => answer);
+  assert.equal(requests.length, 2);
+  assert.match(requests[0].url, /127\.0\.0\.1:48752\/check$/);
+  assert.match(requests[1].url, /127\.0\.0\.1:47311\/hook\/post-tool-use$/);
+  assert.deepEqual(JSON.parse(requests[1].body).task, {
+    user_request: 'Find the relevant runtime setting.',
+    assistant_intent: 'I will inspect the configuration docs.',
+  });
 });
 
 test('winnow does not register prompt submission transmission', () => {
