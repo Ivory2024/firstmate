@@ -13,21 +13,23 @@ checkouts. Initialize them in a fresh clone with
 each launcher prints its recovery instruction when its required files are
 missing.
 
-The hooks scan each attempted Jev request body with Yelp
-detect-secrets, reject sensitive path references, and block common health terms
-and medical-context phrases. Health matching is best-effort and is not a
-complete detector for free-text health information. A rejected or unavailable
-gate falls back to the tool's default behavior. The blocked fixture tests use a
-synthetic GitHub-key-shaped string, clean text with `data/captain.md` as its
-path, and synthetic health text independently.
+Before an attempted Jev request, the local gate runs Yelp detect-secrets on the
+request body and rejects references to configured sensitive paths, including
+`.env`, `state/`, `config/`, captain data, and health and finance pipeline
+paths. It also rejects ordinary health-related terms and medical-context
+phrases in the request body. That content filter is best-effort and is not a
+complete detector for free-text health information. Rejected or unavailable
+checks use each tool's fallback behavior. The focused tests independently cover
+a synthetic GitHub-key-shaped string, clean text naming `data/captain.md`, and
+synthetic health text.
 
 Each Jev caller runs the shared scanner as a local child process before sending
 the request body. No local HTTP listener receives payloads, so a port collision
 cannot impersonate the safety gate.
 
-The captain accepted the sanitized substitute sample below for the unavailable
-canonical 25-fixture comparison and quota check. With the focused safety and
-default-behavior tests passing, the project plugin and MCP server are enabled.
+The canonical 25-fixture comparison and quota check were unavailable, so the
+sample below is not a substitute for that validation. The project plugin and
+MCP server are enabled following the focused safety and default-behavior tests.
 Remaining account quota was not exposed by the tools.
 
 ## Pinned upstream revisions

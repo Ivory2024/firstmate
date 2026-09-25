@@ -373,6 +373,10 @@
       "audience": "maintainer-architecture"
     },
     {
+      "path": "docs/jev-tools-adoption.md",
+      "audience": "operator-current"
+    },
+    {
       "path": "docs/extension-bindings.md",
       "audience": "maintainer-architecture"
     },
