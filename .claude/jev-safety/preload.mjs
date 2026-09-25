@@ -1,6 +1,11 @@
 import { request } from 'node:http';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const originalFetch = globalThis.fetch.bind(globalThis);
+const safetyRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 function gate(payload) {
   return new Promise((resolve, reject) => {
@@ -24,10 +29,12 @@ function gate(payload) {
   });
 }
 
-function verifyService() {
+async function verifyService() {
+  const key = (await readFile(resolve(safetyRoot, '.claude/jev-safety/.gate-key'), 'utf8')).trim();
+  const nonce = randomBytes(32).toString('hex');
   return new Promise((resolve) => {
     const req = request(
-      { hostname: '127.0.0.1', port: 48752, path: '/health', method: 'GET' },
+      { hostname: '127.0.0.1', port: 48752, path: `/health?nonce=${nonce}`, method: 'GET' },
       (res) => {
         let raw = '';
         res.setEncoding('utf8');
@@ -35,7 +42,13 @@ function verifyService() {
         res.on('end', () => {
           try {
             const identity = JSON.parse(raw);
-            resolve(res.statusCode === 200 && identity.service === 'firstmate-jev-safety' && identity.protocol === 1);
+            if (res.statusCode !== 200 || identity.nonce !== nonce || !/^[a-f0-9]{64}$/.test(identity.proof)) {
+              resolve(false);
+              return;
+            }
+            const actual = Buffer.from(identity.proof, 'hex');
+            const expected = createHmac('sha256', key).update(nonce).digest();
+            resolve(timingSafeEqual(actual, expected));
           } catch { resolve(false); }
         });
       },

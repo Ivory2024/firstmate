@@ -8,6 +8,9 @@
  * the live session, and the sidecar's rewrite comes back as the tool's result.
  */
 import type { EngineInterface, Register } from 'claude-code'
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
 /** The sidecar's port. Keep it equal to WINNOW_PORT. */
 export const PORT = 47311
@@ -38,12 +41,15 @@ async function post(
   $: EngineInterface,
   url: string,
   payload: unknown,
+  root: string,
 ): Promise<{ output: HookOutput | undefined; meta: Meta | undefined } | undefined> {
   let res
   try {
-    const health = await $.http.fetch('http://127.0.0.1:48752/health')
+    const key = (await readFile(join(root, '.claude/jev-safety/.gate-key'), 'utf8')).trim()
+    const nonce = randomBytes(32).toString('hex')
+    const health = await $.http.fetch(`http://127.0.0.1:48752/health?nonce=${nonce}`)
     const identity: unknown = JSON.parse(health.text)
-    if (!health.ok || !isSafetyServiceIdentity(identity)) {
+    if (!health.ok || !isSafetyServiceProof(identity, nonce, key)) {
       $.ui.log('winnow: safety gate identity could not be verified; preserving original output', { to: 'debug' })
       return undefined
     }
@@ -87,10 +93,13 @@ async function post(
   }
 }
 
-function isSafetyServiceIdentity(value: unknown): boolean {
-  return value !== null && typeof value === 'object' &&
-    'service' in value && value.service === 'firstmate-jev-safety' &&
-    'protocol' in value && value.protocol === 1
+function isSafetyServiceProof(value: unknown, nonce: string, key: string): boolean {
+  if (value === null || typeof value !== 'object' || !('nonce' in value) ||
+      value.nonce !== nonce || !('proof' in value) || typeof value.proof !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(value.proof)) return false
+  const actual = Buffer.from(value.proof, 'hex')
+  const expected = createHmac('sha256', key).update(nonce).digest()
+  return timingSafeEqual(actual, expected)
 }
 
 async function whereami($: EngineInterface): Promise<{ session_id: string; cwd: string }> {
@@ -130,7 +139,7 @@ export const register: Register = (on) => {
         tool_response: answer.result,
         tool_use_id,
         task,
-      })
+      }, where.cwd)
       if (typeof res?.output?.systemMessage === 'string') $.ui.toast(res.output.systemMessage)
       const updated = res?.output?.hookSpecificOutput?.updatedToolOutput
       if (updated === undefined) return answer

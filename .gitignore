@@ -17,6 +17,7 @@ config/
 .claude/jev-safety/.venv/
 .claude/jev-safety/.uv-cache/
 .claude/jev-safety/.tmp/
+.claude/jev-safety/.gate-key
 .claude/jev-safety/winnow-home/
 .claude/upstreams/*/node_modules/
 .claude/upstreams/winnow/sidecar/.venv/

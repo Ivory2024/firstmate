@@ -65,9 +65,41 @@ def _is_sensitive_basename(candidate: str) -> bool:
 def _bash_command_has_sensitive_path(command: JsonValue) -> bool:
     match command:
         case str() as text:
-            tokens = text.replace(">", " ").replace("<", " ").split()
-            if any(token.strip("\"'`;,()") in {"cd", "pushd", "popd"} for token in tokens):
-                return True
+            tokens = (
+                text.replace(">", " ")
+                .replace("<", " ")
+                .replace("&&", " && ")
+                .replace("||", " || ")
+                .replace(";", " ; ")
+                .replace("|", " | ")
+                .split()
+            )
+            separators = {"&&", "||", ";", "|", "&"}
+            for index, token in enumerate(tokens):
+                command_name = token.strip("\"'`;,()")
+                if command_name not in {"cd", "pushd", "popd"}:
+                    continue
+                if index and tokens[index - 1] not in separators:
+                    continue
+                if command_name == "popd":
+                    return True
+                target_index = index + 1
+                while target_index < len(tokens) and tokens[target_index] in {"-L", "-P", "--"}:
+                    target_index += 1
+                if target_index >= len(tokens) or tokens[target_index] in separators:
+                    return True
+                target = tokens[target_index].strip("\"'`")
+                if (
+                    any(char in target for char in "$`*?[()")
+                    or "~" in target
+                    or target == "-"
+                    or ".." in PurePosixPath(target.replace("\\", "/")).parts
+                ):
+                    return True
+                if command_name == "pushd" and target[:1] in {"+", "-"}:
+                    return True
+                if _is_sensitive_path(target):
+                    return True
             for token in tokens:
                 candidate = token.rsplit("=", 1)[-1]
                 if candidate.startswith("-") and "/" not in candidate and "\\" not in candidate:

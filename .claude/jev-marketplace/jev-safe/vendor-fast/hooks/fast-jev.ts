@@ -7,6 +7,7 @@ import type {
   ToolUseSummary,
   TurnCompleteInput,
 } from 'claude-code';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -103,11 +104,13 @@ export function jevAsker(fetchFn: HookFetch, apiKey: string, model: string): Jev
   };
 }
 
-async function safetyAllows(fetchFn: HookFetch, body: string): Promise<boolean> {
+async function safetyAllows(fetchFn: HookFetch, body: string, root: string): Promise<boolean> {
   try {
-    const health = await fetchFn('http://127.0.0.1:48752/health');
+    const key = (await readFile(join(root, '.claude/jev-safety/.gate-key'), 'utf8')).trim();
+    const nonce = randomBytes(32).toString('hex');
+    const health = await fetchFn(`http://127.0.0.1:48752/health?nonce=${nonce}`);
     const identity: unknown = JSON.parse(health.text);
-    if (!health.ok || !isSafetyServiceIdentity(identity)) return false;
+    if (!health.ok || !isSafetyServiceProof(identity, nonce, key)) return false;
     const result = await fetchFn('http://127.0.0.1:48752/check', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -119,10 +122,13 @@ async function safetyAllows(fetchFn: HookFetch, body: string): Promise<boolean> 
   }
 }
 
-function isSafetyServiceIdentity(value: unknown): boolean {
-  return value !== null && typeof value === 'object' &&
-    'service' in value && value.service === 'firstmate-jev-safety' &&
-    'protocol' in value && value.protocol === 1;
+function isSafetyServiceProof(value: unknown, nonce: string, key: string): boolean {
+  if (value === null || typeof value !== 'object' || !('nonce' in value) ||
+      value.nonce !== nonce || !('proof' in value) || typeof value.proof !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(value.proof)) return false;
+  const actual = Buffer.from(value.proof, 'hex');
+  const expected = createHmac('sha256', key).update(nonce).digest();
+  return timingSafeEqual(actual, expected);
 }
 
 function toolUseSummary(tool: ToolUse): ToolUseSummary {
@@ -305,7 +311,7 @@ export const register: Register = (on: On, options: PluginOptions) => {
         if (!(await safetyAllows(async (gateUrl, gateInit) => {
           const gateResponse = await $.http.fetch(gateUrl, gateInit);
           return { status: gateResponse.status, ok: gateResponse.ok, text: gateResponse.text };
-        }, init?.body ?? ''))) {
+        }, init?.body ?? '', await $.session.cwd()))) {
           throw new Error('Jev safety gate blocked or unavailable; using built-in summary');
         }
         const response = await $.http.fetch(url, init);
