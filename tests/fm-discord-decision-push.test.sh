@@ -24,7 +24,10 @@ exec "$FM_TEST_REAL_NODE" --input-type=module -e '
   const messages = JSON.parse(process.env.FM_DISCORD_FAKE_MESSAGES || "[]");
   const log = process.env.FM_DISCORD_FAKE_POST_LOG;
   globalThis.fetch = async (url, options = {}) => {
-    if (url === "https://discord.com/api/v10/users/@me") return Response.json({ id: "9000000000000000001" });
+    if (url === "https://discord.com/api/v10/users/@me") {
+      if (process.env.FM_DISCORD_FAKE_PROFILE_STATUS) return new Response("failed", { status: Number(process.env.FM_DISCORD_FAKE_PROFILE_STATUS) });
+      return Response.json({ id: "9000000000000000001" });
+    }
     if (url.includes("/messages") && options.method === "POST") {
       const payload = JSON.parse(options.body);
       if (log) await import("node:fs/promises").then(({ appendFile }) => appendFile(log, JSON.stringify({ url, payload }) + "\n"));
@@ -103,6 +106,33 @@ test_failed_notification_retries_from_durable_outbox() {
   assert_equals "sent" "$state" "retry completes the retained notification"
   assert_equals "2" "$(wc -l < "$log" | tr -d ' ')" "one initial failed POST and one retry POST"
   pass "failed decision notifications retry after their source cursor advances"
+}
+
+test_profile_failure_keeps_retryable_intent() {
+  local home record log
+  home="$TMP_ROOT/profile-failure"
+  mkdir -p "$home/state/x-context"
+  chmod 700 "$home/state" "$home/state/x-context"
+  make_fake_node "$home"
+  log="$home/posts.jsonl"
+  if FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_PROFILE_STATUS=503 \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify.sh" ask-user task-profile nm-run43-review \
+      "A decision is needed" "Approve|Decline" >/dev/null 2>&1; then
+    fail "a rejected profile lookup reported success"
+  fi
+  record=$(find "$home/state/x-context" -maxdepth 1 -name 'discord-notify-*.json' -print -quit)
+  assert_present "$record" "profile failure leaves a durable notification intent"
+  assert_equals "pending" "$(jq -r '.state' "$record")" "profile failure leaves intent retryable"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" FM_DISCORD_FAKE_MESSAGES='[]' \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify.sh" --retry-pending >/dev/null \
+    || fail "profile-failed notification was not retried"
+  assert_equals "sent" "$(jq -r '.state' "$record")" "profile-failed intent reaches sent state"
+  assert_equals "1" "$(wc -l < "$log" | tr -d ' ')" "retry posts exactly once"
+  pass "profile lookup failure preserves and retries the notification intent"
 }
 
 test_stale_sending_notification_recovers_without_duplicate_post() {
@@ -272,6 +302,7 @@ test_pr_push_requires_yolo_off() {
 test_no_token_is_inert
 test_notify_records_reply_binding
 test_failed_notification_retries_from_durable_outbox
+test_profile_failure_keeps_retryable_intent
 test_stale_sending_notification_recovers_without_duplicate_post
 test_captain_hold_triggers_push
 test_reply_to_notification_enters_existing_inbox

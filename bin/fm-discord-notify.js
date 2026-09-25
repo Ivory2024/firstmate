@@ -19,6 +19,12 @@ function saveRecord(path, record) {
 	renameSync(temporary, path);
 }
 
+async function getBotId() {
+	const response = await fetch("https://discord.com/api/v10/users/@me", { headers: apiHeaders, signal: AbortSignal.timeout(10000) });
+	if (!response.ok) throw new Error(`Discord profile returned HTTP ${response.status}`);
+	return (await response.json()).id;
+}
+
 async function priorMessage(record, botId) {
 	let before = "";
 	const since = Number(record.recorded_at) * 1000;
@@ -83,7 +89,7 @@ async function main() {
 			const path = join(contextDir, name);
 			try {
 				const record = JSON.parse(readFileSync(path, "utf8"));
-				if (record.schema !== "fm-discord-decision-notification.v1" || !["failed", "sending"].includes(record.state)) continue;
+				if (record.schema !== "fm-discord-decision-notification.v1" || !["pending", "failed", "sending"].includes(record.state)) continue;
 				if (!record.nonce || !record.channel_id || !Array.isArray(record.options)) continue;
 				if (record.state === "sending" && Date.now() - Number(record.attempted_at || record.recorded_at) * 1000 < staleSendingMs) continue;
 				pending.push([path, record]);
@@ -93,9 +99,7 @@ async function main() {
 			}
 		}
 		if (pending.length === 0) return;
-		const meResponse = await fetch("https://discord.com/api/v10/users/@me", { headers: apiHeaders });
-		if (!meResponse.ok) throw new Error(`Discord profile returned HTTP ${meResponse.status}`);
-		const botId = (await meResponse.json()).id;
+		const botId = await getBotId();
 		for (const [path, record] of pending) {
 			try {
 				await sendRecord(path, record, botId, true);
@@ -111,35 +115,34 @@ async function main() {
 		process.exitCode = 2;
 		return;
 	}
-	const meResponse = await fetch("https://discord.com/api/v10/users/@me", { headers: apiHeaders });
-	if (!meResponse.ok) throw new Error(`Discord profile returned HTTP ${meResponse.status}`);
-	const botId = (await meResponse.json()).id;
 	if (!existsSync(contextDir)) mkdirSync(contextDir, { recursive: true, mode: 0o700 });
 	const eventId = `${trigger}\0${taskId}\0${key}`;
 	const digest = createHash("sha256").update(eventId).digest("hex");
 	const recordPath = join(contextDir, `discord-notify-${digest}.json`);
 	const nonce = digest.slice(0, 25);
 	if (existsSync(recordPath)) {
+		let prior;
 		try {
-			const prior = JSON.parse(readFileSync(recordPath, "utf8"));
-			if (prior.state === "sent" || prior.state === "sending" && Date.now() - Number(prior.attempted_at || prior.recorded_at) * 1000 < staleSendingMs) {
-				console.log(key);
-				return;
-			}
-			await sendRecord(recordPath, prior, botId, true);
-			console.log(key);
-			return;
+			prior = JSON.parse(readFileSync(recordPath, "utf8"));
 		} catch {
 			console.error("fm-discord-notify: existing notification record is unreadable");
 			process.exitCode = 1;
 			return;
 		}
+		if (prior.state === "sent" || prior.state === "sending" && Date.now() - Number(prior.attempted_at || prior.recorded_at) * 1000 < staleSendingMs) {
+			console.log(key);
+			return;
+		}
+		const botId = await getBotId();
+		await sendRecord(recordPath, prior, botId, true);
+		console.log(key);
+		return;
 	}
 
 	const initialRecord = {
 		schema: "fm-discord-decision-notification.v1",
 		kind: "decision-notification",
-		state: "sending",
+		state: "pending",
 		event_id: digest,
 		trigger,
 		task_id: taskId,
@@ -161,13 +164,9 @@ async function main() {
 		throw error;
 	}
 
-	try {
-		await sendRecord(recordPath, initialRecord, botId, false);
-		console.log(key);
-	} catch (error) {
-		console.error(`fm-discord-notify: ${error instanceof Error ? error.message : "Discord send failed"}`);
-		process.exitCode = 1;
-	}
+	const botId = await getBotId();
+	await sendRecord(recordPath, initialRecord, botId, false);
+	console.log(key);
 }
 
 main().catch((error) => {
