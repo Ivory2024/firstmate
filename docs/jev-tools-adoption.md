@@ -27,10 +27,10 @@ Each Jev caller runs the shared scanner as a local child process before sending
 the request body. No local HTTP listener receives payloads, so a port collision
 cannot impersonate the safety gate.
 
-The canonical 25-fixture comparison and quota check were unavailable, so the
-sample below is not a substitute for that validation. The project plugin and
-MCP server are enabled following the focused safety and default-behavior tests.
-Remaining account quota was not exposed by the tools.
+The project plugin and MCP server are enabled following the focused safety and
+default-behavior tests. The canonical 25-fixture set and remaining account
+quota were unavailable; quota consumption for the synthetic sample is reported
+below, but remaining quota was not exposed by the tools.
 
 ## Pinned upstream revisions
 
@@ -44,12 +44,14 @@ The plugin's vendored hook sources come from the first and third revisions
 above; they add the local safety gate at the HTTP boundary. The full upstream
 checkouts remain in `.claude/upstreams/` for provenance and updates.
 
-## Synthetic validation sample
+## Authorized synthetic validation sample
 
 The canonical 25-fixture set referenced by the IMAC HANDOFF was not found in
-the repository or its `projects/IMAC` tree. These incomplete sample checks used only
-synthetic text; no secret or personal information was included in an allowed
-request. One request was measured for each tool:
+the repository or its `projects/IMAC` tree. Under the task decision, these
+synthetic checks are the authorized substitute for this task, but they do not
+claim a canonical fixture comparison. They used only synthetic text; no secret
+or personal information was included in an allowed request. One request was
+measured for each tool:
 
 | Tool | Jev latency | Billable input tokens | Output tokens | Estimated input cost | Outcome |
 |---|---:|---:|---:|---:|---|
