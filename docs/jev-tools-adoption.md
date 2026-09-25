@@ -17,10 +17,11 @@ gate falls back to the tool's default behavior. The blocked fixture tests use a
 synthetic GitHub-key-shaped string and clean text with `data/captain.md` as its
 path, independently.
 
-The project plugin and MCP server are enabled after the secret-scan and
-sensitive-path guards passed their focused tests. The canonical 25-fixture
-comparison and remaining quota measurement are still outstanding; the existing
-sample measurements below do not establish those metrics.
+The project plugin and MCP server remain disabled until the complete
+pre-activation gate passes. The canonical 25-fixture comparison was not found,
+and remaining account quota is unavailable; the synthetic measurements below
+do not establish those requirements. The focused safety checks do not replace
+the full pre-activation gate.
 
 ## Pinned upstream revisions
 
