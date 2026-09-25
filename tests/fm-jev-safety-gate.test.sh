@@ -59,6 +59,26 @@ if ! assert_verdict "$TMP_ROOT/bash-cwd.json" sensitive_path; then
   fail "sensitive Bash path and redirection target were not blocked"
 fi
 
+for path in data/captain.md .env state/private.txt config/private.txt pipelines/health/patient.txt; do
+  python3 - "$path" > "$TMP_ROOT/bash-embedded.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+command = f"python -c 'print(open({json.dumps(path)}).read())'"
+print(json.dumps({
+    "tool_name": "Bash",
+    "tool_input": {"command": command},
+    "tool_response": "plain non-secret fixture text",
+}))
+PY
+  UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" \
+    < "$TMP_ROOT/bash-embedded.json" > "$TMP_ROOT/bash-embedded-verdict.json"
+  if ! assert_verdict "$TMP_ROOT/bash-embedded-verdict.json" sensitive_path; then
+    fail "embedded Bash read of $path was not blocked"
+  fi
+done
+
 for directory in state config; do
   UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<JSON > "$TMP_ROOT/bash-$directory.json"
 {"tool_name":"Bash","tool_input":{"command":"ls $directory"},"tool_response":"plain non-secret fixture text"}
@@ -123,5 +143,13 @@ if ! assert_verdict "$TMP_ROOT/health.json" health_data; then
   fail "common health data was not blocked independently of secret scanning"
 fi
 
-pass "jev outbound gate blocks secrets, private paths, and health text"
+if CLAUDE_PROJECT_DIR="$TMP_ROOT/uninitialized" bash "$ROOT/bin/fm-jev-sessionstart.sh" \
+  > "$TMP_ROOT/sessionstart-missing-winnow.txt" 2>&1; then
+  fail "session start accepted a missing Winnow submodule"
+fi
+if ! grep -Fq 'git submodule update --init .claude/upstreams/winnow' \
+  "$TMP_ROOT/sessionstart-missing-winnow.txt"; then
+  fail "session start did not explain how to initialize Winnow"
+fi
 node --experimental-strip-types --test "$ROOT/tests/fm-jev-hook-guards.test.mjs"
+pass "jev outbound gate blocks secrets, private paths, and health text"

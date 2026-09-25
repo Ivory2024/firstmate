@@ -30,6 +30,19 @@ SENSITIVE_PATHS = (
 SENSITIVE_BASENAMES = frozenset(
     part for target in SENSITIVE_PATHS for part in target if "." in part
 ) | {"record.json"}
+SENSITIVE_PATH_FRAGMENTS = tuple(
+    sorted(
+        SENSITIVE_BASENAMES
+        | {target[0] for target in SENSITIVE_PATHS if len(target) == 1}
+        | {"/".join(target) for target in SENSITIVE_PATHS if len(target) > 1},
+        key=len,
+        reverse=True,
+    )
+)
+SENSITIVE_PATH_PATTERN = re.compile(
+    rf"(?<![\w-])(?:{'|'.join(re.escape(fragment) for fragment in SENSITIVE_PATH_FRAGMENTS)})(?![\w-])",
+    re.IGNORECASE,
+)
 HEALTH_DATA = re.compile(
     r"\b(?:diagnos(?:ed|is)|symptoms?|medical history|health condition|"
     r"patient|prescri(?:bed|ption)|medication|insulin|diabetes|asthma|cancer|"
@@ -48,13 +61,11 @@ def _path_parts(candidate: str) -> tuple[str, ...]:
 
 def _is_sensitive_path(candidate: str) -> bool:
     parts = _path_parts(candidate)
-    if any(part in SENSITIVE_BASENAMES for part in parts):
-        return True
-    for target in SENSITIVE_PATHS:
-        width = len(target)
-        if any(parts[index : index + width] == target for index in range(len(parts) - width + 1)):
-            return True
-    return any(part.endswith(".env") for part in parts)
+    normalized = candidate.casefold().replace("\\", "/")
+    return (
+        any(part.endswith(".env") for part in parts)
+        or SENSITIVE_PATH_PATTERN.search(normalized) is not None
+    )
 
 
 def _is_sensitive_basename(candidate: str) -> bool:
