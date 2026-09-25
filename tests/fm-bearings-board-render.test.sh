@@ -73,6 +73,23 @@ render_board() {  # <home> <underway-json> <charted-json> [charted_more] [charte
     || fail "the built board could not be rendered"
 }
 
+# Like render_board, but also carries captains_call (so the Unanswered
+# Questions table has real rows) and an optional metrics object.
+render_full() {  # <home> <captains_call-json> <underway-json> <metrics-json>
+  local home=$1 captains_call=$2 underway=$3 metrics=$4 data="$1/payload.json"
+  jq -n --argjson captains_call "$captains_call" --argjson underway "$underway" \
+    --argjson metrics "$metrics" '{
+    schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-26T00:00Z",
+    prs_live:false, captains_call:$captains_call, underway:$underway, landed:[],
+    charted:[], metrics:$metrics}' > "$data"
+  PATH="$home/fakebin:$PATH" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    "$BOARD" build "$data" >/dev/null || fail "the board did not build"
+  node "$HARNESS" "$home/.lavish/bearings-board.html" \
+    || fail "the built board could not be rendered"
+}
+
 # Build the board from <charted-json> alone and return what the renderer produced.
 render() {  # <home> <charted-json> [charted_more] [charted_warning_more]
   render_board "$1" '[]' "$2" "${3:-0}" "${4:-0}"
@@ -228,6 +245,69 @@ test_charted_rows_without_a_filed_date_follow_the_dated_rows_in_payload_order() 
   pass "charted rows with no filed date follow the dated rows in payload order"
 }
 
+test_present_metrics_render_real_values_and_absent_ones_say_no_data() {
+  local home out
+  home=$(make_home metrics-mixed)
+  out=$(render_full "$home" '[]' '[]' '{
+    "cost_cumulative": {"spent": 90.71, "cap": 300.0},
+    "cache_hit_rate": 72.5,
+    "tool_error_rate": {"errors": 3, "total": 120}
+  }')
+  printf '%s' "$out" | jq -e '
+    (.error == "")
+    and ([.statsCost[] | select(.label == "cumulative cost") | .value] == ["$90.71 / $300.00"])
+    and ([.statsCost[] | select(.label == "cumulative cost") | .noData] == [false])
+    and ([.statsCost[] | select(.label == "session cost") | .value] == ["no data"])
+    and ([.statsCost[] | select(.label == "session cost") | .noData] == [true])
+    and ([.statsCost[] | select(.label == "cache hit rate") | .value] == ["72.5%"])
+    and ([.statsCost[] | select(.label == "tool error rate") | .value] == ["3 / 120 (2.5%)"])
+    and ([.statsFleet[] | select(.label == "context read misses") | .value] == ["no data"])
+  ' >/dev/null || fail "present metrics did not render real values or absent ones were not honestly labeled: $out"
+  pass "present metrics render real values, and metrics with no data source say so instead of a fabricated number"
+}
+
+test_unanswered_questions_count_and_table_read_off_captains_call() {
+  local home out
+  home=$(make_home questions)
+  out=$(render_full "$home" '[
+    {"key":"decision-one","type":"decision","repo":"sample","title":"Adopt the new cache?",
+     "options":[{"value":"yes","label":"Adopt"}]},
+    {"key":"merge.sample-task","type":"merge","repo":"sample","title":"Merge: sample change",
+     "risk":"low","options":[{"value":"merge","label":"Merge now"}]}
+  ]' '[]' '{}')
+  printf '%s' "$out" | jq -e '
+    (.error == "")
+    and ([.statsFleet[] | select(.label == "unanswered questions") | .value] == ["2"])
+    and (.questions | length) == 2
+    and (.questions[0] == {id:"decision-one", question:"Adopt the new cache?", action:"ages to Charted Next"})
+    and (.questions[1] == {id:"merge.sample-task", question:"Merge: sample change", action:"PR stays unmerged"})
+  ' >/dev/null || fail "the unanswered-questions count or table did not read off captains_call: $out"
+  pass "the unanswered questions stat and table read off captains_call with no urgency column invented"
+}
+
+test_underway_and_charted_blocker_columns_render_real_or_honest_absence() {
+  local home out
+  home=$(make_home blocker-columns)
+  out=$(render_board "$home" '[
+    {"id":"blocked-task","repo":"sample","name":"Blocked task","state":"working","kind":"ship",
+     "doing":"implementing","blocker":"waiting on decision-one"},
+    {"id":"clear-task","repo":"sample","name":"Clear task","state":"working","kind":"ship",
+     "doing":"implementing"}
+  ]' '[
+    {"id":"gated","repo":"sample","title":"Gated work","reason":"blocked on blocked-task","dispatchable":true},
+    {"id":"free","repo":"sample","title":"Free work","reason":"","dispatchable":true}
+  ]')
+  printf '%s' "$out" | jq -e '
+    (.error == "")
+    and ([.underway[] | select(.title == "Blocked task") | .blocker] == ["waiting on decision-one"])
+    and ([.underway[] | select(.title == "Clear task") | .blocker] == [null])
+    and ([.charted[] | select(.title == "Gated work") | .blocker] == ["blocked on blocked-task"])
+    and ([.charted[] | select(.title == "Free work") | .blocker] == ["no blocker"])
+    and ([.charted[] | select(.title == "Free work") | .blockerNone] == [true])
+  ' >/dev/null || fail "the blocker column did not render real text or honest absence: $out"
+  pass "the blocker column shows real structured blocker text, and honestly labels no blocker rather than a placeholder"
+}
+
 test_an_underway_row_leads_with_the_task_name_and_keeps_its_run_status
 test_an_underway_identifier_label_is_not_replaced_by_run_status
 test_charted_next_reads_newest_filed_first
@@ -237,3 +317,6 @@ test_warnings_are_excluded_from_the_charted_next_count
 test_a_board_of_only_warnings_still_reports_nothing_queued
 test_omitted_warnings_never_count_as_more_queued
 test_an_omitted_kind_keeps_the_existing_queued_rendering
+test_present_metrics_render_real_values_and_absent_ones_say_no_data
+test_unanswered_questions_count_and_table_read_off_captains_call
+test_underway_and_charted_blocker_columns_render_real_or_honest_absence

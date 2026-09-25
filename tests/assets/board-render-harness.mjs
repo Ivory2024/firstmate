@@ -27,7 +27,15 @@ class Node {
     this.classList = {
       add: (c) => { this.className = (this.className + " " + c).trim(); },
       contains: (c) => this.className.split(/\s+/).includes(c),
+      toggle: (c, force) => {
+        const has = this.className.split(/\s+/).includes(c);
+        const want = force === undefined ? !has : Boolean(force);
+        if (want && !has) this.className = (this.className + " " + c).trim();
+        else if (!want && has) this.className = this.className.split(/\s+/).filter((x) => x !== c).join(" ");
+        return want;
+      },
     };
+    this.style = {};
   }
   get textContent() {
     return this.children.length
@@ -100,13 +108,24 @@ const rowsOf = (container) =>
     .filter((r) => r.className.split(/\s+/).includes("bb-row"))
     .map((row) => {
       const main = row.children.find((c) => c.className.includes("bb-row__main"));
+      const blockerEl = row.children.find((c) => c.className.includes("bb-row__blocker"));
       return {
         title: main?.children.find((c) => c.className.includes("bb-row__title"))?.textContent ?? "",
         sub: main?.children.find((c) => c.className.includes("bb-row__sub"))?.textContent ?? "",
         badges: badgesOf(row),
         pickable: row.children.some((c) => c.className.includes("bb-pick") && !c.className.includes("spacer")),
+        blocker: blockerEl ? blockerEl.textContent : null,
+        blockerNone: blockerEl ? blockerEl.className.includes("bb-row__blocker--none") : null,
       };
     });
+
+// A telemetry stat strip (bt-stats-*): one {label, value, noData} per card.
+const btStatsOf = (container) =>
+  container.children.map((t) => ({
+    label: t.children.find((c) => c.className.includes("bt-stat__label"))?.textContent ?? "",
+    value: t.children.find((c) => c.className.includes("bt-stat__val"))?.textContent ?? "",
+    noData: t.className.includes("bt-stat--nodata"),
+  }));
 
 const uw = byId.get("bb-underway") || new Node("div");
 const underway = rowsOf(uw);
@@ -122,5 +141,21 @@ const errorText = [...byId.entries()]
 const empty = ch.children.filter((c) => c.className.includes("bb-empty")).map((c) => c.textContent);
 const more = ch.children.filter((c) => c.className.includes("bb-morechip")).map((c) => c.textContent);
 
+const statsCost = btStatsOf(byId.get("bt-stats-cost") || new Node("div"));
+const statsFleet = btStatsOf(byId.get("bt-stats-fleet") || new Node("div"));
+const qContainer = byId.get("bb-questions") || new Node("div");
+const questionRows = qContainer.children
+  .filter((r) => r.className.split(/\s+/).includes("bb-row"))
+  .map((row) => ({
+    id: row.children.find((c) => c.className.includes("bb-row__q"))?.textContent ?? "",
+    question: row.children.find((c) => c.className.includes("bb-row__main"))
+      ?.children.find((c) => c.className.includes("bb-row__title"))?.textContent ?? "",
+    action: row.children.find((c) => c.className.includes("bb-row__action"))?.textContent ?? "",
+  }));
+const questionsEmpty = qContainer.children.filter((c) => c.className.includes("bb-empty")).map((c) => c.textContent);
+
 process.stdout.write(
-  JSON.stringify({ stats, underway, charted, empty, more, error: errorText }) + "\n");
+  JSON.stringify({
+    stats, underway, charted, empty, more, error: errorText,
+    statsCost, statsFleet, questions: questionRows, questionsEmpty,
+  }) + "\n");

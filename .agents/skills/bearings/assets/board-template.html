@@ -151,6 +151,24 @@ a { color: inherit; text-decoration: none; }
 .bb-stat--call .bb-stat__num { color: var(--rust-600); }
 .bb-stat__label { font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
 
+/* ---- telemetry strips (bt-*): a purpose-built second look for the
+   cost/cache/error and fleet-count metric rows, distinct from bb-stat's
+   Captain's-Call-flavored card so the two widget families read apart at a
+   glance - ocean accent instead of rust, mono numerals, a thin fill bar for
+   the two cap-bound metrics. Same tokens as the rest of the board. ---- */
+.bt-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.bt-stat {
+  display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; min-width: 0;
+  background: var(--ocean-050); border: 1px solid var(--ocean-200); border-radius: var(--radius-md);
+}
+.bt-stat--nodata { background: var(--surface-card-warm); border: 1px dashed var(--border-soft); }
+.bt-stat__val { font-family: var(--font-mono); font-size: var(--fs-h4); font-weight: 700; line-height: 1.15; color: var(--text-strong); }
+.bt-stat--nodata .bt-stat__val { color: var(--text-faint); font-weight: 600; font-size: var(--fs-sm); }
+.bt-stat__label { font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+.bt-stat__bar { height: 5px; border-radius: var(--radius-pill); background: var(--ocean-200); overflow: hidden; }
+.bt-stat__bar > span { display: block; height: 100%; background: var(--ocean-600); }
+.bt-stat__bar--over > span { background: var(--rust-600); }
+
 .bb-section { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .bb-section__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .bb-cols { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 22px; }
@@ -246,6 +264,14 @@ a { color: inherit; text-decoration: none; }
 .bb-row__sub { font-size: var(--fs-xs); color: var(--text-muted); line-height: 1.3; margin-top: 1px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bb-row__id { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-faint); white-space: nowrap; }
+.bb-row__blocker { flex: none; font-size: var(--fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--rust-600); background: var(--rust-050); border: 1px solid var(--rust-300); border-radius: var(--radius-xs);
+  padding: 3px 8px 2px; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.bb-row__blocker--none { color: var(--text-faint); background: transparent; border-color: var(--border-soft); font-weight: 600; }
+.bb-row__q { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-faint); white-space: nowrap; }
+.bb-row__action { flex: none; font-size: var(--fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--gold-600); background: var(--gold-100); border: 1px solid var(--gold-300); border-radius: var(--radius-xs);
+  padding: 3px 8px 2px; white-space: nowrap; }
 .bb-row__pr { font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 600; color: var(--ocean-600); white-space: nowrap; }
 .bb-row__pr:hover { text-decoration: underline; }
 .bb-row__check { width: 26px; height: 26px; border-radius: var(--radius-sm); display: grid; place-items: center; flex: none;
@@ -293,6 +319,9 @@ a { color: inherit; text-decoration: none; }
 </header>
 
 <main class="bb-main">
+
+  <div class="bt-stats" id="bt-stats-cost"></div>
+  <div class="bt-stats" id="bt-stats-fleet"></div>
 
   <div class="bb-stats" id="bb-stats"></div>
 
@@ -364,6 +393,16 @@ a { color: inherit; text-decoration: none; }
       <div class="fm-card"><div class="bb-rows" id="bb-landed"></div></div>
     </section>
   </div>
+
+  <section class="bb-section">
+    <div class="bb-section__head">
+      <span class="fm-sign fm-sign--eyebrow">
+        <svg class="fm-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+        Unanswered Questions
+      </span>
+    </div>
+    <div class="fm-card fm-card--warm"><div class="bb-rows" id="bb-questions"></div></div>
+  </section>
 
   <footer class="bb-foot">
     <span class="bb-meta-mono" id="bb-provenance">-</span>
@@ -456,6 +495,72 @@ __FM_BEARINGS_BOARD_DATA__
   var CHECK_SVG = '<svg class="fm-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
 
   document.getElementById("bb-provenance").textContent = data.schema + " · " + data.generated;
+
+  /* telemetry strips - honestly labeled "no data" when this fleet has no live
+     source for a metric, never a fabricated or always-zero number. */
+  var metrics = (data.metrics && typeof data.metrics === "object") ? data.metrics : {};
+  function money(n) { return "$" + Number(n).toFixed(2); }
+  function pct(n) { return Math.round(n * 10) / 10 + "%"; }
+  function btCard(container, label, valueText, noData, barFrac) {
+    var t = el("div", "bt-stat" + (noData ? " bt-stat--nodata" : ""));
+    t.appendChild(el("span", "bt-stat__val", valueText));
+    t.appendChild(el("span", "bt-stat__label", label));
+    if (!noData && typeof barFrac === "number") {
+      var bar = el("div", "bt-stat__bar" + (barFrac > 1 ? " bt-stat__bar--over" : ""));
+      var fill = document.createElement("span");
+      fill.style.width = Math.max(0, Math.min(1, barFrac)) * 100 + "%";
+      bar.appendChild(fill);
+      t.appendChild(bar);
+    }
+    container.appendChild(t);
+  }
+  var statsCost = document.getElementById("bt-stats-cost");
+  if (metrics.cost_cumulative) {
+    btCard(statsCost, "cumulative cost", money(metrics.cost_cumulative.spent) + " / " + money(metrics.cost_cumulative.cap),
+      false, metrics.cost_cumulative.spent / metrics.cost_cumulative.cap);
+  } else {
+    btCard(statsCost, "cumulative cost", "no data", true);
+  }
+  if (metrics.cost_session) {
+    btCard(statsCost, "session cost", money(metrics.cost_session.spent) + " / " + money(metrics.cost_session.cap),
+      false, metrics.cost_session.spent / metrics.cost_session.cap);
+  } else {
+    btCard(statsCost, "session cost", "no data", true);
+  }
+  if (typeof metrics.cache_hit_rate === "number") {
+    btCard(statsCost, "cache hit rate", pct(metrics.cache_hit_rate), false);
+  } else {
+    btCard(statsCost, "cache hit rate", "no data", true);
+  }
+  if (metrics.tool_error_rate) {
+    var terTotal = metrics.tool_error_rate.total;
+    var terPct = terTotal > 0 ? pct((metrics.tool_error_rate.errors / terTotal) * 100) : "0%";
+    btCard(statsCost, "tool error rate", metrics.tool_error_rate.errors + " / " + terTotal + " (" + terPct + ")", false);
+  } else {
+    btCard(statsCost, "tool error rate", "no data", true);
+  }
+
+  var statsFleet = document.getElementById("bt-stats-fleet");
+  if (typeof metrics.context_read_miss === "number") {
+    btCard(statsFleet, "context read misses", String(metrics.context_read_miss), false);
+  } else {
+    btCard(statsFleet, "context read misses", "no data", true);
+  }
+  if (metrics.auto_continue) {
+    btCard(statsFleet, "auto-continues", metrics.auto_continue.rejected + " reject / " + metrics.auto_continue.api_error + " api-error", false);
+  } else {
+    btCard(statsFleet, "auto-continues", "no data", true);
+  }
+  if (metrics.milestone_tasks) {
+    btCard(statsFleet, "tasks (" + metrics.milestone_tasks.label + ")",
+      metrics.milestone_tasks.done + " / " + metrics.milestone_tasks.total, false,
+      metrics.milestone_tasks.total > 0 ? metrics.milestone_tasks.done / metrics.milestone_tasks.total : 0);
+  } else {
+    btCard(statsFleet, "tasks (milestone)", "no data", true);
+  }
+  /* Always real: every Captain's Call item is an unanswered question by
+     definition, so this reads straight off captains_call - no metrics entry. */
+  btCard(statsFleet, "unanswered questions", String(data.captains_call.length), false);
 
   /* stat strip */
   var callTotal = data.captains_call.length;
@@ -636,6 +741,9 @@ __FM_BEARINGS_BOARD_DATA__
     main.appendChild(el("div", "bb-row__sub",
       t.doing + " · " + t.kind + " · " + (t.repo || t.id)));
     row.appendChild(main);
+    /* the blocker column: real structured text when the snapshot cross-
+       referenced one for this task id, otherwise nothing is fabricated */
+    if (t.blocker) row.appendChild(el("span", "bb-row__blocker", t.blocker));
     uw.appendChild(row);
   });
 
@@ -705,6 +813,12 @@ __FM_BEARINGS_BOARD_DATA__
     row.appendChild(main);
     if (isWarning(t)) row.appendChild(badge("danger", "needs repair"));
     else if (t.reason) row.appendChild(badge("warn", "waiting"));
+    /* the blocker column: the row's own structured reason field, labeled
+       distinctly from the badge above rather than only folded into the
+       subtitle */
+    row.appendChild(t.reason
+      ? el("span", "bb-row__blocker", t.reason)
+      : el("span", "bb-row__blocker bb-row__blocker--none", "no blocker"));
     ch.appendChild(row);
   });
   var chartedShown = chartedQueued(data.charted).length;
@@ -740,6 +854,27 @@ __FM_BEARINGS_BOARD_DATA__
       bar.classList.add("is-queued");
     });
   }
+
+  /* Unanswered Questions: every Captain's Call item is, by definition, a
+     question the captain has not answered yet. No urgency field exists in
+     this fleet's decision records, so that column is left out rather than
+     invented. The default action is this fleet's real, documented behavior
+     for an item left unanswered - not a per-item stored field, because none
+     exists - so it is a short fixed label per card type, not per-item prose. */
+  var DEFAULT_ACTION = { decision: "ages to Charted Next", merge: "PR stays unmerged", credential: "work stays blocked" };
+  var qs = document.getElementById("bb-questions");
+  if (!data.captains_call.length) {
+    qs.appendChild(el("div", "bb-empty", "Nothing needs your action right now."));
+  }
+  data.captains_call.forEach(function (item) {
+    var row = el("div", "bb-row");
+    row.appendChild(el("span", "bb-row__q", item.key));
+    var main = el("div", "bb-row__main");
+    main.appendChild(el("div", "bb-row__title", item.title));
+    row.appendChild(main);
+    row.appendChild(el("span", "bb-row__action", DEFAULT_ACTION[item.type] || "stays open"));
+    qs.appendChild(row);
+  });
   } catch (e) {
     renderBoardError("The board data could not be rendered");
   }
