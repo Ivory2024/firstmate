@@ -75,7 +75,7 @@ fm_agenttrail_main() {
     eligible=$(jq -c --argjson task "$(jq -c --arg id "$id" '.in_flight[] | select(.id == $id)' <<<"$snapshot")" \
       --arg id "$id" --arg worktree "$path" \
       '.in_flight += [$task] | .paths += [{id:$id,worktree:$worktree}]' <<<"$eligible")
-  done < <(jq -c '[.in_flight[] as $task | (($paths | map(select(.id == $task.id)) | first) // {}) as $path | $task + {worktree:($path.worktree // null)}][]' <<<"$snapshot")
+  done < <(jq -c '[.paths as $paths | .in_flight[] as $task | (($paths | map(select(.id == $task.id)) | first) // {}) as $path | $task + {worktree:($path.worktree // null)}][]' <<<"$snapshot")
 
   selection=$(fm_agenttrail_select_json "$eligible" 12)
 
