@@ -528,7 +528,8 @@ MODEL=$(printf '%s' "$SNAP" | jq \
               | {id:($m.id + "/" + .id),key,verb,
                  summary:hold_summary((.summary // .id);
                                       (.reason // "captain decision pending")),owner:$m.id,
-                 filed:([$m.queued[]? | select(.id == $decision.id) | .since][0] // null)}
+                 filed:(([$m.filed_references[]? | select(.id == $decision.id) | .since][0]
+                         // [$m.queued[]? | select(.id == $decision.id) | .since][0]) // null)}
                 + (if ($m.blocking_references | type) == "array"
                    then {blocking:any($m.blocking_references[]; .dependent_id != $decision.id and .blocked_id == $decision.id)}
                    else {} end) ]
@@ -541,7 +542,8 @@ MODEL=$(printf '%s' "$SNAP" | jq \
                 | {id:($m.id + "/" + $queued_record.id),key:$queued_record.id,verb:"captain-hold",
                    summary:hold_summary(($queued_record.title // $queued_record.id);
                                         ($queued_record.hold_reason // "captain decision pending")),owner:$m.id,
-                   filed:($queued_record.since // null)}
+                   filed:(([$m.filed_references[]? | select(.id == $queued_record.id) | .since][0]
+                           // $queued_record.since) // null)}
                   + (if ($m.blocking_references | type) == "array"
                      then {blocking:any($m.blocking_references[]; .dependent_id != $queued_record.id and .blocked_id == $queued_record.id)}
                      else {} end) ])[] ]) as $decisions_all

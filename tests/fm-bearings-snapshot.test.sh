@@ -1206,7 +1206,8 @@ test_secondmate_blocking_uses_complete_queued_records() {
 ## In flight
 
 ## Queued
-- [ ] held-blocker - Captain hold referenced by a dependent (repo: sample) (kind: ship) (hold: decide now) (hold-kind: captain)
+- [ ] other-hold - Another captain hold (repo: sample) (kind: ship) (since 2026-09-21) (hold: decide later) (hold-kind: captain)
+- [ ] held-blocker - Captain hold referenced by a dependent (repo: sample) (kind: ship) (since 2026-09-20) (hold: decide now) (hold-kind: captain)
 - [ ] filler-one - Ordinary queued task (repo: sample) (kind: ship)
 - [ ] filler-two - Ordinary queued task (repo: sample) (kind: ship)
 - [ ] omitted-dependent - Dependent outside displayed queue (repo: sample) (kind: ship) blocked-by: held-blocker
@@ -1216,14 +1217,19 @@ EOF
   fakebin=$(make_fakebin "$home")
   json=$(FM_SNAPSHOT_SECONDMATE_QUEUED=2 run "$home" "$fakebin" --json)
   jq -e '
-    .counts.queued == 4 and (.queued | length) == 2
+    .counts.queued == 5 and (.queued | length) == 2
       and ([.queued[].id] | index("omitted-dependent") == null)
       and (.blocking_references | any(.[]; .dependent_id == "omitted-dependent" and .blocked_id == "held-blocker"))
+      and (.filed_references | any(.[]; .id == "held-blocker" and .since == "2026-09-20"))
   ' "$mate/state/home-summary.json" >/dev/null \
     || fail "the full queued dependency index did not outlive the display cap"
   printf '%s' "$json" | jq -e '
-    .decisions_open | any(.[]; .id == "blocker-mate/held-blocker" and .blocking == true)
+    .decisions_open | any(.[]; .id == "blocker-mate/held-blocker" and .blocking == true and .filed == "2026-09-20")
   ' >/dev/null || fail "a secondmate captain hold lost its omitted dependent: $json"
+  json=$(FM_SNAPSHOT_SECONDMATE_QUEUED=5 FM_SNAPSHOT_SECONDMATE_DECISIONS=1 run "$home" "$fakebin" --json --all-decisions)
+  printf '%s' "$json" | jq -e '
+    .decisions_open | any(.[]; .id == "blocker-mate/held-blocker" and .filed == "2026-09-20")
+  ' >/dev/null || fail "the all-decisions path lost a date from the uncapped filing index: $json"
   pass "secondmate blocker lookups use full queued records beyond display caps"
 }
 

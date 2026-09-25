@@ -1113,6 +1113,9 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
           | ($dependent.unresolved_blocker_ids // [])[]
           | {dependent_id:$dependent.id,blocked_id:.}
         ] | unique_by([.dependent_id,.blocked_id])),
+        filed_references:([$queued_all[]
+          | select(.hold_kind == "captain" and .since != null)
+          | {id,since}]),
         queued:([$queued_all[] | {id:(.id | trunc(120)),title:(.title | trunc(120)),
           blocked_by:((.blocked_by // null) | if . == null then null else trunc(120) end),
           blocked_by_ids:((.blocked_by_ids // []) | map(trunc(120))),
@@ -1890,6 +1893,7 @@ secondmate_current_json() {  # <parent-tasks-json-file> <output-file>
          active_children:$summary.active_children,
          decisions_open:$summary.decisions_open,holds:$summary.holds,queued:$summary.queued,
          blocking_references:$summary.blocking_references,
+         filed_references:$summary.filed_references,
          contributions:($summary.contributions // null),
          landed:$summary.landed,endpoints:$summary.endpoints,counts:$summary.counts,omitted:$summary.omitted,
          parent_event:{raw:$event_raw,note:$event_note,age_seconds:$event_age,open_activities:$activities,open_decisions:$decisions,activity_scan:$activity_scan,reconciliation:$reconciliation},
