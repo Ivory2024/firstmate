@@ -233,7 +233,7 @@ write_remote_home_summary() {  # <remote-home> <generated-epoch>
     decisions_open:[
       {id:"remote-parked",key:"remote-parked",verb:"captain-hold",summary:"Remote parked hold",reason:"parked",hold_until:null,hold_bucket:"live",hold_age_days:null,source:"backlog"},
       {id:"remote-aged",key:"remote-aged",verb:"captain-hold",summary:"Remote aged hold",reason:"choose a route",hold_until:null,hold_bucket:"aged",hold_age_days:40,source:"backlog"}
-    ],holds:[],
+    ],holds:[],blocking_references:[],
     queued:[
       {id:"remote-parked",title:"Remote parked hold",blocked_by:null,blocked_by_ids:[],unresolved_blocker_ids:[],blocked_reason:null,hold_reason:"parked",hold_kind:"captain",hold_until:null,hold_bucket:"live",hold_age_days:null,captain_actionable:true,repo:"firstmate",kind:"captain"},
       {id:"remote-aged",title:"Remote aged hold",blocked_by:null,blocked_by_ids:[],unresolved_blocker_ids:[],blocked_reason:null,hold_reason:"choose a route",hold_kind:"captain",hold_until:null,hold_bucket:"aged",hold_age_days:40,captain_actionable:false,repo:"firstmate",kind:"captain"}
@@ -1159,6 +1159,7 @@ test_collapsed_captain_call_deferral_and_landed() {
 
 ## Queued
 - [ ] work-gate - Captain-gated ship work (repo: firstmate) (kind: ship) (hold: captain go needed) (hold-kind: captain)
+- [ ] done-only-gate - Captain gate referenced only by completed work (repo: firstmate) (kind: ship) (hold: captain go needed) (hold-kind: captain)
 - [ ] ordinary-dependent - Ordinary queued task (repo: firstmate) (kind: ship) blocked-by: work-gate
 - [ ] later-call - Deferred captain call (repo: firstmate) (kind: captain) (hold: revisit with the captain) (hold-kind: captain) (hold-until: 2026-08-01)
 - [ ] due-call - Due captain call (repo: firstmate) (kind: captain) (hold: overdue captain choice) (hold-kind: captain) (hold-until: 2026-07-11)
@@ -1167,12 +1168,14 @@ test_collapsed_captain_call_deferral_and_landed() {
 
 ## Done
 - [x] answered-call - Answered captain question (repo: firstmate) (kind: captain) (done 2026-07-10) (hold: captain choice pending) (hold-kind: captain)
+- [x] done-dependent - Completed dependent (repo: firstmate) (kind: ship) blocked-by: done-only-gate (done 2026-07-10)
 - [x] shipped-work - Ordinary landed work (repo: firstmate) (kind: ship) (merged 2026-07-10)
 EOF
   fakebin=$(make_fakebin "$home")
   json=$(run "$home" "$fakebin" --json)
   printf '%s' "$json" | jq -e '
     (.decisions_open | any(.[]; .id == "work-gate" and .blocking == true))
+      and (.decisions_open | any(.[]; .id == "done-only-gate" and .blocking == false))
       and (.decisions_open | any(.[]; .id == "due-call"))
       and (.decisions_open | any(.[]; .id == "later-call") | not)
       and (.decisions_open | any(.[]; .id == "parked-call"))
@@ -1191,6 +1194,37 @@ EOF
       and (.gates | any(.[]; .id == "parked-call") | not)
   ' >/dev/null || fail "--all-decisions must reveal the prose-deferred call: $json"
   pass "captain-held tasks of any kind reach Captain's Call, deferral is honored, and landed excludes answered calls"
+}
+
+test_secondmate_blocking_uses_complete_queued_records() {
+  local home mate fakebin json
+  home=$(make_home secondmate-blocker-index)
+  mate="$TMP_ROOT/secondmate-blocker-index-mate"
+  make_valid_secondmate_home blocker-mate "$mate"
+  append_secondmate_registry "$home" blocker-mate "$mate"
+  cat > "$mate/data/backlog.md" <<'EOF'
+## In flight
+
+## Queued
+- [ ] held-blocker - Captain hold referenced by a dependent (repo: sample) (kind: ship) (hold: decide now) (hold-kind: captain)
+- [ ] filler-one - Ordinary queued task (repo: sample) (kind: ship)
+- [ ] filler-two - Ordinary queued task (repo: sample) (kind: ship)
+- [ ] omitted-dependent - Dependent outside displayed queue (repo: sample) (kind: ship) blocked-by: held-blocker
+
+## Done
+EOF
+  fakebin=$(make_fakebin "$home")
+  json=$(FM_SNAPSHOT_SECONDMATE_QUEUED=2 run "$home" "$fakebin" --json)
+  jq -e '
+    .counts.queued == 4 and (.queued | length) == 2
+      and ([.queued[].id] | index("omitted-dependent") == null)
+      and (.blocking_references | any(.[]; .dependent_id == "omitted-dependent" and .blocked_id == "held-blocker"))
+  ' "$mate/state/home-summary.json" >/dev/null \
+    || fail "the full queued dependency index did not outlive the display cap"
+  printf '%s' "$json" | jq -e '
+    .decisions_open | any(.[]; .id == "blocker-mate/held-blocker" and .blocking == true)
+  ' >/dev/null || fail "a secondmate captain hold lost its omitted dependent: $json"
+  pass "secondmate blocker lookups use full queued records beyond display caps"
 }
 
 test_undated_hold_phrasing_and_aging_projection() {
@@ -3370,6 +3404,7 @@ test_partial_github_failure_degrades
 test_perl_fallback_bounds_github_call
 test_section_caps_and_expansion_flags
 test_collapsed_captain_call_deferral_and_landed
+test_secondmate_blocking_uses_complete_queued_records
 test_undated_hold_phrasing_and_aging_projection
 test_blocked_deferred_hold_has_concrete_disclosure
 test_revealed_deferred_holds_show_their_deferral_reason

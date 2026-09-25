@@ -165,6 +165,7 @@ home_summary_refresh_once() {
     and (.decisions_open | type) == "array"
     and (.holds | type) == "array"
     and (.queued | type) == "array"
+    and (.blocking_references | type) == "array"
     and (.landed | type) == "array"
     and (.endpoints | type) == "array"
     and (.counts | type) == "object"

@@ -1108,6 +1108,11 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
         active_children:$active_all[:$child_n],
         decisions_open:$decisions_all[:$decisions_n],
         holds:$holds_all[:$queued_n],
+        blocking_references:([$queued_all[] as $dependent
+          | select($dependent.state == "queued" or $dependent.state == "in_flight")
+          | ($dependent.unresolved_blocker_ids // [])[]
+          | {dependent_id:$dependent.id,blocked_id:.}
+        ] | unique_by([.dependent_id,.blocked_id])),
         queued:([$queued_all[] | {id:(.id | trunc(120)),title:(.title | trunc(120)),
           blocked_by:((.blocked_by // null) | if . == null then null else trunc(120) end),
           blocked_by_ids:((.blocked_by_ids // []) | map(trunc(120))),
@@ -1380,6 +1385,7 @@ length == 1 and (.[0] |
   and (.invalidity | type) == "object" and (.invalidity.ids | type) == "array"
   and (.active_children | type) == "array" and (.decisions_open | type) == "array"
   and (.holds | type) == "array" and (.queued | type) == "array"
+  and (.blocking_references | type) == "array"
   and (.landed | type) == "array" and (.endpoints | type) == "array"
   and (.counts | type) == "object" and (.omitted | type) == "array"
 )
@@ -1884,6 +1890,7 @@ secondmate_current_json() {  # <parent-tasks-json-file> <output-file>
          freshness:{status:$summary_freshness,observed_at:$observed,age_seconds:$summary_age},
          active_children:$summary.active_children,
          decisions_open:$summary.decisions_open,holds:$summary.holds,queued:$summary.queued,
+         blocking_references:$summary.blocking_references,
          contributions:($summary.contributions // null),
          landed:$summary.landed,endpoints:$summary.endpoints,counts:$summary.counts,omitted:$summary.omitted,
          parent_event:{raw:$event_raw,note:$event_note,age_seconds:$event_age,open_activities:$activities,open_decisions:$decisions,activity_scan:$activity_scan,reconciliation:$reconciliation},
