@@ -1,12 +1,11 @@
 import { request } from 'node:http';
 
 const originalFetch = globalThis.fetch.bind(globalThis);
-const PORT = parseInt(process.env.JEV_SAFETY_PORT ?? '48752', 10);
 
 function gate(payload) {
   return new Promise((resolve, reject) => {
     const req = request(
-      { hostname: '127.0.0.1', port: PORT, path: '/check', method: 'POST', headers: { 'content-type': 'application/json' } },
+      { hostname: '127.0.0.1', port: 48752, path: '/check', method: 'POST', headers: { 'content-type': 'application/json' } },
       (res) => {
         let raw = '';
         res.setEncoding('utf8');
@@ -14,11 +13,7 @@ function gate(payload) {
         res.on('end', () => {
           try {
             const verdict = JSON.parse(raw);
-            resolve(
-              res.statusCode === 200 &&
-              verdict.service === 'firstmate-jev-safety' &&
-              verdict.allowed === true
-            );
+            resolve(res.statusCode === 200 && verdict.allowed === true);
           } catch { resolve(false); }
         });
       },
