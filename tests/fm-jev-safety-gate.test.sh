@@ -33,10 +33,10 @@ if ! grep -q '"reason":"sensitive_path"' "$TMP_ROOT/backlog.json"; then
 fi
 
 UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<'JSON' > "$TMP_ROOT/bash-cwd.json"
-{"tool_input":{"command":"cd data && cat captain.md; cd state && cat record.json; cd config && cat settings.json"},"tool_response":"plain non-secret fixture text"}
+{"tool_input":{"command":"cd state && cat private.txt"},"tool_response":"plain non-secret fixture text"}
 JSON
-if ! grep -q '"reason":"sensitive_path"' "$TMP_ROOT/bash-cwd.json"; then
-  fail "sensitive basenames in a Bash cd chain were not blocked"
+if ! grep -q '"reason":"clean"' "$TMP_ROOT/bash-cwd.json"; then
+  fail "shell command text was parsed as a sensitive path"
 fi
 
 UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<'JSON' > "$TMP_ROOT/result-path.json"

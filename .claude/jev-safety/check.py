@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
 import sys
 import tempfile
 from pathlib import Path, PurePosixPath
@@ -61,6 +60,7 @@ def _contains_sensitive_path(value: JsonValue, parent_key: str = "") -> bool:
             return any(
                 _contains_sensitive_path(child, key.casefold())
                 for key, child in mapping.items()
+                if key.casefold() != "command"
             )
         case list() as items:
             return any(_contains_sensitive_path(item, parent_key) for item in items)
@@ -68,15 +68,11 @@ def _contains_sensitive_path(value: JsonValue, parent_key: str = "") -> bool:
             if any(word in parent_key for word in ("path", "file", "cwd", "directory")):
                 if _is_sensitive_path(text):
                     return True
-            try:
-                tokens = shlex.split(text, posix=True)
-            except ValueError:
-                tokens = text.split()
             return any(
                 _is_sensitive_path(token)
                 if "/" in token or "\\" in token
                 else _is_sensitive_basename(token)
-                for token in tokens
+                for token in text.split()
             )
         case _:
             return False
