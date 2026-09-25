@@ -41,6 +41,12 @@ async function post(
 ): Promise<{ output: HookOutput | undefined; meta: Meta | undefined } | undefined> {
   let res
   try {
+    const health = await $.http.fetch('http://127.0.0.1:48752/health')
+    const identity: unknown = JSON.parse(health.text)
+    if (!health.ok || !isSafetyServiceIdentity(identity)) {
+      $.ui.log('winnow: safety gate identity could not be verified; preserving original output', { to: 'debug' })
+      return undefined
+    }
     const gate = await $.http.fetch('http://127.0.0.1:48752/check', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -79,6 +85,12 @@ async function post(
     $.ui.log('winnow: sidecar sent something that is not JSON', { to: 'debug' })
     return undefined
   }
+}
+
+function isSafetyServiceIdentity(value: unknown): boolean {
+  return value !== null && typeof value === 'object' &&
+    'service' in value && value.service === 'firstmate-jev-safety' &&
+    'protocol' in value && value.protocol === 1
 }
 
 async function whereami($: EngineInterface): Promise<{ session_id: string; cwd: string }> {

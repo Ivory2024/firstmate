@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import test from 'node:test';
+import { join } from 'node:path';
 import { register } from '../.claude/jev-marketplace/jev-safe/hooks/jev.ts';
 import { applyDecisions } from '../.claude/jev-marketplace/jev-safe/vendor-fast/src/compact.ts';
 import { fitState } from '../.claude/jev-marketplace/jev-safe/vendor-fast/src/state.ts';
@@ -40,6 +42,7 @@ test('fast-jev falls back without a key and sends no request', async () => {
     http: { async fetch() { requests += 1; throw new Error('unexpected request'); } },
     env: { async get() { return undefined; } },
     settings: { async read() { return {}; } },
+    session: { async cwd() { return '/no-such-test-directory'; } },
     ui: ui(),
   }, { messages: fixtureMessages() }, async () => { fallback = true; return 'default'; });
   assert.equal(fallback, true);
@@ -98,17 +101,69 @@ test('fast-jev uses its default after a mocked invalid-key response', async () =
   await handler({
     http: { async fetch(url) {
       requests.push(url);
+      if (url.endsWith('/health')) {
+        return { status: 200, ok: true, text: '{"service":"firstmate-jev-safety","protocol":1}' };
+      }
       return url.endsWith('/check')
         ? { status: 200, ok: true, text: '{"allowed":true,"reason":"clean"}' }
         : { status: 401, ok: false, text: 'unauthorized' };
     } },
     env: { async get() { return 'invalid-test-key'; } },
     settings: { async read() { return {}; } },
+    session: { async cwd() { return '/no-such-test-directory'; } },
     ui: ui(),
   }, { messages: fixtureMessages() }, async () => { fallback = true; return 'default'; });
   assert.equal(fallback, true);
-  assert.equal(requests.length, 2);
-  assert.match(requests[0], /127\.0\.0\.1:48752\/check$/);
+  assert.equal(requests.length, 3);
+  assert.match(requests[0], /127\.0\.0\.1:48752\/health$/);
+  assert.match(requests[1], /127\.0\.0\.1:48752\/check$/);
+});
+
+test('fast-jev falls back to the authorized .env key after env and settings', async () => {
+  const root = await mkdtemp(join(process.cwd(), '.fast-jev-key-test-'));
+  try {
+    await writeFile(join(root, '.env'), 'export TYPESAFE_API_KEY="synthetic-fast-jev-key"\n');
+    const entry = hooks().find(([event]) => event === 'session.compact');
+    const handler = entry.at(-1);
+    const requests = [];
+    await handler({
+      http: { async fetch(url, init) {
+        requests.push({ url, init });
+        if (url.endsWith('/health')) {
+          return { status: 200, ok: true, text: '{"service":"firstmate-jev-safety","protocol":1}' };
+        }
+        if (url.endsWith('/check')) return { status: 200, ok: true, text: '{"allowed":true}' };
+        return { status: 401, ok: false, text: 'unauthorized' };
+      } },
+      env: { async get(name) { return name === 'FM_HOME' ? root : undefined; } },
+      settings: { async read() { return {}; } },
+      session: { async cwd() { return '/no-such-test-directory'; } },
+      ui: ui(),
+    }, { messages: fixtureMessages() }, async () => 'default');
+    const jevRequest = requests.find(({ url }) => url.startsWith('https://api.typesafe.ai/'));
+    assert.equal(jevRequest?.init?.headers?.authorization, 'Bearer synthetic-fast-jev-key');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('fast-jev does not post a gate payload to an unverified listener', async () => {
+  const entry = hooks().find(([event]) => event === 'session.compact');
+  const handler = entry.at(-1);
+  const requests = [];
+  let fallback = false;
+  await handler({
+    http: { async fetch(url) {
+      requests.push(url);
+      return { status: 200, ok: true, text: '{"service":"unrelated","protocol":1}' };
+    } },
+    env: { async get() { return 'synthetic-key'; } },
+    settings: { async read() { return {}; } },
+    session: { async cwd() { return '/no-such-test-directory'; } },
+    ui: ui(),
+  }, { messages: fixtureMessages() }, async () => { fallback = true; return 'default'; });
+  assert.equal(fallback, true);
+  assert.deepEqual(requests, ['http://127.0.0.1:48752/health']);
 });
 
 test('winnow preserves the original result when the safety gate blocks its path', async () => {
@@ -120,6 +175,9 @@ test('winnow preserves the original result when the safety gate blocks its path'
   const returned = await handler({
     http: { async fetch(url) {
       requests.push(url);
+      if (url.endsWith('/health')) {
+        return { status: 200, ok: true, text: '{"service":"firstmate-jev-safety","protocol":1}' };
+      }
       return { status: 200, ok: true, text: '{"allowed":false,"reason":"sensitive_path"}' };
     } },
     session: {
@@ -135,8 +193,9 @@ test('winnow preserves the original result when the safety gate blocks its path'
     ui: ui(),
   }, event, async () => answer);
   assert.equal(returned, answer);
-  assert.equal(requests.length, 1);
-  assert.match(requests[0], /127\.0\.0\.1:48752\/check$/);
+  assert.equal(requests.length, 2);
+  assert.match(requests[0], /127\.0\.0\.1:48752\/health$/);
+  assert.match(requests[1], /127\.0\.0\.1:48752\/check$/);
 });
 
 test('winnow sends live user and assistant context after the safety gate allows it', async () => {
@@ -151,6 +210,9 @@ test('winnow sends live user and assistant context after the safety gate allows 
   await handler({
     http: { async fetch(url, init) {
       requests.push({ url, body: init?.body });
+      if (url.endsWith('/health')) {
+        return { status: 200, ok: true, text: '{"service":"firstmate-jev-safety","protocol":1}' };
+      }
       return url.endsWith('/check')
         ? { status: 200, ok: true, text: '{"allowed":true}' }
         : { status: 200, ok: true, text: '{"hookSpecificOutput":{}}', headers: {} };
@@ -162,13 +224,38 @@ test('winnow sends live user and assistant context after the safety gate allows 
     },
     ui: ui(),
   }, { tool: 'Read', tool_use_id: 'fixture', file_path: 'docs/configuration.md' }, async () => answer);
-  assert.equal(requests.length, 2);
-  assert.match(requests[0].url, /127\.0\.0\.1:48752\/check$/);
-  assert.match(requests[1].url, /127\.0\.0\.1:47311\/hook\/post-tool-use$/);
-  assert.deepEqual(JSON.parse(requests[1].body).task, {
+  assert.equal(requests.length, 3);
+  assert.match(requests[0].url, /127\.0\.0\.1:48752\/health$/);
+  assert.match(requests[1].url, /127\.0\.0\.1:48752\/check$/);
+  assert.match(requests[2].url, /127\.0\.0\.1:47311\/hook\/post-tool-use$/);
+  assert.deepEqual(JSON.parse(requests[2].body).task, {
     user_request: 'Find the relevant runtime setting.',
     assistant_intent: 'I will inspect the configuration docs.',
   });
+});
+
+test('winnow does not post to the sidecar when the gate identity is wrong', async () => {
+  const entry = hooks().find(([event, filter]) => event === 'tool.call' && filter?.tool === 'Read');
+  const handler = entry.at(-1);
+  const answer = { result: { content: 'result block.\n'.repeat(200) } };
+  const requests = [];
+  const returned = await handler({
+    http: { async fetch(url) {
+      requests.push(url);
+      return { status: 200, ok: true, text: '{"service":"unrelated","protocol":1}' };
+    } },
+    session: {
+      async messages() { return [
+        { role: 'user', text: 'Find a setting.' },
+        { role: 'assistant', text: 'I will inspect the docs.' },
+      ]; },
+      async id() { return 'synthetic'; },
+      async cwd() { return '/synthetic'; },
+    },
+    ui: ui(),
+  }, { tool: 'Read', tool_use_id: 'fixture', file_path: 'docs/guide.md' }, async () => answer);
+  assert.equal(returned, answer);
+  assert.deepEqual(requests, ['http://127.0.0.1:48752/health']);
 });
 
 test('winnow does not register prompt submission transmission', () => {

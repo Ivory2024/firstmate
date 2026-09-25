@@ -6,15 +6,32 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from urllib.error import URLError
+from urllib.request import urlopen
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 HOST = "127.0.0.1"
 PORT = 48752
+IDENTITY = {"service": "firstmate-jev-safety", "protocol": 1}
 
 
 class Handler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:  # noqa: N802 - stdlib callback name
+        if self.path != "/health":
+            self.send_error(404)
+            return
+        if self.client_address[0] != HOST:
+            self.send_error(403)
+            return
+        body = json.dumps(IDENTITY, separators=(",", ":")).encode()
+        self.send_response(200)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_POST(self) -> None:  # noqa: N802 - stdlib callback name
         if self.path != "/check":
             self.send_error(404)
@@ -58,6 +75,12 @@ def ensure() -> None:
 
     with socket.socket() as sock:
         if sock.connect_ex((HOST, PORT)) == 0:
+            try:
+                with urlopen(f"http://{HOST}:{PORT}/health", timeout=2) as response:
+                    if response.status != 200 or json.loads(response.read()) != IDENTITY:
+                        raise SystemExit("port 48752 is occupied by a non-Firstmate safety service")
+            except (URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
+                raise SystemExit("port 48752 is occupied by an unverified service") from error
             return
     subprocess.Popen(
         [sys.executable, str(Path(__file__).resolve()), "--serve"],

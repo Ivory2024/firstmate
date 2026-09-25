@@ -7,6 +7,8 @@ import type {
   ToolUseSummary,
   TurnCompleteInput,
 } from 'claude-code';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 import { compact, reductionRatio, resolveOptions } from '../src/compact.ts';
 import { buildJevRequest, DEFAULT_MODEL, parseJevResponse } from '../src/request.ts';
@@ -103,6 +105,9 @@ export function jevAsker(fetchFn: HookFetch, apiKey: string, model: string): Jev
 
 async function safetyAllows(fetchFn: HookFetch, body: string): Promise<boolean> {
   try {
+    const health = await fetchFn('http://127.0.0.1:48752/health');
+    const identity: unknown = JSON.parse(health.text);
+    if (!health.ok || !isSafetyServiceIdentity(identity)) return false;
     const result = await fetchFn('http://127.0.0.1:48752/check', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -112,6 +117,12 @@ async function safetyAllows(fetchFn: HookFetch, body: string): Promise<boolean> 
   } catch {
     return false;
   }
+}
+
+function isSafetyServiceIdentity(value: unknown): boolean {
+  return value !== null && typeof value === 'object' &&
+    'service' in value && value.service === 'firstmate-jev-safety' &&
+    'protocol' in value && value.protocol === 1;
 }
 
 function toolUseSummary(tool: ToolUse): ToolUseSummary {
@@ -240,6 +251,7 @@ async function getApiKey(
   $: {
     env: { get: (name: string) => Promise<string | undefined> };
     settings: { read: () => Promise<Readonly<Record<string, unknown>>> };
+    session: { cwd: () => Promise<string> };
   },
   config: HookConfig,
 ): Promise<string | undefined> {
@@ -252,7 +264,21 @@ async function getApiKey(
     const value = (env as Record<string, unknown>)['TYPESAFE_API_KEY'];
     if (typeof value === 'string' && value) return value;
   }
-  return undefined;
+  const root = (await $.env.get('FM_HOME')) ||
+    (await $.env.get('CLAUDE_PROJECT_DIR')) ||
+    (await $.session.cwd());
+  let contents: string;
+  try {
+    contents = await readFile(join(root, '.env'), 'utf8');
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined;
+    throw error;
+  }
+  const matches = [...contents.matchAll(/^[ \t]*(?:export[ \t]+)?TYPESAFE_API_KEY=(.*)$/gm)];
+  const raw = matches.at(-1)?.[1]?.trim();
+  if (!raw) return undefined;
+  const quote = raw[0];
+  return (quote === '"' || quote === "'") && raw.endsWith(quote) ? raw.slice(1, -1) : raw;
 }
 
 function notify(
