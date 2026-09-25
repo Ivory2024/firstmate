@@ -409,6 +409,10 @@
       "audience": "maintainer-verification"
     },
     {
+      "path": "docs/jev-tools-adoption.md",
+      "audience": "maintainer-verification"
+    },
+    {
       "path": "docs/herdr-backend.md",
       "audience": "operator-current"
     },
