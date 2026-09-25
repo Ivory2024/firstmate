@@ -1,11 +1,16 @@
 # Per-repo no-mistakes overrides.
 
+# Fall back to claude when codex is unavailable (e.g. a fleet-wide codex API
+# key outage), instead of leaving the pipeline agent single-point-of-failure
+# on the global `agent: codex` default in ~/.no-mistakes/config.yaml.
+agent: [codex, claude]
+
 # firstmate is an agent-orchestration repo: its AGENTS.md installs a fleet-captain
 # identity. Disable project-level agent settings/instructions for gate agents so a
 # no-mistakes review/fix/document/test/lint/pr/rebase/ci agent never adopts that
 # identity or drives the fleet. Trusted-only: a pushed branch cannot turn this off,
 # so it is honored only from the default-branch copy of this file. Layered above
-# the NO_MISTAKES_GATE lifecycle refusal (bin/fm-gate-refuse-lib.sh) and the
+# gate-context lifecycle boundary (bin/fm-gate-refuse-lib.sh) and the
 # HEAD-continuity guard; see docs/architecture.md "No-mistakes gate authority boundary."
 disable_project_settings: true
 

@@ -27,6 +27,11 @@
 # The canonical source id is `quota` for the aggregate tracked provider.
 # A provider named with --provider sets the tracked provider and the source id
 # becomes `quota-<provider>`.
+#
+# Snapshots may be quota-axi schema 5 or 6 (bin/fm-quota-axi-lib.sh owns the
+# validator). Both watches read every matching account row independently,
+# without combining quotas. A --provider watch restricts those rows to the
+# requested provider; details preserve each row's accountKey when present.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -160,7 +165,12 @@ details() {
       elif ($known | length) > 0 then ($known | min_by(.effectivePercentRemaining))
       else null
       end;
-    if $provider == "" then
+    [.providers[]? | select($provider == "" or .provider == $provider) |
+      {provider}
+      + (if has("accountKey") then {accountKey} else {} end)
+      + {best: best_detail(.quotaSemantics.effectiveAvailability // [])}
+    ] as $summary |
+    if $provider == "" or ($summary | length) > 1 then
       {
         provider: "aggregate",
         summary: [

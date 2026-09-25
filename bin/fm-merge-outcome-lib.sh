@@ -41,11 +41,13 @@ FM_MERGE_OUTCOME_ALREADY_RECORDED=false
 #   self - this home performed the merge.
 #   poll - this home's merge poll detected the merge, so the canonical outcome
 #          also wakes this home after any upward hop needed by a secondmate.
-# Optional <authority> is yolo, away-grant, attended, or external. Yolo,
-# away-grant, and external are appended to the ledger line; attended remains
-# untagged. The merge entrypoint supplies its authority after forge acceptance,
-# while the poll supplies the persisted identity-bound value or external when
-# no matching record proves that this home authorized the merge.
+# Optional <authority> is away, attended, or external (the retired yolo and
+# away-grant values are still accepted for a persisted authority written before
+# the words model landed). Away, external, and the retired tags are appended to
+# the ledger line; attended remains untagged. The merge entrypoint supplies its
+# authority after forge acceptance, while the poll supplies the persisted
+# identity-bound value or external when no matching record proves that this
+# home authorized the merge.
 #
 # Returns 0 when the outcome is recorded (or already was), 2 on an invalid
 # request, 3 when this home's own role or parent binding cannot be read well
@@ -62,7 +64,7 @@ fm_merge_outcome_report() {  # <home> <state> <task-id> <pr-url> <origin> [autho
   FM_MERGE_OUTCOME_ALREADY_RECORDED=false
   case "$origin" in self|poll) ;; *) return 2 ;; esac
   case "$authority" in
-    yolo|away-grant|external) suffix=" $authority" ;;
+    away|external|yolo|away-grant) suffix=" $authority" ;;
     attended|'') ;;
     *) return 2 ;;
   esac
@@ -107,5 +109,7 @@ fm_merge_outcome_report() {  # <home> <state> <task-id> <pr-url> <origin> [autho
       "$provider" "$host" "$path" "$number" || status=1
   fi
   fm_lock_release "$lock"
+  # Opt-in fleet activity ledger (docs/fleet-ledger.md); off costs one file test.
+  [ ! -e "${FM_CONFIG_OVERRIDE:-$home/config}/fleet-ledger" ] || [ "$status" -ne 0 ] || FM_HOME=$home FM_STATE_OVERRIDE=$state "$_FM_MERGE_OUTCOME_LIB_DIR/fm-fleet-ledger.sh" merged "$id" pr "$FM_PR_URL" || true
   return "$status"
 }
