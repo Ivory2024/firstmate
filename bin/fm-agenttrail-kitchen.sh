@@ -48,7 +48,20 @@ fm_agenttrail_main() {
     shift
   done
 
-  snapshot=$("$(dirname "${BASH_SOURCE[0]}")/fm-bearings-snapshot.sh" --json --all-in-flight --fields paths)
+  snapshot=$(FM_SNAPSHOT_SECONDMATES=0 FM_SNAPSHOT_SECONDMATE_CHILDREN=0 \
+    FM_SNAPSHOT_REGISTRY_LINES=0 FM_SNAPSHOT_REGISTRY_BYTES=0 FM_SNAPSHOT_REGISTRY_RECORDS=0 \
+    "$(dirname "${BASH_SOURCE[0]}")/fm-bearings-snapshot.sh" --json --all-in-flight --all-secondmates --fields paths)
+  if jq -e '.omitted[]? | select(
+      .surface == "registered secondmates omitted by snapshot bound"
+      or .surface == "secondmate registry input truncated by bounded read"
+      or .surface == "secondmate registry records omitted by bounded read"
+      or (.surface | test("^secondmate home\\(s\\) with unreadable structured state:"))
+      or (.surface | test("^secondmate .* active children omitted by snapshot bound:"))
+      or (.surface | startswith("secondmate registry unavailable:"))
+    )' <<<"$snapshot" >/dev/null; then
+    printf 'fm-agenttrail-kitchen: snapshot omits secondmate worktrees; refusing incomplete list\n' >&2
+    return 1
+  fi
   eligible=$(jq -c '{in_flight:[],paths:[]}' <<<"$snapshot")
   while IFS= read -r row; do
     id=$(jq -r '.id' <<<"$row")
