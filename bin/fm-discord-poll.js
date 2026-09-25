@@ -27,6 +27,7 @@ const excludeIds = (process.env.FM_DISCORD_EXCLUDES || process.env.FM_DISCORD_EX
 	.filter(Boolean);
 
 const allowDMs = (process.env.FM_DISCORD_ALLOW_DMS || process.env.FM_DISCORD_DMS || "true").toLowerCase() !== "false";
+const authorizedUserIds = new Set((process.env.FM_DISCORD_AUTHORIZED_USER_IDS || "").split(",").map((s) => s.trim()).filter(Boolean));
 
 const cursorDir = join(stateDir, "x-context");
 function cursorFile(chId) {
@@ -197,7 +198,7 @@ async function main() {
 				const referencedMessageId = msg.message_reference?.message_id;
 				const notification = referencedMessageId ? decisionNotifications.get(referencedMessageId) : undefined;
 				if (notification) {
-					if (notification.record.channel_id !== msg.channel_id || notification.record.replied_to) continue;
+					if (!authorizedUserIds.has(msg.author?.id) || notification.record.channel_id !== msg.channel_id || notification.record.replied_to) continue;
 					if (typeof msg.content !== "string" || !msg.content.trim()) continue;
 					const reqId = `discord-sh-${msg.id}`;
 					if (persistDecisionReply(notification, msg, reqId)) console.log(`x-mention ${reqId}`);

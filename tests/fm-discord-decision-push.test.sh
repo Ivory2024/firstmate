@@ -116,6 +116,7 @@ EOF
     FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000001000","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"id":"8000000000000000001","username":"captain"},"content":"Continue","message_reference":{"message_id":"1352000000000000999","channel_id":"1000000000000000001"}}]' \
     PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
     FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    FM_DISCORD_AUTHORIZED_USER_IDS=8000000000000000001 \
     "$ROOT/bin/fm-discord-poll.sh" > "$home/wake.log" || fail "poll failed"
   wake=$(cat "$home/wake.log")
   req=discord-sh-1352000000000001000
@@ -128,6 +129,29 @@ EOF
   assert_equals "Continue" "$(jq -r '.text' "$inbox")" "captain reply preserved"
   assert_equals "1352000000000001000" "$(jq -r '.replied_to.message_id' "$record")" "notification accepts only one reply"
   pass "reply to a pushed decision enters x-inbox with keyed answer context"
+}
+test_unauthorized_decision_reply_is_ignored() {
+  local home record wake
+  home="$TMP_ROOT/unauthorized-reply"
+  mkdir -p "$home/state/x-context" "$home/state/x-inbox"
+  chmod 700 "$home/state" "$home/state/x-context" "$home/state/x-inbox"
+  make_fake_node "$home"
+  record="$home/state/x-context/discord-notify-test.json"
+  cat > "$record" <<'EOF'
+{"schema":"fm-discord-decision-notification.v1","kind":"decision-notification","state":"sent","task_id":"task-a","key":"captain-hold-task-a-1","trigger":"captain-hold","channel_id":"1000000000000000001","message_id":"1352000000000000999","summary":"Choose how to proceed","options":["Continue","Pause"],"recorded_at":1790319000}
+EOF
+  chmod 600 "$record"
+  FM_TEST_REAL_NODE=$(command -v node) \
+    FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000001002","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"id":"8000000000000000002","username":"member"},"content":"Continue","message_reference":{"message_id":"1352000000000000999","channel_id":"1000000000000000001"}}]' \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    FM_DISCORD_AUTHORIZED_USER_IDS=8000000000000000001 \
+    "$ROOT/bin/fm-discord-poll.sh" > "$home/wake.log" || fail "poll failed"
+  wake=$(cat "$home/wake.log")
+  [ -z "$wake" ] || fail "unauthorized reply woke responder: $wake"
+  assert_absent "$home/state/x-inbox/discord-sh-1352000000000001002.json" "unauthorized decision reply is not captured"
+  assert_equals "null" "$(jq -r '.replied_to // "null"' "$record")" "unauthorized reply does not mark the notification answered"
+  pass "Discord decision replies require an authorized user ID"
 }
 test_no_unrelated_reply_is_captured() {
   local home wake
@@ -197,6 +221,7 @@ test_no_token_is_inert
 test_notify_records_reply_binding
 test_captain_hold_triggers_push
 test_reply_to_notification_enters_existing_inbox
+test_unauthorized_decision_reply_is_ignored
 test_no_unrelated_reply_is_captured
 test_ask_user_gate_triggers_push
 test_pr_push_requires_yolo_off

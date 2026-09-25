@@ -1,5 +1,7 @@
 # Configuration
 
+For pushed Discord decisions, set `FM_DISCORD_AUTHORIZED_USER_IDS` in the Firstmate home's `.env` to a comma-separated list of Discord user IDs allowed to answer (the captain and any trusted operators). Replies from other channel members are ignored; an empty or unset list authorizes nobody.
+
 The files and environment variables you set to operate firstmate.
 
 ## Orchestrator behavior (AGENTS.md)
