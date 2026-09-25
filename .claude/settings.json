@@ -2,6 +2,9 @@
   "env": {
     "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1"
   },
+  "enabledMcpjsonServers": [
+    "jev"
+  ],
   "hooks": {
     "SessionStart": [
       {
