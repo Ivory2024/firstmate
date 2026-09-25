@@ -1,0 +1,5 @@
+jq: error: $paths is not defined at <top-level>, line 1:
+[.in_flight[] as $task | (($paths | map(select(.id == $task.id)) | first) // {}) as $path | $task + {worktree:($path.worktree // null)}][]                           
+jq: 1 compile error
+fm-agenttrail-kitchen: no existing in-flight worktrees to add
+exit_code=1
