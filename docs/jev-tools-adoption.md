@@ -55,3 +55,23 @@ log records input token use but not output token use.
 - A successful fixture call verifies the scanner allowed only synthetic
   content. This sample does not establish complete PII detection for arbitrary
   content; sensitive source paths are rejected before content is sent.
+
+## Cross-Harness Architecture & Boundaries (Claude, Codex, AGY)
+
+The 3 Jev tools operate across agent harnesses according to their supported integration surfaces:
+
+### 1. `jev-mcp` (Universal Cross-Harness Interface)
+Exposes 11 typed Jev judgment tools (`jev_verify`, `jev_gate`, `jev_review`, `jev_screen`, etc.) over standard stdio MCP:
+- **Claude Code**: Configured via `.mcp.json`.
+- **Codex**: Configured via `~/.codex/config.toml` under `[mcp_servers.jev]`.
+- **AGY (Antigravity)**: Configured via `~/.gemini/config/mcp_config.json` under `"jev"`.
+- **Startup & Fail-Closed Safety**:
+  - The launcher `bin/fm-jev-mcp.sh` invokes `server.py --ensure` before launching the Node process.
+  - `server.py` requires `.claude/jev-safety/.venv` to exist (failing closed with exit 1 if absent).
+  - `ensure()` polls `http://127.0.0.1:48752/health` and requires an expected `{"status":"ok","service":"firstmate-jev-safety"}` response within a bounded 2.5-second deadline; if the server is not ready, it terminates with exit 1.
+  - All outbound POST requests from `jev-mcp` are intercepted by `preload.mjs`, matching the service name field (`service: 'firstmate-jev-safety'`) and blocking requests that contain secrets (via detect-secrets), sensitive paths (`data/captain.md`, `.env`), or payloads exceeding 4MB.
+
+### 2. `winnow` & `fast-jev-compaction` (Harness-Specific Specialization)
+These two tools rely on Claude Code in-process function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`):
+- **Claude Code**: Uses `winnow` (PostToolExecution hook wrapping `Read`/`Bash`/`Grep`) and `fast-jev-compaction` (TurnComplete hook).
+- **Codex & AGY**: Do not support Claude's in-process tool-rewrite hooks. Codex relies on its native command output folding and `compact-adviser` (in `~/.codex/config.toml`), while AGY relies on standard large-window handling and `/stow` state persistence. Both harnesses invoke Jev judgment capabilities through `jev-mcp` on demand.
