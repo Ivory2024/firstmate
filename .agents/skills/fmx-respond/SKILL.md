@@ -148,7 +148,7 @@ Images are only for actual visual artifacts - a generated illustration, a screen
 
 Before classifying an inbox item as a new mention, check whether `source` is `discord-selfhosted-decision`.
 Such an item is an answer to a specific pushed decision: use its `.decision` object and `.text`, and do not reply publicly or treat it as fresh work.
-For `trigger=captain-hold`, pipe exactly one tab-separated row `key<TAB>answer<TAB>Discord reply` to `bin/fm-captain-hold.sh answers --any-origin --source discord-selfhosted`.
+For `trigger=captain-hold`, call `bin/fm-captain-hold.sh answer-one "$key" "$answer" "Discord reply" --source discord-selfhosted`; it folds tabs and line breaks in the answer into spaces before keyed resolution.
 For `trigger=ask-user` or `trigger=pr-ready`, invoke `bin/fm-send.sh <status_task_id> --resolve-key <key> "$answer"` with the captured answer as one quoted argument.
 These are the existing keyed-answer paths; never edit status files directly.
 Remove the inbox record only after the matching command confirms success.

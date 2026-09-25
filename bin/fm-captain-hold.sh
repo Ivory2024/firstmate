@@ -1927,9 +1927,30 @@ command_open() {  # <task-id> [--identity] [--distinguish-absent]
   exit 2
 }
 
+command_answer_one() {
+  local key=${1:-} answer=${2:-} label=${3:-} source=''
+  [ "$#" -ge 3 ] || { usage >&2; exit 2; }
+  shift 3
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --source) shift; source=${1:-} ;;
+      *) usage >&2; exit 2 ;;
+    esac
+    shift
+  done
+  [ -n "$source" ] || fail "--source provenance is required so the durable decision records where the answer came from"
+  validate_slug task-id "$key"
+  [ "${#key}" -le 128 ] || fail "task-id must be at most 128 characters"
+  answer=$(sanitize_field "$answer")
+  label=$(sanitize_field "$label")
+  printf '%s\t%s\t%s\n' "$key" "$answer" "$label" \
+    | command_answers --any-origin --source "$source"
+}
+
 case "${1:-}" in
   hold) shift; command_hold "$@" ;;
   answer) shift; command_answer "$@" ;;
+  answer-one) shift; command_answer_one "$@" ;;
   answers) shift; command_answers "$@" ;;
   reconcile-requests) shift; command_reconcile_requests "$@" ;;
   bind) shift; command_bind "$@" ;;

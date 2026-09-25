@@ -10,16 +10,27 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 # shellcheck source=bin/fm-discord-lib.sh
 . "$SCRIPT_DIR/fm-discord-lib.sh"
 
-if [ "$#" -lt 5 ] || [ "$#" -gt 6 ]; then
+retry_pending=0
+if [ "${1:-}" = --retry-pending ]; then
+  [ "$#" -eq 1 ] || { echo "usage: fm-discord-notify.sh --retry-pending" >&2; exit 2; }
+  retry_pending=1
+elif [ "$#" -lt 5 ] || [ "$#" -gt 6 ]; then
   echo "usage: fm-discord-notify.sh <captain-hold|ask-user|pr-ready> <task-id> <key> <summary> <option|option...> [status-task-id]" >&2
   exit 2
 fi
-trigger=$1 task_id=$2 decision_key=$3 summary=$4 options=$5
-status_task_id=${6:-$task_id}
+if [ "$retry_pending" -eq 0 ]; then
+  trigger=$1 task_id=$2 decision_key=$3 summary=$4 options=$5
+  status_task_id=${6:-$task_id}
+fi
 fm_discord_load_config
 [ -n "${FM_DISCORD_TOKEN:-}" ] || exit 0
-[ -n "${FM_DISCORD_CHANNELS:-}" ] || exit 0
+[ "$retry_pending" -eq 1 ] || [ -n "${FM_DISCORD_CHANNELS:-}" ] || exit 0
 command -v node >/dev/null 2>&1 || { echo "fm-discord-notify: missing node for self-hosted Discord" >&2; exit 1; }
+
+if [ "$retry_pending" -eq 1 ]; then
+  export FM_HOME FM_STATE_OVERRIDE="$STATE" FM_DISCORD_BOT_TOKEN="$FM_DISCORD_TOKEN"
+  exec node "$SCRIPT_DIR/fm-discord-notify.js" --retry-pending
+fi
 
 case "$task_id" in ''|.*|*[!A-Za-z0-9._-]*) echo "fm-discord-notify: invalid task id" >&2; exit 2 ;; esac
 case "$decision_key" in ''|.*|*[!A-Za-z0-9._-]*) echo "fm-discord-notify: invalid decision key" >&2; exit 2 ;; esac

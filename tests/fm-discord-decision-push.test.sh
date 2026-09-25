@@ -28,6 +28,7 @@ exec "$FM_TEST_REAL_NODE" --input-type=module -e '
     if (url.includes("/messages") && options.method === "POST") {
       const payload = JSON.parse(options.body);
       if (log) await import("node:fs/promises").then(({ appendFile }) => appendFile(log, JSON.stringify({ url, payload }) + "\n"));
+      if (process.env.FM_DISCORD_FAKE_POST_STATUS) return new Response("failed", { status: Number(process.env.FM_DISCORD_FAKE_POST_STATUS) });
       return Response.json({ id: "1352000000000000999", channel_id: "1000000000000000001" });
     }
     if (url.includes("/channels/") && url.includes("/messages")) return Response.json(messages);
@@ -68,12 +69,63 @@ test_notify_records_reply_binding() {
   assert_equals "task-a" "$(jq -r '.task_id' "$record")" "notification task id"
   assert_equals "captain-hold-task-a-1" "$(jq -r '.key' "$record")" "notification decision key"
   assert_equals "1352000000000000999" "$(jq -r '.message_id' "$record")" "Discord message id"
+  assert_equals "true" "$(jq -r '.payload.enforce_nonce' "$log")" "Discord send enforces the event nonce"
   body=$(jq -r '.payload.content' "$log")
   assert_contains "$body" "task-a" "message includes task id"
   assert_contains "$body" "Choose how to proceed" "message includes summary"
   assert_contains "$body" "Continue" "message includes options"
   assert_contains "$body" "Pause" "message includes all options"
   pass "proactive Discord post stores the task and reply binding"
+}
+
+test_failed_notification_retries_from_durable_outbox() {
+  local home record log state
+  home="$TMP_ROOT/retry-failed"
+  mkdir -p "$home/state/x-context"
+  chmod 700 "$home/state" "$home/state/x-context"
+  make_fake_node "$home"
+  log="$home/posts.jsonl"
+  if FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" FM_DISCORD_FAKE_POST_STATUS=503 \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify.sh" ask-user task-retry nm-run42-review \
+      "A decision is needed" "Approve|Decline" >/dev/null 2>&1; then
+    fail "a rejected Discord send reported success"
+  fi
+  record=$(find "$home/state/x-context" -maxdepth 1 -name 'discord-notify-*.json' -print -quit)
+  assert_equals "failed" "$(jq -r '.state' "$record")" "failed send remains pending"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" FM_DISCORD_FAKE_MESSAGES='[]' \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify.sh" --retry-pending >/dev/null \
+    || fail "durable notification retry failed"
+  state=$(jq -r '.state' "$record")
+  assert_equals "sent" "$state" "retry completes the retained notification"
+  assert_equals "2" "$(wc -l < "$log" | tr -d ' ')" "one initial failed POST and one retry POST"
+  pass "failed decision notifications retry after their source cursor advances"
+}
+
+test_stale_sending_notification_recovers_without_duplicate_post() {
+  local home record nonce
+  home="$TMP_ROOT/retry-stale-sending"
+  mkdir -p "$home/state/x-context"
+  chmod 700 "$home/state" "$home/state/x-context"
+  make_fake_node "$home"
+  record="$home/state/x-context/discord-notify-stale.json"
+  nonce=0123456789abcdef012345678
+  cat > "$record" <<EOF
+{"schema":"fm-discord-decision-notification.v1","kind":"decision-notification","state":"sending","task_id":"task-stale","key":"nm-stale-review","trigger":"ask-user","channel_id":"1000000000000000001","nonce":"$nonce","summary":"Review needed","options":["Approve","Decline"],"recorded_at":1700000000,"attempted_at":1700000000}
+EOF
+  chmod 600 "$record"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_MESSAGES="[{\"id\":\"1352000000000001200\",\"channel_id\":\"1000000000000000001\",\"author\":{\"id\":\"9000000000000000001\"},\"nonce\":\"$nonce\",\"timestamp\":\"2026-09-25T00:00:00.000Z\"}]" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify.sh" --retry-pending >/dev/null \
+    || fail "stale sending notification did not reconcile from channel history"
+  assert_equals "sent" "$(jq -r '.state' "$record")" "stale notification is marked sent"
+  assert_equals "1352000000000001200" "$(jq -r '.message_id' "$record")" "existing message receipt is adopted"
+  assert_absent "$home/posts.jsonl" "history reconciliation does not post a duplicate"
+  pass "stale sending records recover from Discord history without reposting"
 }
 
 test_captain_hold_triggers_push() {
@@ -219,6 +271,8 @@ test_pr_push_requires_yolo_off() {
 
 test_no_token_is_inert
 test_notify_records_reply_binding
+test_failed_notification_retries_from_durable_outbox
+test_stale_sending_notification_recovers_without_duplicate_post
 test_captain_hold_triggers_push
 test_reply_to_notification_enters_existing_inbox
 test_unauthorized_decision_reply_is_ignored
