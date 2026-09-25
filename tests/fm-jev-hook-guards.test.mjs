@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { register } from '../.claude/jev-marketplace/jev-safe/hooks/jev.ts';
+import { applyDecisions } from '../.claude/jev-marketplace/jev-safe/vendor-fast/src/compact.ts';
 import { fitState } from '../.claude/jev-marketplace/jev-safe/vendor-fast/src/state.ts';
 
 function fixtureMessages() {
@@ -51,6 +52,42 @@ test('fast-jev preserves conversation text and configured goals in state', () =>
   ], [], { maxStateTokens: 1000, preserveRecentMessages: 0, goal: 'task-goal-fixture-unique' });
   assert.equal(state.state.goal, 'task-goal-fixture-unique');
   assert.equal(state.state.history[0]?.text, 'task-message-fixture-unique');
+});
+
+test('fast-jev omits dropped results whole and preserves kept results verbatim', () => {
+  const retainedText = 'retained result, unchanged';
+  const droppedText = 'leading payload\nprivate trailing payload';
+  const retainedResult = { tool_use_id: 'retained', text: retainedText };
+  const messages = [
+    {
+      role: 'assistant',
+      text: '',
+      toolUses: [
+        { tool_use_id: 'retained', tool: 'Read', input: {}, text: retainedText },
+        { tool_use_id: 'dropped', tool: 'Read', input: {}, text: droppedText },
+      ],
+    },
+    {
+      role: 'user',
+      text: '',
+      toolUses: [],
+      toolResults: [
+        retainedResult,
+        { tool_use_id: 'dropped', text: droppedText },
+      ],
+    },
+  ];
+  const output = applyDecisions(messages, [
+    { id: 't2', tool: 'Read', keepCall: 1, keepResult: 0, action: 'drop_result', reason: 'result_dropped' },
+  ], [
+    { id: 't2', tool_use_id: 'dropped', tool: 'Read', input: {}, callIndex: 0, resultIndex: 1, resultChars: droppedText.length, isError: false, pinned: false },
+  ]);
+  assert.equal(output[0]?.toolUses[0]?.text, retainedText);
+  assert.equal(output[0]?.toolUses[1]?.text, '[omitted: result_dropped]');
+  assert.equal(output[1]?.toolResults?.[0], retainedResult);
+  assert.equal(output[1]?.toolResults?.[1]?.text, '[omitted: result_dropped]');
+  assert.equal(JSON.stringify(output).includes('leading payload'), false);
+  assert.equal(JSON.stringify(output).includes('private trailing payload'), false);
 });
 
 test('fast-jev uses its default after a mocked invalid-key response', async () => {
