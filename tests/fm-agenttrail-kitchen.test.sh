@@ -27,3 +27,12 @@ selection=$(fm_agenttrail_select_json "$snapshot" 12) || fail "selection failed"
 [ "$(jq -r '[.omitted[].id] | sort | join(",")' <<<"$selection")" = "done,failed,unknown" ] \
   || fail "overflow did not identify every lower-priority task"
 pass "Agenttrail Kitchen selection caps at 12 and prioritizes working/validating tasks"
+
+dedup_snapshot=$(jq -n '{in_flight:[{id:"late",state:"queued"},{id:"best",state:"working"},{id:"missing",state:"working"}],paths:[{id:"late",worktree:"/shared"},{id:"best",worktree:"/shared"},{id:"missing",worktree:null}] }') \
+  || fail "could not build duplicate-path fixture"
+dedup_selection=$(fm_agenttrail_select_json "$dedup_snapshot" 1) || fail "deduplicated selection failed"
+[ "$(jq -r '.selected[0].id' <<<"$dedup_selection")" = best ] \
+  || fail "duplicate path did not retain its highest-priority task"
+[ "$(jq '.selected | length' <<<"$dedup_selection")" -eq 1 ] \
+  || fail "missing or duplicate paths consumed selection slots"
+pass "Agenttrail Kitchen selection filters empty paths and deduplicates after ranking"

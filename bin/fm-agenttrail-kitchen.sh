@@ -21,8 +21,10 @@ fm_agenttrail_select_json() {
         index:($index | tonumber),
         rank:(if ($task.state == "working" or $task.state == "validating") then 0
               elif ($task.state == "unknown" or $task.state == "failed" or $task.state == "done") then 2
-              else 1 end)}]
+              else 1 end)}
+     | select(.worktree != null and .worktree != "" and .worktree != "-")]
     | sort_by(.rank, .index)
+    | reduce .[] as $row ([]; if any(.[]; .worktree == $row.worktree) then . else . + [$row] end)
     | {selected:.[0:$limit],
        omitted:.[ $limit: ] | map({id,state,worktree,
          reason:(if .rank == 2 then "12-project cap; current state is " + .state
@@ -31,7 +33,7 @@ fm_agenttrail_select_json() {
 }
 
 fm_agenttrail_main() {
-  local mode=dry-run snapshot selection command_string path state id reason row
+  local mode=dry-run snapshot eligible selection command_string path state id reason row
   local -a project_args=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -47,17 +49,25 @@ fm_agenttrail_main() {
   done
 
   snapshot=$("$(dirname "${BASH_SOURCE[0]}")/fm-bearings-snapshot.sh" --json --all-in-flight --fields paths)
-  selection=$(fm_agenttrail_select_json "$snapshot" 12)
-
+  eligible=$(jq -c '{in_flight:[],paths:[]}' <<<"$snapshot")
   while IFS= read -r row; do
     id=$(jq -r '.id' <<<"$row")
-    state=$(jq -r '.state' <<<"$row")
+    state=$(jq -r '.state // "unknown"' <<<"$row")
     path=$(jq -r '.worktree // empty' <<<"$row")
     if [ -z "$path" ] || [ "$path" = "-" ] || [ ! -d "$path" ]; then
       printf 'omitted %s (%s): worktree path is missing or not an existing directory: %s\n' \
         "$id" "$state" "${path:-(none)}" >&2
       continue
     fi
+    eligible=$(jq -c --argjson task "$(jq -c --arg id "$id" '.in_flight[] | select(.id == $id)' <<<"$snapshot")" \
+      --arg id "$id" --arg worktree "$path" \
+      '.in_flight += [$task] | .paths += [{id:$id,worktree:$worktree}]' <<<"$eligible")
+  done < <(jq -c '[.in_flight[] as $task | (($paths | map(select(.id == $task.id)) | first) // {}) as $path | $task + {worktree:($path.worktree // null)}][]' <<<"$snapshot")
+
+  selection=$(fm_agenttrail_select_json "$eligible" 12)
+
+  while IFS= read -r row; do
+    path=$(jq -r '.worktree // empty' <<<"$row")
     project_args+=(--project "$path")
   done < <(jq -c '.selected[]' <<<"$selection")
 
