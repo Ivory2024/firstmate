@@ -700,6 +700,7 @@ Keep the configured channel private to the captain and trusted operators; only I
 Reply directly to a decision message.
 The watcher captures that reply into the existing `state/x-inbox/` flow and `fmx-respond` applies it through `fm-captain-hold.sh answer-one` for a held task, or `fm-send.sh --resolve-key` for other keyed decisions.
 Replies to ordinary messages do not resolve decisions.
+Failed sends remain in private state for watcher retries, including recovery of interrupted sends without reposting a notification already accepted by Discord.
 
 ## Relay (.env)
 
