@@ -7,11 +7,16 @@ Firstmate's `.env` reader, starts the local scanner, and starts winnow. The MCP
 launcher uses the same key reader and a Node fetch preloader. No credential is
 stored in tracked settings.
 
-Before each Jev request, the hooks scan the outgoing request body with Yelp
+The hooks scan each attempted Jev request body with Yelp
 detect-secrets and reject sensitive path references. A rejected or unavailable
 gate falls back to the tool's default behavior. The blocked fixture tests use a
 synthetic GitHub-key-shaped string and clean text with `data/captain.md` as its
 path, independently.
+
+The project plugin and MCP server remain inactive until the full 25-fixture
+pre-activation comparison and independent latency, cost, quota, fallback, and
+transmission checks are recorded. Existing synthetic/live request measurements
+below do not satisfy that gate.
 
 ## Pinned upstream revisions
 
@@ -28,7 +33,7 @@ checkouts remain in `.claude/upstreams/` for provenance and updates.
 ## Synthetic validation sample
 
 The canonical 25-fixture set referenced by the IMAC HANDOFF was not found in
-the repository or its `projects/IMAC` tree. These substitute checks used only
+the repository or its `projects/IMAC` tree. These incomplete sample checks used only
 synthetic text; no secret or personal information was included in an allowed
 request. One request was measured for each tool:
 

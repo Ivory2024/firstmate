@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { register } from '../.claude/jev-marketplace/jev-safe/hooks/jev.ts';
+import { fitState } from '../.claude/jev-marketplace/jev-safe/vendor-fast/src/state.ts';
 
 function fixtureMessages() {
   return [
@@ -42,6 +43,15 @@ test('fast-jev falls back without a key and sends no request', async () => {
   }, { messages: fixtureMessages() }, async () => { fallback = true; return 'default'; });
   assert.equal(fallback, true);
   assert.equal(requests, 0);
+});
+
+test('fast-jev omits free-text conversation and configured goals from state', () => {
+  const state = fitState([
+    { role: 'user', text: 'private-health-fixture-unique', toolUses: [] },
+  ], [], { maxStateTokens: 1000, preserveRecentMessages: 0, goal: 'private-goal-fixture-unique' });
+  assert.equal(state.state.goal, '');
+  assert.equal(JSON.stringify(state.state).includes('private-health-fixture-unique'), false);
+  assert.equal(JSON.stringify(state.state).includes('private-goal-fixture-unique'), false);
 });
 
 test('fast-jev uses its default after a mocked invalid-key response', async () => {
@@ -86,4 +96,8 @@ test('winnow preserves the original result when the safety gate blocks its path'
   assert.equal(returned, answer);
   assert.equal(requests.length, 1);
   assert.match(requests[0], /127\.0\.0\.1:48752\/check$/);
+});
+
+test('winnow does not register prompt submission transmission', () => {
+  assert.equal(hooks().some(([event]) => event === 'prompt.submit'), false);
 });

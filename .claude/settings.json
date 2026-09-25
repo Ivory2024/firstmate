@@ -3,7 +3,6 @@
     "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1"
   },
   "enabledMcpjsonServers": [
-    "jev"
   ],
   "hooks": {
     "SessionStart": [
@@ -59,7 +58,7 @@
     ]
   },
   "enabledPlugins": {
-    "jev-safe@firstmate-jev": true
+    "jev-safe@firstmate-jev": false
   },
   "extraKnownMarketplaces": {
     "firstmate-jev": {

@@ -163,25 +163,11 @@ function historyEntries(
       result: resultNote(call),
     }));
     if (message.text.trim().length === 0 && toolCalls.length === 0) return;
-    const entry: HistoryEntry = { i, role: message.role, text: message.text };
+    const entry: HistoryEntry = { i, role: message.role, text: '' };
     if (toolCalls.length > 0) entry.tool_calls = toolCalls;
     entries.push(entry);
   });
   return entries;
-}
-
-/** The last three user prompts, as the default `goal`. */
-export function goalFromMessages(messages: readonly Message[]): string {
-  return messages
-    .filter(
-      (message) =>
-        message.role === 'user' &&
-        message.text.trim().length > 0 &&
-        (message.toolResults ?? []).length === 0,
-    )
-    .slice(-3)
-    .map((message) => truncate(message.text, 500))
-    .join('\n');
 }
 
 /**
@@ -197,7 +183,7 @@ export function fitState(
   calls: readonly ToolCall[],
   options: Pick<ResolvedCompactOptions, 'maxStateTokens' | 'preserveRecentMessages' | 'goal'>,
 ): FittedState {
-  const goal = options.goal || goalFromMessages(messages);
+  const goal = '';
   const stateOf = (history: HistoryEntry[]): CompactionState => ({
     context: STATE_CONTEXT,
     goal,
