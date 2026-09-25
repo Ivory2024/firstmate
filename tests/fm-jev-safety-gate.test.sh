@@ -32,12 +32,5 @@ if ! grep -q '"reason":"sensitive_path"' "$TMP_ROOT/backlog.json"; then
   fail "backlog path was not blocked independently of the secret scanner"
 fi
 
-UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<'JSON' > "$TMP_ROOT/backlog.json"
-{"paths":["data/backlog.md"],"content":"plain non-secret fixture text"}
-JSON
-if ! grep -q '"reason":"sensitive_path"' "$TMP_ROOT/backlog.json"; then
-  fail "backlog path was not blocked independently of the secret scanner"
-fi
-
 pass "jev outbound gate blocks synthetic secrets and excluded paths"
 node --experimental-strip-types --test "$ROOT/tests/fm-jev-hook-guards.test.mjs"
