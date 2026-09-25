@@ -83,6 +83,17 @@ def _constant_string(node: ast.AST) -> str | None:
         right = _constant_string(node.right)
         if left is not None and right is not None:
             return left + right
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "join"
+        and len(node.args) == 1
+        and isinstance(node.args[0], (ast.List, ast.Tuple))
+    ):
+        separator = _constant_string(node.func.value)
+        parts = [_constant_string(part) for part in node.args[0].elts]
+        if separator is not None and all(part is not None for part in parts):
+            return separator.join(part for part in parts if part is not None)
     return None
 
 
