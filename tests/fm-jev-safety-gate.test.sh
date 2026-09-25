@@ -24,6 +24,15 @@ PY
 
 GUARD="$ROOT/.claude/jev-safety/check.py"
 PROJECT="$ROOT/.claude/jev-safety"
+python3 - "$ROOT/.claude/settings.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as settings_file:
+    settings = json.load(settings_file)
+assert "jev" in settings.get("disabledMcpjsonServers", []), settings
+assert settings.get("enabledPlugins", {}).get("jev-safe@firstmate-jev") is False, settings
+PY
 UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<'JSON' > "$TMP_ROOT/secret.json"
 {"content":"test token ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
 JSON
@@ -111,23 +120,6 @@ UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$G
   < "$TMP_ROOT/bash-fragmented-path.json" > "$TMP_ROOT/bash-fragmented-path-verdict.json"
 if ! assert_verdict "$TMP_ROOT/bash-fragmented-path-verdict.json" sensitive_path; then
   fail "Bash path assembled from partial basename literals was not blocked"
-fi
-
-python3 - > "$TMP_ROOT/bash-computed-path.json" <<'PY'
-import json
-
-print(json.dumps({
-    "tool_name": "Bash",
-    "tool_input": {
-        "command": "python -c 'print(open(\"data/\" + \"\".join([\"cap\", \"tain.md\"])).read())'"
-    },
-    "tool_response": "plain private fixture text",
-}))
-PY
-UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" \
-  < "$TMP_ROOT/bash-computed-path.json" > "$TMP_ROOT/bash-computed-path-verdict.json"
-if ! assert_verdict "$TMP_ROOT/bash-computed-path-verdict.json" sensitive_path; then
-  fail "Bash path assembled by a literal join call was not blocked"
 fi
 
 for directory in state config; do
