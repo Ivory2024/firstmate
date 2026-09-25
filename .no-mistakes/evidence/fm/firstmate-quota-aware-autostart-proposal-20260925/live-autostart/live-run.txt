@@ -1,0 +1,12 @@
+Real product run: isolated evidence backlog with one queued task
+count: 1
+ready[1]{id,state,kind,repo,title}:
+  live-ready-20260925,queued,ship,"-",Live proposal scenario
+ready_public_followups: 0 delivery-ready obligations
+help[1]:
+  - Run `tasks-axi start <id>` to dispatch one of these
+Current live quota eligibility (provider scope status remaining runway priority):
+claude	all_models	known	70	projected_exhaustion	-2.3695
+codex	all_models	known	71	projected_exhaustion	-8.1765
+agy	gemini_only	known	55	projected_exhaustion	-0.7723
+Proposal command output (empty means no proposal):
