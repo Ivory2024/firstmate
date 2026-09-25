@@ -27,10 +27,14 @@ Each Jev caller runs the shared scanner as a local child process before sending
 the request body. No local HTTP listener receives payloads, so a port collision
 cannot impersonate the safety gate.
 
-The project plugin and MCP server are enabled following the focused safety and
-default-behavior tests. The canonical 25-fixture set and remaining account
-quota were unavailable; quota consumption for the synthetic sample is reported
-below, but remaining quota was not exposed by the tools.
+The plugin and MCP server registrations are retained, but live activation is
+disabled in `.claude/settings.json`. The path gate does not establish coverage
+for shell-quoted paths assembled at execution or Python paths assembled wholly
+inside a call expression. Per Firstmate's decision, keep both integrations
+inactive until that raw-command scope is separately verified. The canonical
+25-fixture set and remaining account quota were unavailable; quota consumption
+for the synthetic sample is reported below, but remaining quota was not
+exposed by the tools.
 
 ## Pinned upstream revisions
 
