@@ -155,6 +155,8 @@ JSON
   fi
 done
 
+# shellcheck disable=SC2016 # These literal commands intentionally preserve shell expansion syntax for the guard.
+# shellcheck disable=SC2016
 for command in 'cd $TARGET && cat README.md' 'cd $(pwd) && cat README.md' 'cd .. && cat README.md' 'cd - && cat README.md'; do
   COMMAND="$command"
   UV_CACHE_DIR="$PROJECT/.uv-cache" uv run --project "$PROJECT" --quiet python "$GUARD" <<JSON > "$TMP_ROOT/bash-cd-unresolved.json"
