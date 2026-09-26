@@ -1,0 +1,4 @@
+Poller launched with HTTPS_PROXY=http://127.0.0.1:1 and a fake token.
+The local proxy connection was refused (curl exit 7: couldn't connect to 127.0.0.1:1).
+After 2 seconds, the real poller process was still running with no terminal result, consistent with the transient retry path.
+The process was stopped by the test operator.

@@ -1,0 +1,4 @@
+{"kind":"poll-error","status":"error","http_status":401}
+process_exit=0
+adapter_classify=poll-error
+adapter_terminal=accepted
