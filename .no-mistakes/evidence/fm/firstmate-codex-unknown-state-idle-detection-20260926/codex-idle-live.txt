@@ -1,0 +1,12 @@
+Scenario: both clocks stale
+activity=1790461695
+mtime=old(>300s)
+state: unknown · source: pane · harness state unavailable (unknown codex-unverified) · idle-suspect: tmux activity and worktree paths unchanged for at least 300s
+
+Scenario: recent worktree change
+changed tracked.txt
+state: unknown · source: pane · harness state unavailable (unknown codex-unverified)
+
+Scenario: recent pane activity
+activity=1790462023
+state: unknown · source: pane · harness state unavailable (unknown codex-unverified)
