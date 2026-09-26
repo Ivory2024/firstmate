@@ -141,7 +141,7 @@ make_home() {  # <name> <attended|away> [config line]
   printf 'project=demo\nwindow=fm-demo\nharness=claude\n' > "$home/state/demo.meta"
   echo handle > "$home/stub-mode"
   if [ "$2" = away ]; then
-    FM_HOME="$home" "$CONTRACT" enter --words 'watch the fleet; merge nothing' >/dev/null 2>&1 \
+    FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" fm_test_confirm_away "$CONTRACT" --words 'watch the fleet; merge nothing' >/dev/null 2>&1 \
       || fail "fixture: could not record the away posture"
   fi
   printf '%s\n' "$home" >> "$HOMES_FILE"
@@ -242,7 +242,7 @@ test_report_after_the_return_is_queued_for_main() {
   home="$TMP_ROOT/report-return"
   state="$home/state"
   mkdir -p "$state"
-  FM_HOME="$home" "$CONTRACT" enter --words 'watch the fleet' >/dev/null 2>&1 || fail "fixture: could not record the away posture"
+  FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" fm_test_confirm_away "$CONTRACT" --words 'watch the fleet' >/dev/null 2>&1 || fail "fixture: could not record the away posture"
   printf 'turn=t1\nrows=4\ntasks=alpha\nunscoped=0\nwake=signal: alpha.status\n' > "$state/.supervision-host-turn"
 
   out=$(FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_BRANCH_REPORT_TURN=t1 "$REPORT" --task alpha --verdict routine --summary 'steered while away' 2>&1); rc=$?

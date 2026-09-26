@@ -61,7 +61,7 @@ mkdir -p "$FM/state" "$FM/config" "$LAB/tmuxbin"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$LAB/tmuxbin/tmux"
 chmod +x "$LAB/tmuxbin/tmux"
 printf 'project=demo\nwindow=fm-demo\nharness=claude\n' > "$FM/state/demo.meta"
-FM_HOME="$FM" "$FM/bin/fm-afk-contract.sh" enter --words 'Watch the fleet. Merge nothing and dispatch nothing.' >/dev/null \
+FM_HOME="$FM" FM_STATE_OVERRIDE="$FM/state" fm_test_confirm_away "$FM/bin/fm-afk-contract.sh" --words 'Watch the fleet. Merge nothing and dispatch nothing.' >/dev/null \
   || fail "could not record the lab's away posture"
 
 export FM_POLL=1 FM_SIGNAL_GRACE=0 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999
