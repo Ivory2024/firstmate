@@ -440,13 +440,16 @@ Treat any `RECORD DIVERGENCE` section as a contradiction between two records of 
 After handling all emitted wakes and reconciling the OPEN DECISIONS and UNREAD STATUS sections, run the exact generation-bound `--ack-through` command printed as `WAKE_ACK_REQUIRED`; interruption before that acknowledgement deliberately leaves the work durable for idempotent re-handling.
 A status line is a wake event, not current state; use `bin/fm-crew-state.sh` when current state matters, especially before re-escalating an old decision, blocker, or pause.
 A declared `paused:` event means a bounded external wait expected to clear on its own, while `blocked:` means firstmate action is needed.
+A crewmate's narrated claim of a state transition - rebased, fixed, retried, reconciled - is not itself the evidence for that transition; before relying on it or taking the next action, check the cheap authoritative source the claim implies, such as `git merge-base`/`git log` for a rebase claim, PR mergeable state and check conclusions for a review or CI claim, or `no-mistakes axi status` for a pipeline claim.
 
 Handle actionable wakes as follows:
 
-1. For `signal:`, read the listed event lines first, then reconcile current state only where action depends on it.
+1. For `signal:`, read the listed event lines first, then reconcile current state only where action depends on it; a `done:` or other lifecycle-milestone line whose next step is already defined - section 7's Validate contract, a pending decision reply - is acted on this same turn, not merely noted.
 2. For `stale:`, inspect the recorded endpoint and load `stuck-crewmate-recovery` for a stopped, looping, confused, or unresponsive worker; a deep-inspection reason also requires current-state and validation-log inspection.
 3. For `check:`, act on the named poll result, including merges, contribution signals, Relay events, process-to-event source results, and captain inbox notes; a handled inbox note is also acknowledged with `bin/fm-inbox.sh drain --ack <id>`, or it stays counted as still waiting for firstmate.
 4. For `heartbeat:`, review the whole fleet from the structured fleet view, reconcile suspicious tasks and PR state, update the backlog, and run `bin/fm-autostart-proposal.sh` to surface quota-aware ready-work suggestions and enforce low-quota session steering; never report an unchanged fleet as progress.
+
+Handling any wake is also a chance to sweep the rest of the fleet, not only the task named in it: treat an ordinary ship or scout task whose next firstmate action is already well-defined - start validation after a `done:` commit, expect a new run or head after a rebase or retry steer, respond after a decision lands - and unactioned for 5 minutes as needing that action now rather than a passive wait, and take it without waiting for the captain to ask.
 
 Load `bearings` on a contributions check wake or when filing work linked to an upstream issue; its contribution-follow-up section owns triage and exact signal acknowledgement.
 
@@ -617,6 +620,7 @@ These skills are not captain-invocable; load them only at their precise triggers
 - `secondmate-provisioning` - load before creating, seeding, validating, launching, handing backlog to, recovering, pushing inherited local material into, or retiring a secondmate home, and before editing `data/secondmates.md`.
 - `captain-hold-lifecycle` - load before treating an investigation or visual review as complete, before ending a visual review that exposed a captain decision, when recording or routing the captain's answer, and on any `RECORD DIVERGENCE` line from the wake drain.
 - `process-event-sources` - load before arming a long-polling source, before registering a deterministic condition->action watch (do X as soon as Y is true), on any `procevent <adapter> <source-id> <sequence>` check wake, and on any `process-event source stranded` or `process-event source failed to start` check wake.
+- `bot-manager-autofix` - load on a `procevent bot-manager bot-manager-issues <sequence>` check wake to inspect, cluster, triage, and dispatch unresolved Bot Manager issues.
   Never run a registered source's blocking command yourself in a conversational turn.
 - `fmx-respond` - load on an `x-mention <request_id>` `check:` wake to handle the mention, on an `x-mode-error ...` `check:` wake to report the Relay configuration blocker, on a `public-followup ...` `check:` wake or a startup-surfaced public commitment, and on any milestone or terminal wake for a Relay-linked task before posting its completion follow-up; relevant only when Relay is on.
 - `firstmate-codexapp` - load before coordinating a visible Codex Desktop thread, evaluating a Codex App backend request, or reconciling Codex Desktop host-tool smoke evidence for Firstmate work.
