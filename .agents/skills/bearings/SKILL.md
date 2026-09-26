@@ -5,7 +5,6 @@ description: >-
   Use when the captain invokes /bearings or asks for a bearings report, morning brief, status report, catch-up, "where did I leave off", or "what's in the works".
   Plain /bearings is chat-only by default, /bearings file explicitly writes the dated data/status-report-<YYYY-MM-DD>.md artifact, and /bearings lavish additionally builds and arms the interactive fleet board; live PR enrichment remains opt-in and composes with the other modes.
   Also use on a contributions check wake or when filing work linked to an upstream issue.
-  When a lavish board exists, also use after ordinary heartbeat and check wakes to refresh it from the settled fleet snapshot.
   Also load this skill's board-wake handling when a procevent lavish wake's source id matches the canonical source id of the stable bearings board path.
 user-invocable: true
 metadata:
@@ -124,13 +123,6 @@ Run `build` once after composing the payload.
 Its serve-first sequence publishes the board, establishes and verifies its Lavish session with `lavish-axi`, reopens an ended session when necessary, and only then binds the answer source and proves a live polling listener; use the session URL it prints in the chat digest.
 Never bind or arm the board before its session is listed open.
 Never run `lavish-axi poll` for the board yourself: the armed source's supervised runner owns the blocking poll, and both the build and the watcher's ordinary reconcile repair a missing listener, so no conversational turn ever blocks on the board.
-
-### Refreshing an existing board on supervision wakes
-
-The watcher keeps the board's answer listener alive; it does not rebuild the page.
-After handling an ordinary `heartbeat:` or `check:` wake, if `bin/fm-bearings-board.sh path` names an existing board, collect the settled snapshot, recompose its payload using the rules above, and run `build` to refresh the same session.
-Do not create a board on routine wakes when no board file exists.
-This reuses the supervising agent and does not require a dedicated dashboard agent.
 
 ### Handling a board wake
 
