@@ -116,3 +116,55 @@ wait_for_exit "$watch_pid" 200 || fail "watcher did not finish the matching deci
 case "$(open_decisions watched "$watch_home/state")" in *$'nm-watch-ci\tneeds-decision\t'*) fail "watcher left the matching decision open" ;; esac
 case "$(cat "$watch_home/state/.wake-queue")" in *$'\tsignal\twatched.status\tneeds-decision:'*) fail "resolved gate retained its decision-owned wake payload" ;; esac
 pass "watcher auto-applies a known regression on the cross-task decision wake"
+
+multi_home=$(make_case watcher-multiple-gates)
+mkdir -p "$multi_home/data/multi"
+FM_HOME="$multi_home" "$ROOT/bin/fm-known-regression.sh" mark \
+  'Behavior portable serial 1' "$ANSWER" 'regression-pr-40' >/dev/null
+cat > "$multi_home/data/multi/nm-a-findings.txt" <<'EOF'
+id=ci-a
+description="CI check failing: Behavior portable serial 1 - provider reported failure - https://github.com/example/repo/actions/runs/7/job/1"
+EOF
+cat > "$multi_home/data/multi/nm-b-findings.txt" <<'EOF'
+id=ci-b
+description="CI check failing: Untracked test suite - provider reported failure - https://github.com/example/repo/actions/runs/7/job/2"
+EOF
+printf 'needs-decision [key=nm-a]: ask-user findings=ci-a file=%s\nneeds-decision [key=nm-b]: ask-user findings=ci-b file=%s\n' \
+  "$multi_home/data/multi/nm-a-findings.txt" "$multi_home/data/multi/nm-b-findings.txt" \
+  > "$multi_home/state/multi.status"
+real_node=$(command -v node)
+cat > "$multi_home/fakebin/node" <<'SH'
+#!/usr/bin/env bash
+exec "$FM_TEST_REAL_NODE" --input-type=module -e '
+  import { pathToFileURL } from "node:url";
+  const [script, ...args] = process.argv.slice(1);
+  process.argv = [process.argv[0], script, ...args];
+  globalThis.fetch = async (url, options = {}) => {
+    if (url === "https://discord.com/api/v10/users/@me") return Response.json({ id: "9000000000000000001" });
+    if (url.includes("/messages") && options.method === "POST") {
+      await import("node:fs/promises").then(({ appendFile }) => appendFile(process.env.FM_DISCORD_FAKE_POST_LOG, options.body + "\n"));
+      return Response.json({ id: "1352000000000000999", channel_id: "1000000000000000001" });
+    }
+    if (url.includes("/messages")) return Response.json([]);
+    return new Response("not found", { status: 404 });
+  };
+  await import(pathToFileURL(script).href);
+' "$@"
+SH
+chmod +x "$multi_home/fakebin/node"
+PATH="$multi_home/fakebin:$PATH" FM_TEST_REAL_NODE="$real_node" \
+  FM_DISCORD_FAKE_POST_LOG="$multi_home/posts.jsonl" \
+  FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+  FM_HOME="$multi_home" FM_STATE_OVERRIDE="$multi_home/state" \
+  FM_CREW_STATE_BIN="$multi_home/fakebin/fm-crew-state.sh" \
+  FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+  FM_SEND_BIN="$TMP_ROOT/fake-send" FM_SEND_LOG="$SEND_LOG" \
+  "$ROOT/bin/fm-watch.sh" > "$multi_home/watch.out" &
+multi_pid=$!
+wait_for_exit "$multi_pid" 200 || fail "watcher did not finish the multiple-gate wake"
+[ "$(wc -l < "$multi_home/posts.jsonl" | tr -d ' ')" = 1 ] || fail "watcher did not notify only the unmatched gate"
+case "$(cat "$multi_home/state/x-context"/*.json)" in *'"key":"nm-b"'*) ;; *) fail "unmatched gate notification was not recorded" ;; esac
+case "$(cat "$multi_home/state/x-context"/*.json)" in *'"key":"nm-a"'*) fail "resolved gate notification was recorded" ;; esac
+case "$(cat "$multi_home/state/.wake-queue")" in *$'\tsignal\tmulti.status\tneeds-decision:'*) ;; *) fail "remaining open gate lost decision-owned wake routing" ;; esac
+case "$(open_decisions multi "$multi_home/state")" in *$'nm-b\tneeds-decision\t'*) ;; *) fail "unmatched gate is no longer open" ;; esac
+pass "one resolved gate suppresses only its notification; sibling remains decision-owned"
