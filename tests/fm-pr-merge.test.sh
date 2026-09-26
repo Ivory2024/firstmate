@@ -2827,9 +2827,10 @@ test_away_grant_and_yolo_and_hold_for_return() {
 
 # While the away-posture record exists main is parked, so the supervision
 # branch actor may reach the merge gate - and meets exactly the gate main
-# would: any task merges green at its live head under away authority, a red
-# one is refused whatever the words say, and without the record the branch is
-# refused at the role partition before any forge call
+# would: a task with yolo=on or an explicit merge grant may merge when green;
+# a task without either is held, a red one is refused whatever the words say,
+# and without the record the branch is refused at the role partition before
+# any forge call
 # (docs/pi-supervision-branch.md "Postures").
 test_away_branch_actor_merges_green_under_the_record() {
   local case_dir rc url head
@@ -2850,19 +2851,19 @@ test_away_branch_actor_merges_green_under_the_record() {
   [ ! -e "$case_dir/gh.log" ] || assert_no_grep 'pr ' "$case_dir/gh.log" \
     "away-branch-attended: gh ran for an attended branch merge"
 
-  # No yolo and no grant list: the record alone relocates the green merge.
+  # A task-specific grant relocates the green merge while preserving the gate.
   case_dir=$(make_case away-branch-green)
   mkdir -p "$case_dir/wt" "$case_dir/home"
   add_gh_mocks "$case_dir" "$head"
-  write_away_record "$case_dir" --words 'merge the windows fix when green'
+  write_away_record "$case_dir" --grant task-x1 --words 'merge the windows fix when green'
   FM_SUPERVISION_ACTOR=branch FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
     > "$case_dir/stdout" 2> "$case_dir/stderr" \
-    || fail "away-branch-green: a green merge must succeed for the branch under the record: $(cat "$case_dir/stderr")"
+    || fail "away-branch-green: a granted green merge must succeed for the branch: $(cat "$case_dir/stderr")"
   assert_grep 'main is parked' "$case_dir/stderr" \
     "away-branch-green: the relocation note was not printed"
   assert_logged_gh_merge "$case_dir" 93 example/repo --squash
-  assert_grep "merge landed: task-x1 $url away" "$case_dir/state/.wake-queue" \
-    "away-branch-green: the durable outcome did not tag away"
+  assert_grep "merge landed: task-x1 $url away-grant" "$case_dir/state/.wake-queue" \
+    "away-branch-green: the durable outcome did not tag away-grant"
 
   # The green gate is absolute in this posture for the branch as for main: a
   # red check refuses on its own, and the attended waiver is refused too.
