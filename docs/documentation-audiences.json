@@ -413,6 +413,10 @@
       "audience": "maintainer-verification"
     },
     {
+      "path": "docs/fleet-ledger.md",
+      "audience": "operator-current"
+    },
+    {
       "path": "docs/gerrit-change-watch.md",
       "audience": "maintainer-verification"
     },

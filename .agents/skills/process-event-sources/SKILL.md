@@ -38,7 +38,7 @@ A worker-owned board uses `bin/fm-procevent-lavish.sh arm <artifact.html> --for 
 Arm it once, then re-arm only when a round is actually waiting: arming again with nothing to acknowledge is refused, because it would discard the reply your listener is still holding.
 Posting that reply is best effort: a rare crash while the listener consumes the staged file drops that one round's reply rather than posting it twice, and robust reply delivery waits on lavish-axi's exclusive listener.
 A terminal round is never re-armed: the board stays yours until you acknowledge it with `bin/fm-procevent.sh handled <source-id> <sequence>`, which retires it, and until then `retire` refuses the board too.
-Never arm a board that a live task hosts; follow the crew-hosted Lavish board contract in [`docs/configuration.md`](../../../docs/configuration.md#crew-hosted-lavish-review-boards).
+Never arm a board that a live task hosts; follow the process-event operating contract in [`docs/configuration.md`](../../../docs/configuration.md#process-to-event-sources-stateprocevent).
 
 Registering a source is not the same fact as listening to it.
 Lavish `arm` waits until this registration's listener is confirmed running and does not report ready without that evidence; other adapters still record the source for the watcher's next reconcile.
@@ -118,7 +118,7 @@ Two rules the commands cannot enforce for you:
   Consume a Lavish capture with `bin/fm-procevent-lavish.sh read <result-file>` rather than grepping the raw file: that command reports declared and presented item counts plus a completeness verdict, enumerates every captured queued item while retaining supplied element identity, and surfaces a `tag=message` freeform message as its own field, labeling it as session-ending only when the session ended.
   `answers` remains the keyed-choice extractor and never treats freeform prose as a decision key.
   A `feedback` result can still be the last one a review ever produces, so never assume another wake is coming just because the state is not `ended`.
-The crew-hosted recovery ordering and arm-and-acknowledge rule are owned by the [crew-hosted Lavish board contract](../../../docs/configuration.md#crew-hosted-lavish-review-boards); `bin/fm-brief.sh` emits its instruction at the point of use.
+The process-event operating contract is owned by [`docs/configuration.md`](../../../docs/configuration.md#process-to-event-sources-stateprocevent); `bin/fm-brief.sh` emits the task-owned instruction at the point of use.
 : A routine no-op an adapter positively identifies never becomes a firstmate wake - it is recorded as handled and stays silent, so you never see it.
   For an ordinary firstmate-owned Lavish source that is an ended session carrying nothing, or `browser_disconnected` (classified `disconnected`): a closed review window that still has an open session.
   A task-owned empty terminal round instead reaches its owner's steering inbox for conclusion, as the crew-hosted contract requires.
