@@ -3288,6 +3288,51 @@ test_capped_overview_without_branch_rows_reports_both_ids() {
   pass 'same-branch identity survives both runs falling outside the overview'
 }
 
+test_capped_overview_with_no_branch_runs_falls_back_cleanly() {
+  make_capped_runs_case capped-zero-branch running cancelled hidden
+  local d=$TMP_ROOT/capped-zero-branch out
+  fm_write_meta "$d/state/competing.meta" "window=default:w1:p1" "worktree=$d/wt" \
+    "kind=ship" "backend=herdr" "harness=claude"
+  FM_FAKE_AXI_HOME=$(python3 - "$NM_HOME/state.sqlite" "$d/wt" "$FM_FAKE_RUN_HEAD" <<'PY'
+import csv
+import json
+import sqlite3
+import sys
+
+database, worktree, head = sys.argv[1:]
+with sqlite3.connect(database) as db:
+    db.execute("DELETE FROM runs WHERE repo_id = 'repo' AND branch = 'fm/competing'")
+    db.executemany("INSERT INTO runs VALUES (?, ?, ?, ?, ?, ?)", [
+        ("01OTHER10", "repo", "fm/other-10", "running", head, 20),
+        ("01OTHER11", "repo", "fm/other-11", "running", head, 21),
+    ])
+    rows = db.execute("SELECT id, branch, status, head_sha FROM runs WHERE repo_id = 'repo' "
+                      "ORDER BY created_at DESC, id DESC").fetchall()
+print("repo: " + json.dumps(worktree))
+print("count: 10 of %d total" % len(rows))
+print("runs[10]{id,branch,status,head,pr}:")
+for row in rows[:10]:
+    sys.stdout.write("  ")
+    csv.writer(sys.stdout, lineterminator="\n").writerow([*row, ""])
+PY
+  ) || fail 'could not build capped inventory without a requested-branch run'
+  FM_FAKE_AXI_STATUS="$(run_running fm/other-10)"
+  FM_FAKE_RUNS_LIST="  running fm/other-10 $FM_FAKE_RUN_HEAD 2026-09-14 12:01"
+  FM_FAKE_TMUX_MISSING=1
+  FM_FAKE_HERDR_AGENT_STATUS=idle
+  local gen
+  gen=$("$ROOT/bin/fm-busy-event.sh" arm "$d/state" competing)
+  "$ROOT/bin/fm-busy-event.sh" apply "$d/state" competing busy --gen "$gen" \
+    --source claude-hook --event user-prompt-submit
+  printf 'working: implementation continues\n' > "$d/state/competing.status"
+  out=$(run_crew_state "$d" competing)
+  assert_contains "$out" 'state: working' 'an exact zero-run inventory is valid absence, not an unreadable table'
+  assert_contains "$out" 'source: pane' 'no attributed run returns to current harness evidence'
+  assert_contains "$out" 'claude-hook' 'the semantic busy source remains visible after inventory fallback'
+  assert_not_contains "$out" 'unreadable runs table' 'a capped overview with no requested rows stays readable'
+  pass 'capped overview with zero same-branch runs falls back cleanly'
+}
+
 test_capped_replacement_keeps_gate_and_inventory_unchanged() {
   make_capped_runs_case "capped reviewer's replacement" running cancelled
   local d="$TMP_ROOT/capped reviewer's replacement" out before after
@@ -4784,6 +4829,7 @@ test_no_run_herdr_stale_registration_over_shell_reads_agent_gone
 test_no_run_herdr_stale_working_record_is_never_busy
 test_capped_competing_live_runs_report_both_ids
 test_capped_overview_without_branch_rows_reports_both_ids
+test_capped_overview_with_no_branch_runs_falls_back_cleanly
 test_capped_replacement_keeps_gate_and_inventory_unchanged
 test_capped_inventory_failures_report_unknown
 test_complete_inventory_ignores_unrelated_semantics
