@@ -105,7 +105,7 @@ def poll(database, state_path):
         try:
             rows = fetch(database, os.environ["NOTION_TOKEN"])
         except urllib.error.HTTPError as e:
-            if e.code == 429 or 500 <= e.code <= 599:
+            if e.code == 429 or e.code in (500, 502, 503, 504):
                 time.sleep(POLL_SECONDS)
                 continue
             print(json.dumps({"kind": "poll-error", "status": "error",

@@ -44,7 +44,7 @@ class BotManagerPollTest(unittest.TestCase):
                     failure.close()
 
     def test_permanent_http_error_is_terminal_and_supervisor_visible(self):
-        for status in (400, 401, 403):
+        for status in (400, 401, 403, 501, 505):
             with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp:
                 output = io.StringIO()
                 error = urllib.error.HTTPError(
