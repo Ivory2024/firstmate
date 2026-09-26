@@ -352,7 +352,7 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
         else
           ($runways | map(select((.evidence.usableRunwaySeconds | type) != "number")) | first) as $unknown |
           ($rows | map(select(.scope == ($unknown.scope // $runways[0].scope))) | first) as $row |
-          {profile: $c, provider: $p, bounds: $bounds, scope: ($unknown.scope // $runways[0].scope), pct: $row.effectivePercentRemaining, spendPriority: $row.selection.spendPriority, runway: $row.runway.status, eligible: true, unranked: true, unknown: true, runway_unresolved: true, reason: (if ($horizon | test("^[1-9][0-9]*$")) then "projected runway evidence missing or unknown" else "likely completion horizon missing or invalid" end)}
+          {profile: $c, provider: $p, bounds: $bounds, scope: ($unknown.scope // $runways[0].scope), pct: $row.effectivePercentRemaining, spendPriority: ([$rows[] | select(.status == "known" and (.selection.spendPriority | type) == "number") | .selection.spendPriority] | min), runway: $row.runway.status, eligible: true, unranked: true, unknown: true, runway_unresolved: true, reason: (if ($horizon | test("^[1-9][0-9]*$")) then "projected runway evidence missing or unknown" else "likely completion horizon missing or invalid" end)}
         end
       elif (measured($p) | not) then
         ($rows | first) as $row |

@@ -245,6 +245,14 @@ assert_contains "$out" '  status: escalate' "missing matching runway evidence pr
 sed 's/Likely completion horizon: 3600 seconds/Likely completion horizon: 0 seconds/' "$BRIEF" > "$TMP_ROOT/brief-invalid-horizon.md"
 TYPESAFE_API_KEY=$KEY run code out err "$TMP_ROOT/brief-invalid-horizon.md" --project pager
 assert_contains "$out" '  status: escalate' "invalid completion horizon prevents a lower-priority clear selection"
+
+jq '.rules[3].use[0].model = "fable"' "$BASE_RULES" > "$RULES"
+write_quota "$QUOTA" -0.4 0.9
+jq '(.providers[] | select(.provider == "claude").quotaSemantics.effectiveAvailability[] | select(.scope == "model:fable") | .selection.spendPriority) = -0.5 | (.providers[] | select(.provider == "claude").quotaSemantics.effectiveAvailability[] | select(.scope == "model:fable") | .runway.status) = "through_reset"' "$QUOTA" > "$TMP_ROOT/multi-scope-runway.json"
+TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$TMP_ROOT/multi-scope-runway.json" run code out err "$TMP_ROOT/brief-no-horizon.md" --project pager
+assert_contains "$out" '  status: clear' "a non-limiting projected scope does not force escalation"
+assert_contains "$out" "  profile: --harness 'cursor' --model 'cursor-grok-4.6-medium'" "candidate ranking uses the minimum known scope priority"
+cp "$BASE_RULES" "$RULES"
 pass "unresolved higher-priority projected runway forces escalation"
 write_quota "$QUOTA" 0.7597
 
