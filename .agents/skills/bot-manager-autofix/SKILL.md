@@ -76,9 +76,10 @@ the project's delivery path. No worker or poller receives merge authority.
 
 When a dispatched fix is confirmed merged, use its backlog note or task memo to
 identify the linked issue page URLs, then query the Notion data source and match
-the affected rows by `오류 지문` or `잡 이름`. For each matched unresolved row,
-use `notion-update-page` to set `상태=해결` and `결과 요약` to a short reason
-that names the merged PR URL and says the merge was confirmed. Require evidence
-that the PR is merged; dispatch, a completed task, or green CI alone is not
-enough. Update only rows tied to that fix and leave already-resolved or otherwise
-closed rows unchanged.
+the affected rows by page ID. Match by `오류 지문` only when the recorded task
+evidence establishes that the fix covers every row with that fingerprint. For
+each matched unresolved row, use `notion-update-page` to set `상태=해결` and
+`결과 요약` to a short reason that names the merged PR URL and says the merge
+was confirmed. Require evidence that the PR is merged; dispatch, a completed
+task, or green CI alone is not enough. Update only rows tied to that fix and
+leave already-resolved or otherwise closed rows unchanged.
