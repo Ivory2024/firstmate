@@ -137,6 +137,20 @@ test_no_profile_keeps_claude_profile_defaults() {
   pass "no --model/--effort records defaults and types the claude launch instructions"
 }
 
+test_successful_spawn_creates_well_formed_initial_status() {
+  local rec id status_line
+  id=initial-status-z1
+  rec=$(make_spawn_case initial-status claude "$id")
+  read_case_record "$rec"
+
+  run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" >/dev/null
+  expect_code 0 "$?" "claude spawn should succeed before the worker writes status"
+  [ -f "$HOME_DIR/state/$id.status" ] || fail "successful spawn must create the status file"
+  status_line=$(cat "$HOME_DIR/state/$id.status")
+  [[ "$status_line" =~ ^working\ \[at=[1-9][0-9]*\]:\ spawned$ ]] || fail "spawn status should be a well-formed stamped working line (got: $status_line)"
+  pass "successful spawn creates a well-formed initial status line"
+}
+
 test_non_cursor_launch_clears_inherited_cursor_markers() {
   local rec id out status launch
   id=profile-claude-cursor-markers-z1b
@@ -1445,6 +1459,7 @@ test_non_claude_harness_ignores_claude_permission_mode() {
 }
 
 test_worker_launch_delivers_role_scope
+test_successful_spawn_creates_well_formed_initial_status
 test_no_profile_keeps_claude_profile_defaults
 test_non_cursor_launch_clears_inherited_cursor_markers
 test_relative_home_overrides_launch_with_absolute_cross_process_paths

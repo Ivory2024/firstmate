@@ -4946,6 +4946,12 @@ if [ -n "$SPAWN_DEFERRED_SIGNAL" ]; then
   echo "error: spawn of $ID was interrupted after launch delivery began; $SPAWN_PRESERVED_CLAIM" >&2
   exit "$SPAWN_DEFERRED_SIGNAL_STATUS"
 fi
+if [ "$RELAUNCH" -eq 0 ]; then
+  if ! printf '%s\n' "$(status_stamp_line 'working: spawned')" >>"$STATE/$ID.status"; then
+    echo "error: task $ID was launched, but its initial status line could not be written to $STATE/$ID.status" >&2
+    exit 1
+  fi
+fi
 fm_lock_release "$SPAWN_META_LOCK"
 SPAWN_META_LOCK_HELD=0
 
