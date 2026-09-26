@@ -67,7 +67,7 @@ fm_discord_load_config() {
   # An explicit allowlist opts its channel into polling despite the built-in
   # collision exclusion. A user-configured exclusion remains authoritative.
   if [ -n "$FM_DISCORD_CHANNELS" ]; then
-    local allowed excluded keep channel conflict
+    local allowed excluded keep conflict
     local -a allowed_ids excluded_ids
     IFS=',' read -r -a allowed_ids <<< "$FM_DISCORD_CHANNELS"
     IFS=',' read -r -a excluded_ids <<< "$FM_DISCORD_EXCLUDES"
