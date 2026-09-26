@@ -93,7 +93,7 @@ if ! git -C "$WORKTREE" cat-file -e "$CITED_HEAD^{commit}" 2>/dev/null; then
   esac
 fi
 
-FOUND_REFS=$(git -C "$WORKTREE" for-each-ref --contains="$CITED_HEAD" --format='%(refname)' refs/remotes/origin refs/remotes/no-mistakes 2>/dev/null || true)
+FOUND_REFS=$(git -C "$WORKTREE" for-each-ref --contains="$CITED_HEAD" --format='%(refname)' 2>/dev/null) || inconclusive "could not check cited head reachability across worktree refs"
 [ -z "$FOUND_REFS" ] || inconclusive "cited head $CITED_HEAD is reachable from fetched ref(s): $(printf '%s' "$FOUND_REFS" | tr '\n' ' ')"
 
 ORIGIN_REF="refs/remotes/origin/$BRANCH"
@@ -113,7 +113,7 @@ EOF
 
 echo "SAFE - phantom head 확인됨, 데이터 유실 위험 없음"
 echo "run: $RUN_ID"
-echo "cited pipeline head: $CITED_HEAD (commit object known; absent from fetched remote refs)"
+echo "cited pipeline head: $CITED_HEAD (commit object known; absent from worktree refs after fetch)"
 echo "origin tip: $ORIGIN_TIP"
 echo "no-mistakes tip: $MIRROR_TIP"
 echo "safe base for a new branch: $ORIGIN_TIP"
