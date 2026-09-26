@@ -114,4 +114,5 @@ watch_pid=$!
 wait_for_exit "$watch_pid" 200 || fail "watcher did not finish the matching decision wake"
 [ "$(wc -l < "$SEND_LOG" | tr -d ' ')" = 2 ] || fail "watcher did not auto-apply the known regression answer"
 case "$(open_decisions watched "$watch_home/state")" in *$'nm-watch-ci\tneeds-decision\t'*) fail "watcher left the matching decision open" ;; esac
+case "$(cat "$watch_home/state/.wake-queue")" in *$'\tsignal\twatched.status\tneeds-decision:'*) fail "resolved gate retained its decision-owned wake payload" ;; esac
 pass "watcher auto-applies a known regression on the cross-task decision wake"
