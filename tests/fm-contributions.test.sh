@@ -339,7 +339,7 @@ test_away_yolo_is_fleet_work() {
   with_home "$home" "$ROOT/bin/fm-pr-check.sh" delivery https://github.com/o/r/pull/8 >/dev/null \
     || fail 'could not register away delivery'
   printf 'yolo=on\n' >> "$home/state/delivery.meta"
-  with_home "$home" "$ROOT/bin/fm-afk-contract.sh" enter --words 'merge the delivery PR when green' >/dev/null \
+  with_home "$home" fm_test_confirm_away "$ROOT/bin/fm-afk-contract.sh" --words 'merge the delivery PR when green' \
     || fail 'could not enter away posture'
   mutate_record "$home" delivery '.records[0].observation.can_merge=true'
   with_home "$home" "$ROOT/bin/fm-fleet-snapshot.sh" --contribution-input > "$home/input.json" \
@@ -347,7 +347,7 @@ test_away_yolo_is_fleet_work() {
   out=$(with_home "$home" "$ROOT/bin/fm-contributions.sh" snapshot "$home/input.json" --all) \
     || fail 'could not project away delivery'
   printf '%s' "$out" | jq -e '.checked == 1 and .counts.captain == 0 and .counts.fleet == 1' >/dev/null \
-    || fail 'away yolo delivery requiring a merge remained captain work'
+    || fail "away yolo delivery requiring a merge remained captain work: $out input=$(cat "$home/input.json")"
   pass 'away yolo delivery is fleet work without granting merge authority'
 }
 
@@ -362,7 +362,7 @@ test_away_yolo_cross_home_is_fleet_work() {
   with_home "$child" "$ROOT/bin/fm-pr-check.sh" delivery https://github.com/o/r/pull/8 >/dev/null \
     || fail 'could not register child away delivery'
   printf 'yolo=on\n' >> "$child/state/delivery.meta"
-  with_home "$child" "$ROOT/bin/fm-afk-contract.sh" enter --words 'merge the delivery PR when green' >/dev/null \
+  with_home "$child" fm_test_confirm_away "$ROOT/bin/fm-afk-contract.sh" --words 'merge the delivery PR when green' \
     || fail 'could not enter child away posture'
   mutate_record "$child" delivery '.records[0].observation.can_merge=true'
   FM_SNAPSHOT_NOW="$NOW" with_home "$child" "$ROOT/bin/fm-fleet-snapshot.sh" --secondmate-home-summary > "$child/state/home-summary.json" \

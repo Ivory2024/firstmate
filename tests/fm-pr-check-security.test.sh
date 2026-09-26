@@ -2773,11 +2773,11 @@ test_gitlab_merged_poll_retires() {
 
 # --- poll-path merge authority ----------------------------------------------
 
-write_away_record() {  # <dir> [<fm-afk-contract.sh enter args>...]
+write_away_record() {  # <dir> [<propose arguments>...]
   local dir=$1
   shift
   FM_HOME="$dir/home" FM_STATE_OVERRIDE="$dir/home/state" \
-    "$ROOT/bin/fm-afk-contract.sh" enter "$@" >/dev/null \
+    fm_test_confirm_away "$ROOT/bin/fm-afk-contract.sh" "$@" \
     || fail "could not enter an away-posture record"
 }
 
