@@ -55,7 +55,7 @@ test_no_token_is_inert() {
   pass "proactive Discord notification is inert without the self-hosted token"
 }
 test_quiet_report_posts_plain_snapshot() {
-  local home log body
+  local home log body long_report
   home="$TMP_ROOT/report"
   mkdir -p "$home/state/x-context"
   chmod 700 "$home/state" "$home/state/x-context"
@@ -69,6 +69,15 @@ test_quiet_report_posts_plain_snapshot() {
   body=$(jq -r '.payload.content' "$log")
   assert_equals $'현황\n진행 중: 작업 A' "$body" "report body is sent verbatim"
   assert_equals '[]' "$(jq -c '.payload.allowed_mentions.parse' "$log")" "report disables mentions"
+  long_report="$(printf '%02000d' 0)"$'\n🙂'
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token \
+    "$ROOT/bin/fm-discord-notify.sh" --report 1000000000000000001 "$long_report" >/dev/null \
+    || fail "long report post failed"
+  assert_equals 3 "$(wc -l < "$log" | tr -d ' ')" "long report splits into valid Discord messages"
+  assert_equals "$long_report" "$(tail -n 2 "$log" | jq -sr 'map(.payload.content) | join("")')" "long report preserves Unicode content"
+  [ "$(jq -r '.payload.content | length' "$log" | sort -nr | head -n 1)" -le 2000 ] || fail "report chunk exceeds Discord limit"
   [ -z "$(find "$home/state/x-context" -name 'discord-notify-*.json' -print -quit)" ] || fail "plain report creates no decision binding"
   pass "Discord report sends a bounded plain message without creating a decision record"
 }
