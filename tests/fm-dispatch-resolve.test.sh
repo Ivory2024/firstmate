@@ -252,6 +252,10 @@ jq '(.providers[] | select(.provider == "claude").quotaSemantics.effectiveAvaila
 TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$TMP_ROOT/multi-scope-runway.json" run code out err "$TMP_ROOT/brief-no-horizon.md" --project pager
 assert_contains "$out" '  status: clear' "a non-limiting projected scope does not force escalation"
 assert_contains "$out" "  profile: --harness 'cursor' --model 'cursor-grok-4.6-medium'" "candidate ranking uses the minimum known scope priority"
+jq '(.providers[] | select(.provider == "claude").quotaSemantics.effectiveAvailability[] | select(.scope == "model:fable") | .selection) = {} | (.providers[] | select(.provider == "claude").quotaSemantics.effectiveAvailability[] | select(.scope == "model:fable") | .runway.status) = "through_reset"' "$QUOTA" > "$TMP_ROOT/missing-scope-priority.json"
+TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$TMP_ROOT/missing-scope-priority.json" run code out err "$TMP_ROOT/brief-no-horizon.md" --project pager
+assert_contains "$out" '  status: clear' "missing priority in an applicable scope cannot trigger unresolved-runway escalation"
+assert_contains "$out" "  profile: --harness 'cursor' --model 'cursor-grok-4.6-medium'" "a candidate without complete ranking evidence cannot outrank the feasible selection"
 cp "$BASE_RULES" "$RULES"
 pass "unresolved higher-priority projected runway forces escalation"
 write_quota "$QUOTA" 0.7597

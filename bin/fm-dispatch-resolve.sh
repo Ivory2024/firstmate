@@ -352,7 +352,7 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
         else
           ($runways | map(select((.evidence.usableRunwaySeconds | type) != "number")) | first) as $unknown |
           ($rows | map(select(.scope == ($unknown.scope // $runways[0].scope))) | first) as $row |
-          {profile: $c, provider: $p, bounds: $bounds, scope: ($unknown.scope // $runways[0].scope), pct: $row.effectivePercentRemaining, spendPriority: ([$rows[] | select(.status == "known" and (.selection.spendPriority | type) == "number") | .selection.spendPriority] | min), runway: $row.runway.status, eligible: true, unranked: true, unknown: true, runway_unresolved: true, reason: (if ($horizon | test("^[1-9][0-9]*$")) then "projected runway evidence missing or unknown" else "likely completion horizon missing or invalid" end)}
+          {profile: $c, provider: $p, bounds: $bounds, scope: ($unknown.scope // $runways[0].scope), pct: $row.effectivePercentRemaining, spendPriority: (if (measured($p) and $profile_floor_state != "unknown" and all($rows[]; .status == "known" and (.selection.spendPriority | type) == "number")) then [$rows[].selection.spendPriority] | min else null end), runway: $row.runway.status, eligible: true, unranked: true, unknown: true, runway_unresolved: true, reason: (if ($horizon | test("^[1-9][0-9]*$")) then "projected runway evidence missing or unknown" else "likely completion horizon missing or invalid" end)}
         end
       elif (measured($p) | not) then
         ($rows | first) as $row |
