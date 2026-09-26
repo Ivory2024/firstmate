@@ -26,6 +26,7 @@ class BotManagerPollTest(unittest.TestCase):
     def test_transient_transport_failure_retries(self):
         failures = [
             urllib.error.URLError("offline"),
+            urllib.error.HTTPError("https://api.notion.com/", 408, "timeout", {}, None),
             urllib.error.HTTPError("https://api.notion.com/", 429, "busy", {}, None),
             urllib.error.HTTPError("https://api.notion.com/", 503, "busy", {}, None),
         ]
