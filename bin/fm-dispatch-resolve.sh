@@ -352,7 +352,7 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
         else
           ($runways | map(select((.evidence.usableRunwaySeconds | type) != "number")) | first) as $unknown |
           ($rows | map(select(.scope == ($unknown.scope // $runways[0].scope))) | first) as $row |
-          {profile: $c, provider: $p, bounds: $bounds, scope: ($unknown.scope // $runways[0].scope), pct: $row.effectivePercentRemaining, spendPriority: $row.selection.spendPriority, runway: $row.runway.status, eligible: true, unranked: true, unknown: true, reason: (if ($horizon | test("^[1-9][0-9]*$")) then "projected runway evidence missing or unknown" else "likely completion horizon missing or invalid" end)}
+          {profile: $c, provider: $p, bounds: $bounds, scope: ($unknown.scope // $runways[0].scope), pct: $row.effectivePercentRemaining, spendPriority: $row.selection.spendPriority, runway: $row.runway.status, eligible: true, unranked: true, unknown: true, runway_unresolved: true, reason: (if ($horizon | test("^[1-9][0-9]*$")) then "projected runway evidence missing or unknown" else "likely completion horizon missing or invalid" end)}
         end
       elif (measured($p) | not) then
         ($rows | first) as $row |
@@ -413,7 +413,9 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
     else
       ($elig | max_by(.spendPriority)) as $best |
       ([$elig[] | select(.spendPriority == $best.spendPriority)] | length) as $ties |
-      if $ties > 1 then $ev + {status: "escalate", reason: "genuine spendPriority tie", note: $sel.note, candidates: $cands}
+      if any($cands[]; .runway_unresolved == true and (.spendPriority | type) == "number" and .spendPriority >= $best.spendPriority) then
+        $ev + {status: "escalate", reason: "projected runway feasibility is unresolved for a candidate that could outrank the feasible selection", note: $sel.note, candidates: $cands}
+      elif $ties > 1 then $ev + {status: "escalate", reason: "genuine spendPriority tie", note: $sel.note, candidates: $cands}
       else $ev + {status: "clear", note: $sel.note, candidates: $cands, chosen: $best}
         + (if ($unranked | length) > 0 then
              {unranked_note: "\($unranked | length) eligible candidate(s) unranked (\([$unranked[].provider] | unique | join(", ")))"}

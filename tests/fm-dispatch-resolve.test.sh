@@ -231,13 +231,22 @@ write_quota "$QUOTA" -0.9 0.95
 TYPESAFE_API_KEY=$KEY run code out err "$BRIEF" --project pager
 assert_contains "$out" "  profile: --harness 'claude' --model 'sonnet' --effort 'high'" "projected runway covering the horizon may win by spendPriority"
 pass "projected runway is checked against the explicit likely-completion horizon before ranking"
-write_quota "$QUOTA" 0.7597
-
+write_quota "$QUOTA" -0.9 0.95
 sed '/^Likely completion horizon:/d' "$BRIEF" > "$TMP_ROOT/brief-no-horizon.md"
 TYPESAFE_API_KEY=$KEY run code out err "$TMP_ROOT/brief-no-horizon.md" --project pager
-assert_contains "$out" 'candidate: claude:sonnet  provider=claude  scope=all_models  remaining=79%  spendPriority=-0.4627  runway=projected_exhaustion  -> eligible, unranked: likely completion horizon missing or invalid: disclosed uncertainty' "missing horizon discloses unresolved projected feasibility"
-assert_contains "$out" '  status: clear' "another candidate with through-reset runway may still be selected"
-pass "missing completion horizon leaves projected runway eligible but unranked"
+assert_contains "$out" 'candidate: claude:sonnet  provider=claude  scope=all_models  remaining=79%  spendPriority=0.95  runway=projected_exhaustion  -> eligible, unranked: likely completion horizon missing or invalid: disclosed uncertainty' "missing horizon discloses unresolved projected feasibility"
+assert_contains "$out" '  status: escalate' "higher-priority unresolved projected candidate prevents a lower-priority clear selection"
+assert_contains "$out" 'projected runway feasibility is unresolved for a candidate that could outrank the feasible selection' "escalation explains unresolved ranking risk"
+
+jq 'del(.exhaustion[] | select(.provider == "claude" and .scope == "all_models"))' "$QUOTA" > "$TMP_ROOT/missing-runway-evidence.json"
+TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$TMP_ROOT/missing-runway-evidence.json" run code out err "$BRIEF" --project pager
+assert_contains "$out" '  status: escalate' "missing matching runway evidence prevents a lower-priority clear selection"
+
+sed 's/Likely completion horizon: 3600 seconds/Likely completion horizon: 0 seconds/' "$BRIEF" > "$TMP_ROOT/brief-invalid-horizon.md"
+TYPESAFE_API_KEY=$KEY run code out err "$TMP_ROOT/brief-invalid-horizon.md" --project pager
+assert_contains "$out" '  status: escalate' "invalid completion horizon prevents a lower-priority clear selection"
+pass "unresolved higher-priority projected runway forces escalation"
+write_quota "$QUOTA" 0.7597
 
 # --- clear: request shape, secret handling, argmax --------------------------
 reset_log
