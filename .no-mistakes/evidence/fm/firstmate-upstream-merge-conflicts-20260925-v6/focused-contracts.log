@@ -1,0 +1,543 @@
+Focused executable contracts for protected fork behavior
+
+$ bash tests/fm-herdr-lab.test.sh
+ok - fm-herdr-lab: names fail closed and require the lab prefix
+ok - fm-herdr-lab: provisioning, scoped calls, guarded teardown, and fleet tripwire are deterministic
+ok - fm-herdr-lab: run keeps the lab session a Herdr option before any -- delimiter
+ok - fm-herdr-lab: missing tripwire refuses teardown before any Herdr call
+ok - fm-herdr-lab: changed default fleet state is a hard failure
+ok - fm-herdr-lab: an owned stopped lab can re-provision safely
+ok - fm-herdr-lab: failed deletion retains ownership until absence is confirmed
+ok - fm-herdr-lab: timed-out provisioning cancels the launch before teardown
+ok - fm-herdr-lab: the viewer attaches only to a session this lab owns
+ok - fm-herdr-lab: timed-out viewer startup cancels its exact launcher
+ok - fm-herdr-lab: startup timeout allows launcher child escalation
+ok - fm-herdr-lab: viewer start requires an identity-matched owned process
+ok - fm-herdr-lab: viewer stop signals only recorded processes and confirms the detach
+ok - fm-herdr-lab: viewer ownership requires the recorded parent
+ok - fm-herdr-lab: interrupted viewer start cancels its launcher
+ok - fm-herdr-lab: teardown refuses to destroy a session an attached viewer still holds
+ok - fm-herdr-lab: unreadable detach results fail closed on running sessions
+ok - fm-herdr-lab: the viewer launcher refuses unsafe sessions and pidfiles
+
+$ bash tests/fm-quota-choose.test.sh
+ok - help renders the complete header only
+ok - first positive candidate wins
+ok - exhausted provider is skipped
+ok - no positive candidate returns none and exit 1
+ok - positional candidates work
+ok - specific model scope bounds generic quota
+ok - omp openai-codex prefix matches the bare codex model scope
+ok - omp without a mapped prefix fails closed
+ok - default model uses provider-wide quota
+ok - fractional positive quota is eligible
+ok - unknown harness fails closed
+ok - all candidates are validated before selection
+ok - malformed provider data fails closed
+ok - multiple JSON values fail closed
+ok - known-empty quota fails closed
+ok - top-level unknown status permits known availability entries
+ok - malformed known row under unknown provider status fails closed
+ok - exhausted runway vetoes unknown headroom
+ok - unknown headroom is not positive quota
+ok - partial semantics accept mixed availability
+ok - stdin snapshot is accepted
+ok - empty model candidate fails closed
+ok - bare harness maps to default model
+ok - default TOON snapshot is accepted
+ok - renderer-shaped TOON snapshot is accepted
+ok - malformed nonzero TOON envelopes fail closed
+ok - zero-row TOON has no positive quota
+ok - empty-array TOON has no positive quota
+ok - inline attention TOON has no positive quota
+ok - TOON attention identities fail closed
+ok - truncated zero-row TOON fails closed
+ok - malformed zero-row TOON fails closed
+ok - zero-row TOON rejects leading garbage
+ok - counted TOON rows require every declared field
+ok - TOON conversion preserves unknown-headroom exhaustion
+ok - trailing empty TOON fields fail closed
+ok - quoted TOON scope vetoes dispatch
+ok - provider-level unknown quota is not positive
+ok - Muse candidate is accepted
+ok - Muse uses Meta quota
+ok - Agy remains resolver-only
+ok - duplicate providers fail closed
+ok - empty quota scopes fail closed
+ok - whitespace quota identities fail closed
+ok - out-of-range quota fails closed
+ok - invalid runway status fails closed
+ok - missing applicable quota is not positive
+ok - any exhausted applicable scope vetoes dispatch
+ok - named model quota matches exact identity only
+ok - invalid availability status fails closed
+ok - native Codex never infers an account from a Pi lane
+ok - native Codex binds to codex-home before default, independently of model and row order
+ok - the same path still selects from a schema 5 snapshot by provider alone
+ok - schema 6 requires accountKey on every row and uniqueness on provider + accountKey
+ok - schema 6 TOON with the accountKey column is accepted
+ok - helper reuses the captured quota snapshot
+# all fm-quota-choose tests passed
+
+$ bash tests/fm-procevent-quota.test.sh
+ok - help renders only the complete header
+ok - poll accepts its documented defaults
+ok - provider watch blocks until a model scope is exhausted
+ok - exhausted poll records the triggering scope
+ok - poll detects exhausted runway under unknown headroom
+ok - aggregate watch blocks until any scope is exhausted
+ok - aggregate watch preserves empty quota uncertainty
+ok - arm rejects a missing provider value
+ok - arm rejects noncanonical provider identities
+ok - provider retire resolves the armed source id
+ok - poll rejects a decimal threshold above 100
+ok - poll accepts a leading-zero threshold
+ok - poll fires only after quota drops below the threshold
+ok - poll rejects a missing option value
+ok - quota polling uses the shared bash timeout fallback
+ok - poll rejects malformed schema-five snapshots
+ok - poll rejects schema-six snapshots missing or repeating an account key
+ok - aggregate watch reads every schema 6 account row without combining them
+ok - provider watch classifies every matching account and preserves accountKey in details
+ok - the same path still binds a schema 5 row by provider alone
+ok - poll preserves provider-level unknown quota
+ok - poll preserves unknown headroom under known semantics
+ok - auth-required AGY stays out of wake classification and surfaces its cause
+# all fm-procevent-quota tests passed
+
+$ bash tests/fm-inbox.test.sh
+ok - plain note, list, and wake stay on the historical human path
+ok - plain note keeps exit 1 for a saved-but-unannounced failure
+ok - the same request id returns the original note as a distinguishable replay
+ok - a crash between recording the request id and publishing the note reuses the original id
+ok - saved-but-unannounced notes are repairable without creating a second note
+ok - repair and replay do not wake firstmate for an already-acknowledged note
+ok - receipts JSON is bounded by fixed bounds and discloses what it omitted
+ok - notes that predate the announcement marker are unknown, not re-announced
+ok - the reply channel is durable and its cursor is a strict order
+ok - the reply cursor never goes backwards when the sequence counter is lost
+ok - a reply without a valid sequence is reported as malformed
+ok - a non-UTF-8 note does not break the receipts view
+ok - readiness says unknown (or not-receivable) instead of inferring liveness from a lock
+ok - empty bodies and unsafe request ids are refused
+ok - a note body that opens with a double dash is queued as text
+ok - drain --ack still moves the note to handled
+
+$ bash tests/fm-branch-supervision.test.sh
+ok - branch prompt is byte-stable across homes, cwd, timezone, and time, above the cache floor
+ok - outcome store is append-only and refuses sequence reuse after a torn tail
+ok - only routine fleet outcomes can be silent
+ok - startup replay cannot advance the cursor across an unrendered captain outcome
+ok - malformed and ahead-of-store cursor state fail closed before any outcome can be skipped
+ok - cursor advancement refuses to legitimize an ahead processed marker
+ok - middle sequence conflicts fail closed for every store read and append
+ok - outcome stores require terminated single-line JSON records
+ok - the processed marker is sequence-bound, never ahead of the read cursor, never backwards, and migrates delivered history once
+ok - lease exclusivity, same-actor refresh, release, staleness, and sweep hold
+ok - fm-control and fm-teardown refuse the other actor's live lease and pass through otherwise
+ok - PR merge, local landing, and new-task spawn refuse the branch actor and spare main
+ok - a home without a live branch lease takes no lock and clears leftover leases in any calling context
+ok - an unmarked main honors a live branch lease across processes and ignores a previous session's
+ok - a lease file makes an unmarked guard exclude a concurrent claim for the complete mutation
+ok - an opted-in home's unmarked main excludes the host's first claim for its whole mutation, and other homes take no lock
+ok - lease liveness requires an exact valid session-lock pid
+ok - concurrent stale-lease claims serialize so exactly one actor succeeds
+ok - guard stale cleanup cannot race with or delete a newer lease claim
+ok - lease guard excludes a concurrent actor for the complete mutation
+ok - a claim naming the other actor fails loudly instead of silently impersonating it
+ok - release commands authorize the caller and bulk release drops only that actor's leases
+ok - the branch cannot force a teardown or bypass fm-control for a relaunch
+ok - the away-posture record relocates the PR merge and a spawn under the spend cap to the branch, never local landing, and only while confirmed and valid
+ok - relocated branch spawn admits only already-queued dispatchable work, including on a manual-backend home
+ok - the away spend cap is rechecked under the task-set lock so concurrent spawns cannot both publish
+
+$ node --test tests/fm-jev-hook-guards.test.mjs
+TAP version 13
+# Subtest: fast-jev falls back without a key and sends no request
+ok 1 - fast-jev falls back without a key and sends no request
+  ---
+  duration_ms: 2.914708
+  type: 'test'
+  ...
+# Subtest: fast-jev preserves conversation text and configured goals in state
+ok 2 - fast-jev preserves conversation text and configured goals in state
+  ---
+  duration_ms: 0.386333
+  type: 'test'
+  ...
+# Subtest: fast-jev derives the default goal from recent human prompts
+ok 3 - fast-jev derives the default goal from recent human prompts
+  ---
+  duration_ms: 0.104542
+  type: 'test'
+  ...
+# Subtest: fast-jev omits dropped results whole and preserves kept results verbatim
+ok 4 - fast-jev omits dropped results whole and preserves kept results verbatim
+  ---
+  duration_ms: 0.166958
+  type: 'test'
+  ...
+# Subtest: fast-jev accepts only bounded Jev probabilities
+ok 5 - fast-jev accepts only bounded Jev probabilities
+  ---
+  duration_ms: 0.235958
+  type: 'test'
+  ...
+# Subtest: fast-jev uses its default after a mocked invalid-key response
+not ok 6 - fast-jev uses its default after a mocked invalid-key response
+  ---
+  duration_ms: 1.834375
+  type: 'test'
+  location: '/Users/irene/.no-mistakes/worktrees/4ece0e65ab1a/01M3EYS2VXJRXNC6WF035Y5XFC/tests/fm-jev-hook-guards.test.mjs:115:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    0 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/irene/.no-mistakes/worktrees/4ece0e65ab1a/01M3EYS2VXJRXNC6WF035Y5XFC/tests/fm-jev-hook-guards.test.mjs:128:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: fast-jev falls back to the authorized .env key after env and settings
+not ok 7 - fast-jev falls back to the authorized .env key after env and settings
+  ---
+  duration_ms: 3.658958
+  type: 'test'
+  location: '/Users/irene/.no-mistakes/worktrees/4ece0e65ab1a/01M3EYS2VXJRXNC6WF035Y5XFC/tests/fm-jev-hook-guards.test.mjs:132:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + undefined
+    - 'Bearer synthetic-fast-jev-key'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'Bearer synthetic-fast-jev-key'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/irene/.no-mistakes/worktrees/4ece0e65ab1a/01M3EYS2VXJRXNC6WF035Y5XFC/tests/fm-jev-hook-guards.test.mjs:150:12)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: fast-jev fails closed when the local scanner is unavailable
+ok 8 - fast-jev fails closed when the local scanner is unavailable
+  ---
+  duration_ms: 0.635833
+  type: 'test'
+  ...
+# Subtest: winnow preserves the original result when the safety gate blocks its path
+ok 9 - winnow preserves the original result when the safety gate blocks its path
+  ---
+  duration_ms: 0.674125
+  type: 'test'
+  ...
+# Subtest: winnow sends live user and assistant context after the safety gate allows it
+not ok 10 - winnow sends live user and assistant context after the safety gate allows it
+  ---
+  duration_ms: 0.579167
+  type: 'test'
+  location: '/Users/irene/.no-mistakes/worktrees/4ece0e65ab1a/01M3EYS2VXJRXNC6WF035Y5XFC/tests/fm-jev-hook-guards.test.mjs:196:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    0 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/irene/.no-mistakes/worktrees/4ece0e65ab1a/01M3EYS2VXJRXNC6WF035Y5XFC/tests/fm-jev-hook-guards.test.mjs:218:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: winnow skips tool-result user messages when selecting human task context
+not ok 11 - winnow skips tool-result user messages when selecting human task context
+  ---
+  duration_ms: 0.894792
+  type: 'test'
+  location: '/Users/irene/.no-mistakes/worktrees/4ece0e65ab1a/01M3EYS2VXJRXNC6WF035Y5XFC/tests/fm-jev-hook-guards.test.mjs:226:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+    + undefined
+    - {
+    -   assistant_intent: 'Assistant plan.',
+    -   user_request: 'Human request.'
+    - }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    user_request: 'Human request.'
+    assistant_intent: 'Assistant plan.'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/irene/.no-mistakes/worktrees/4ece0e65ab1a/01M3EYS2VXJRXNC6WF035Y5XFC/tests/fm-jev-hook-guards.test.mjs:247:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: winnow fails closed when the local scanner is unavailable
+ok 12 - winnow fails closed when the local scanner is unavailable
+  ---
+  duration_ms: 0.26825
+  type: 'test'
+  ...
+# Subtest: winnow adds sidecar prompt context after the safety gate allows it
+not ok 13 - winnow adds sidecar prompt context after the safety gate allows it
+  ---
+  duration_ms: 0.317583
+  type: 'test'
+  location: '/Users/irene/.no-mistakes/worktrees/4ece0e65ab1a/01M3EYS2VXJRXNC6WF035Y5XFC/tests/fm-jev-hook-guards.test.mjs:274:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    0 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/irene/.no-mistakes/worktrees/4ece0e65ab1a/01M3EYS2VXJRXNC6WF035Y5XFC/tests/fm-jev-hook-guards.test.mjs:291:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: winnow preserves prompts when the safety gate blocks transmission
+ok 14 - winnow preserves prompts when the safety gate blocks transmission
+  ---
+  duration_ms: 0.35925
+  type: 'test'
+  ...
+# Subtest: MCP preload blocks an excluded path before invoking fetch
+ok 15 - MCP preload blocks an excluded path before invoking fetch
+  ---
+  duration_ms: 0.810583
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 10
+# fail 5
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 97.943666
+
+$ uv sync --project .claude/jev-safety --locked
+Using CPython 3.13.13 interpreter; created repository-local .venv; installed locked detect-secrets dependencies.
+
+$ node --test tests/fm-jev-hook-guards.test.mjs
+TAP version 13
+# Subtest: fast-jev falls back without a key and sends no request
+ok 1 - fast-jev falls back without a key and sends no request
+  ---
+  duration_ms: 2.576792
+  type: 'test'
+  ...
+# Subtest: fast-jev preserves conversation text and configured goals in state
+ok 2 - fast-jev preserves conversation text and configured goals in state
+  ---
+  duration_ms: 0.389
+  type: 'test'
+  ...
+# Subtest: fast-jev derives the default goal from recent human prompts
+ok 3 - fast-jev derives the default goal from recent human prompts
+  ---
+  duration_ms: 0.104167
+  type: 'test'
+  ...
+# Subtest: fast-jev omits dropped results whole and preserves kept results verbatim
+ok 4 - fast-jev omits dropped results whole and preserves kept results verbatim
+  ---
+  duration_ms: 0.162208
+  type: 'test'
+  ...
+# Subtest: fast-jev accepts only bounded Jev probabilities
+ok 5 - fast-jev accepts only bounded Jev probabilities
+  ---
+  duration_ms: 0.23725
+  type: 'test'
+  ...
+# Subtest: fast-jev uses its default after a mocked invalid-key response
+ok 6 - fast-jev uses its default after a mocked invalid-key response
+  ---
+  duration_ms: 153.763375
+  type: 'test'
+  ...
+# Subtest: fast-jev falls back to the authorized .env key after env and settings
+ok 7 - fast-jev falls back to the authorized .env key after env and settings
+  ---
+  duration_ms: 117.17875
+  type: 'test'
+  ...
+# Subtest: fast-jev fails closed when the local scanner is unavailable
+ok 8 - fast-jev fails closed when the local scanner is unavailable
+  ---
+  duration_ms: 0.730208
+  type: 'test'
+  ...
+# Subtest: winnow preserves the original result when the safety gate blocks its path
+ok 9 - winnow preserves the original result when the safety gate blocks its path
+  ---
+  duration_ms: 27.252166
+  type: 'test'
+  ...
+# Subtest: winnow sends live user and assistant context after the safety gate allows it
+ok 10 - winnow sends live user and assistant context after the safety gate allows it
+  ---
+  duration_ms: 122.545375
+  type: 'test'
+  ...
+# Subtest: winnow skips tool-result user messages when selecting human task context
+ok 11 - winnow skips tool-result user messages when selecting human task context
+  ---
+  duration_ms: 131.255541
+  type: 'test'
+  ...
+# Subtest: winnow fails closed when the local scanner is unavailable
+ok 12 - winnow fails closed when the local scanner is unavailable
+  ---
+  duration_ms: 0.46425
+  type: 'test'
+  ...
+# Subtest: winnow adds sidecar prompt context after the safety gate allows it
+ok 13 - winnow adds sidecar prompt context after the safety gate allows it
+  ---
+  duration_ms: 133.361292
+  type: 'test'
+  ...
+# Subtest: winnow preserves prompts when the safety gate blocks transmission
+ok 14 - winnow preserves prompts when the safety gate blocks transmission
+  ---
+  duration_ms: 33.248125
+  type: 'test'
+  ...
+# Subtest: MCP preload blocks an excluded path before invoking fetch
+ok 15 - MCP preload blocks an excluded path before invoking fetch
+  ---
+  duration_ms: 37.484542
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 834.153375
+
+$ command -v herdr
+herdr: unavailable on PATH
+
+$ bash tests/fm-discord-decision-push.test.sh
+ok - proactive Discord notification is inert without the self-hosted token
+ok - proactive Discord post stores the task and reply binding
+ok - failed decision notifications retry after their source cursor advances
+ok - profile lookup failure preserves and retries the notification intent
+ok - stale sending records recover from Discord history without reposting
+ok - a durable captain hold triggers a Discord decision push
+ok - reply to a pushed decision enters x-inbox with keyed answer context
+ok - a captured decision reply recovers its missing wake once
+ok - Discord decision replies require an authorized user ID
+ok - ordinary Discord replies do not enter the decision inbox
+ok - only an nm-keyed ask-user status triggers a decision push
+ok - PR-ready notifications require yolo=off
+
+$ bash tests/fm-discord-selfhosted.test.sh
+ok - fm-discord-poll is a hard no-op without a token
+ok - self-hosted Discord ingestion writes x-inbox payload shape and fires x-mention wake
+ok - self-hosted Discord default polling discovers permitted DMs
+fm-discord-reply: DRY RUN - would POST reply to Discord channel 1000000000000000001 (recorded: state/x-outbox/discord-sh-1352000000000000099.json)
+ok - fm-x-reply routes self-hosted Discord requests to self-hosted reply adapter
+ok - collision handling excludes gajae-way channel 1551134713727426570
+ok - fm-bootstrap handles FM_DISCORD_BOT_TOKEN activation and artifact generation
+
+$ bash tests/fm-voice-relay.test.sh
+ok - wire format round trips and rejects a desynchronised stream
+ok - the relay refuses a desynchronised uplink header instead of waiting for its payload
+ok - the relay reads whose account to use from this home and refuses to guess
+ok - an unconfigured home can still read how to configure the relay
+ok - the model-backed subcommands refuse by name while note keeps working
+ok - fm-inbox.sh --help prints its whole header, privacy paragraph included
+ok - the relay and the reader agree on the tool names and the handover argument
+ok - credentials are resolved once per relay, refreshed before expiry, off the event loop
+ok - a turn the model refuses is announced and costs one turn, not the relay
+ok - audio that arrives with no turn open is dropped, not turned into a turn
+ok - a failure inside the model reader costs one turn, not every later one
+ok - a reader failure is named to the captain, a clean end and a close are not
+usage: fm-voice-client.py [-h] [--host HOST] [--local] [--relay RELAY]
+                          [--relay-python RELAY_PYTHON]
+                          [--relay-arg RELAY_ARG]
+                          [--listen {push-to-talk,open-mic}] [--runs RUNS]
+                          [--talk-seconds TALK_SECONDS] [--in-file IN_FILE]
+                          [--out-file OUT_FILE] [--input-device INPUT_DEVICE]
+                          [--output-device OUTPUT_DEVICE] [--timeout TIMEOUT]
+                          [--wait-for-reply | --no-wait-for-reply]
+                          [--gap-seconds GAP_SECONDS]
+                          [--audio-idle AUDIO_IDLE] [--verbose]
+fm-voice-client.py: error: say where the relay is: --relay <path to fm-voice-relay.py on the desktop>, or set FM_VOICE_RELAY
+usage: fm-voice-client.py [-h] [--host HOST] [--local] [--relay RELAY]
+                          [--relay-python RELAY_PYTHON]
+                          [--relay-arg RELAY_ARG]
+                          [--listen {push-to-talk,open-mic}] [--runs RUNS]
+                          [--talk-seconds TALK_SECONDS] [--in-file IN_FILE]
+                          [--out-file OUT_FILE] [--input-device INPUT_DEVICE]
+                          [--output-device OUTPUT_DEVICE] [--timeout TIMEOUT]
+                          [--wait-for-reply | --no-wait-for-reply]
+                          [--gap-seconds GAP_SECONDS]
+                          [--audio-idle AUDIO_IDLE] [--verbose]
+fm-voice-client.py: error: --listen open-mic is not built yet: it needs end-of-speech detection to know when a turn ended, which lands with session continuity across turns, so it would stream forever and never end a turn. Use the default --listen push-to-talk.
+client: connection lost: stream ended after 2 of the 5 bytes of a frame header
+client: connection lost: [Errno 104] Connection reset by peer
+client: discarded 15 bytes your login shell printed before the relay started: b'You have mail.\n'
+ok - the laptop client builds the right remote command and survives a chatty login shell
+ok - the client runs from a laptop holding only the two files the guide names
+ok - --listen open-mic refuses at startup, before it opens anything
+ok - the narrow scope answers how much is waiting without saying what it is
+ok - the wide scope names open work and reports state without quoting event lines
+ok - an absent read-scope setting means the narrowest answer, not the widest
+ok - a home widens its own read scope by writing the setting
+ok - finished work and note bodies never reach a spoken answer at any scope
+ok - excluding a note body does not distort the counts
+ok - a denied item becomes a withheld count without hiding that work exists
+ok - the deny list matches regardless of case
+ok - an item denied in more than one list is counted as withheld once
+ok - one deny decision per item covers every list that item could appear in
+ok - the state verb is a closed vocabulary, so free text cannot ride out on it
+ok - the backlog and the state directory always come from the same home
+ok - a finished task's pull request is neither counted nor named
+ok - a deny substring on an open title removes its pull request and says so
+ok - an unknown read scope refuses instead of widening
+ok - the configured read scope is honoured
+ok - handover queues the request for firstmate and wakes it exactly once
+ok - the reader and the queue resolve the state directory the same way
+ok - an empty request is refused rather than queued as a blank note
+ok - a home with no records answers nothing rather than failing
+ok - a spoken turn goes out and comes back: the records answer, firstmate gets the work
+ok - a model session that ends mid-conversation costs one turn, not the relay
+ok - a desynchronised uplink is named to the client before the goodbye, not only to stderr
+ok - the desktop's own check answers from the records and times it from the talk end
+ok - a reply that arrives before the end of the clip is named as an unusable clock
+all voice relay cases passed
+
+$ bash tests/fm-bearings-metrics.test.sh
+ok - the metrics collector emits sourced rates and omits unobservable counters
