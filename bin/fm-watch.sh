@@ -2572,6 +2572,19 @@ EOF
     # shellcheck disable=SC2086  # $files is a space-separated status-path list (ids carry no spaces)
     signal_files_actionable $files
     signal_actionable=$?
+    # A firstmate-marked CI check failure may recur across task gates. Apply its
+    # recorded answer through fm-send's ordinary keyed-answer path before the
+    # supervisor handles this wake; misses and send failures continue through
+    # the normal ask-user wake unchanged.
+    if [ -n "$FM_SIGNAL_NEEDS_DECISION_FILES" ]; then
+      # shellcheck disable=SC2086 # validated status paths contain no spaces
+      for status_file in $FM_SIGNAL_NEEDS_DECISION_FILES; do
+        task_id=${status_file##*/}
+        task_id=${task_id%.status}
+        FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+          "$SCRIPT_DIR/fm-known-regression.sh" apply "$task_id" || true
+      done
+    fi
     # A decision-owned file's queued row payload is marked "needs-decision:"
     # instead of the ordinary "signal:" below (other files in the same batch
     # keep the ordinary payload). The wake reason line itself, and every
