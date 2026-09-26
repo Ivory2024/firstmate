@@ -81,6 +81,16 @@ test_quiet_report_posts_plain_snapshot() {
   [ -z "$(find "$home/state/x-context" -name 'discord-notify-*.json' -print -quit)" ] || fail "plain report creates no decision binding"
   pass "Discord report sends a bounded plain message without creating a decision record"
 }
+test_report_requires_token() {
+  local home output rc
+  home="$TMP_ROOT/report-no-token"
+  mkdir -p "$home"
+  output=$(FM_HOME="$home" FM_DISCORD_BOT_TOKEN='' \
+    "$ROOT/bin/fm-discord-notify.sh" --report 1000000000000000001 "현황" 2>&1); rc=$?
+  expect_code 1 "$rc" "report requires configured token"
+  assert_equals "fm-discord-notify: missing Discord bot token for report" "$output" "missing report token diagnostic"
+  pass "Discord report fails clearly without the self-hosted token"
+}
 test_report_helper_refuses_non_quiet_mode() {
   local home output rc
   home="$TMP_ROOT/report-mode-guard"
@@ -484,6 +494,7 @@ test_pr_push_names_gitlab_project() {
 
 test_no_token_is_inert
 test_quiet_report_posts_plain_snapshot
+test_report_requires_token
 test_report_helper_refuses_non_quiet_mode
 test_report_helper_sends_bearings_snapshot
 test_notify_records_reply_binding

@@ -27,7 +27,13 @@ if [ "$retry_pending" -eq 0 ] && [ "$report_mode" -eq 0 ]; then
   status_task_id=${6:-$task_id}
 fi
 fm_discord_load_config
-[ -n "${FM_DISCORD_TOKEN:-}" ] || exit 0
+[ -n "${FM_DISCORD_TOKEN:-}" ] || {
+  if [ "$report_mode" -eq 1 ]; then
+    echo "fm-discord-notify: missing Discord bot token for report" >&2
+    exit 1
+  fi
+  exit 0
+}
 [ "$retry_pending" -eq 1 ] || [ "$report_mode" -eq 1 ] || [ -n "${FM_DISCORD_CHANNELS:-}" ] || exit 0
 command -v node >/dev/null 2>&1 || { echo "fm-discord-notify: missing node for self-hosted Discord" >&2; exit 1; }
 
