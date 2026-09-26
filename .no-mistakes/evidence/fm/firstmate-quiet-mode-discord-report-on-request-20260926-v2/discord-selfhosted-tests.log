@@ -1,0 +1,8 @@
+ok - fm-discord-poll is a hard no-op without a token
+ok - self-hosted Discord ingestion writes x-inbox payload shape and fires x-mention wake
+ok - self-hosted Discord default polling discovers permitted DMs
+fm-discord-reply: DRY RUN - would POST reply to Discord channel 1000000000000000001 (recorded: state/x-outbox/discord-sh-1352000000000000099.json)
+ok - fm-x-reply routes self-hosted Discord requests to self-hosted reply adapter
+ok - collision handling excludes gajae-way channel 1551134713727426570
+ok - explicit allowlist takes precedence over the default Discord collision exclusion with a warning
+ok - fm-bootstrap handles FM_DISCORD_BOT_TOKEN activation and artifact generation
