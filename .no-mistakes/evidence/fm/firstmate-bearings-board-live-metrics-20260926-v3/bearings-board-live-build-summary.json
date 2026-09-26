@@ -1,0 +1,7 @@
+{
+  "product": "fm-bearings-board",
+  "lavish_session": "live then ended",
+  "sourced_metric_groups_present": ["quota", "transcript cache", "transcript tool errors"],
+  "fleet_task_counts": {"landed": 1, "underway": 1, "display_total": "1/2"},
+  "scratch_state": "retired and removed"
+}
