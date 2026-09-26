@@ -312,11 +312,11 @@ crew_busy_verdict() {  # <target>
 # Both independent activity clocks must be at least five minutes old; any
 # unreadable or malformed probe suppresses the signal.
 codex_idle_suspect() {  # <target>
-  local target=$1 window_activity now tmp latest
+  local target=$1 window_activity now latest
   worktree_mtimes() {
     case "$(uname -s 2>/dev/null)" in
-      Darwin) find "$WT" -type f -not -path "$WT/.git" -not -path "$WT/.git/*" -exec stat -f '%m' {} + ;;
-      *) find "$WT" -type f -not -path "$WT/.git" -not -path "$WT/.git/*" -exec stat -c '%Y' {} + ;;
+      Darwin) find "$WT" -maxdepth 6 -type f -not -path "$WT/.git" -not -path "$WT/.git/*" -not -path '*/node_modules/*' -not -path '*/.venv/*' -not -path '*/vendor/*' -exec stat -f '%m' {} + ;;
+      *) find "$WT" -maxdepth 6 -type f -not -path "$WT/.git" -not -path "$WT/.git/*" -not -path '*/node_modules/*' -not -path '*/.venv/*' -not -path '*/vendor/*' -exec stat -c '%Y' {} + ;;
     esac
   }
   [ "$HARNESS" = codex ] && [ "$TASK_BACKEND" = tmux ] || return 1
@@ -327,13 +327,7 @@ codex_idle_suspect() {  # <target>
   [ "$now" -ge "$window_activity" ] 2>/dev/null || return 1
   [ "$((now - window_activity))" -ge 300 ] || return 1
 
-  tmp=$(mktemp "${TMPDIR:-/tmp}/fm-crew-idle.XXXXXX") || return 1
-  if ! worktree_mtimes > "$tmp" 2>/dev/null; then
-    rm -f "$tmp"
-    return 1
-  fi
-  latest=$(awk 'BEGIN { max = 0 } $1 ~ /^[0-9]+$/ && $1 > max { max = $1 } END { if (max > 0) print max }' "$tmp")
-  rm -f "$tmp"
+  latest=$(worktree_mtimes 2>/dev/null | awk 'BEGIN { max = 0 } $1 ~ /^[0-9]+$/ && $1 > max { max = $1 } END { if (max > 0) print max }')
   case "$latest" in ''|*[!0-9]*) return 1 ;; esac
   [ "$now" -ge "$latest" ] 2>/dev/null || return 1
   [ "$((now - latest))" -ge 300 ] || return 1
