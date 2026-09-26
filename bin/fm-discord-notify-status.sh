@@ -36,14 +36,19 @@ case "$verb:$key" in
     case "$detail" in
       *" pull request ready: "*) url=${detail#* pull request ready: }; url=${url%% choose *} ;;
     esac
-    # Name the repo up front (from a github.com PR URL's owner/repo path) so a
-    # captain merging non-IMAC repos manually from this ping knows which
+    # Name the repo up front (from a GitHub owner/repo or GitLab project path)
+    # so a captain merging non-IMAC repos manually from this ping knows which
     # project it is without parsing the URL.
     repo=''
     case "$url" in
       https://github.com/*/*/pull/*)
         repo=${url#https://github.com/}
         repo=${repo%%/pull/*}
+        repo=${repo##*/}
+        ;;
+      https://*/*/-/merge_requests/*)
+        repo=${url#https://*/}
+        repo=${repo%%/-/merge_requests/*}
         repo=${repo##*/}
         ;;
     esac

@@ -189,6 +189,33 @@ test_captain_hold_triggers_push() {
   pass "a durable captain hold triggers a Discord decision push with the real reason text"
 }
 
+test_captain_hold_truncates_long_reason_for_discord() {
+  local home record long_reason summary
+  if ! command -v tasks-axi >/dev/null 2>&1; then
+    pass "captain-hold Discord truncation skipped because tasks-axi is unavailable"
+    return 0
+  fi
+  home="$TMP_ROOT/captain-hold-long-reason"
+  mkdir -p "$home/data" "$home/state" "$home/config" "$home/projects"
+  cp "$ROOT/.tasks.toml" "$home/.tasks.toml"
+  printf '%s\n' '## In flight' '' '## Queued' '' '## Done' > "$home/data/backlog.md"
+  make_fake_node "$home"
+  long_reason=$(printf 'word %.0s' $(seq 1 500))
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$home/posts.jsonl" \
+    PATH="$home/fake-bin:$BASE_PATH:$(dirname "$(command -v tasks-axi)")" \
+    FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-captain-hold.sh" hold task-hold-long \
+      --title "Choose the next step" --reason "$long_reason" \
+      >/dev/null || fail "captain hold with a long reason failed"
+  record=$(find "$home/state/x-context" -name 'discord-notify-*.json' -print -quit)
+  summary=$(jq -r '.summary' "$record")
+  [ "${#summary}" -le 1801 ] || fail "Discord summary was not truncated: ${#summary} chars"
+  [ "${#summary}" -lt "${#long_reason}" ] || fail "Discord summary was not shortened from the full reason"
+  pass "a captain hold with a reason near Discord's message limit gets truncated before sending"
+}
+
 test_ask_user_escalation_hold_carries_finding_text() {
   local home record reason
   if ! command -v tasks-axi >/dev/null 2>&1; then
@@ -368,12 +395,31 @@ test_pr_push_requires_yolo_off() {
   pass "PR-ready notifications require yolo=off"
 }
 
+test_pr_push_names_gitlab_project() {
+  local home record
+  home="$TMP_ROOT/pr-trigger-gitlab"
+  mkdir -p "$home/state/x-context"
+  chmod 700 "$home/state" "$home/state/x-context"
+  make_fake_node "$home"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$home/posts.jsonl" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify-status.sh" task-a \
+    'needs-decision [key=pr-ready-task-a]: task=task-a yolo=off pull request ready: https://gitlab.example.com/some-group/widgets-service/-/merge_requests/7 choose merge or leave open' >/dev/null \
+    || fail "yolo-off GitLab MR status did not trigger a push"
+  record=$(find "$home/state/x-context" -name 'discord-notify-*.json' -print -quit)
+  assert_contains "$(jq -r '.summary' "$record")" "widgets-service" \
+    "PR summary names the project extracted from the GitLab MR URL, independent of the URL substring"
+  pass "PR-ready notifications name the project for an accepted GitLab merge-request URL too"
+}
+
 test_no_token_is_inert
 test_notify_records_reply_binding
 test_failed_notification_retries_from_durable_outbox
 test_profile_failure_keeps_retryable_intent
 test_stale_sending_notification_recovers_without_duplicate_post
 test_captain_hold_triggers_push
+test_captain_hold_truncates_long_reason_for_discord
 test_reply_to_notification_enters_existing_inbox
 test_captured_reply_without_offer_recovers_one_wake
 test_unauthorized_decision_reply_is_ignored
@@ -381,3 +427,4 @@ test_no_unrelated_reply_is_captured
 test_ask_user_gate_alone_triggers_no_push
 test_ask_user_escalation_hold_carries_finding_text
 test_pr_push_requires_yolo_off
+test_pr_push_names_gitlab_project
