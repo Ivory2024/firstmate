@@ -83,10 +83,12 @@
 # name a slot a DIFFERENT live task now holds. Cleanup kills every process under
 # that path and hard-resets it before returning it, so releasing a slot that is
 # not genuinely this task's destroys another worker's live work. Before the first
-# cleanup step, teardown verifies record exclusivity: no OTHER task record in
-# this home or any locally registered Firstmate home may name the same live path
-# in its worktree= or home=. One live path with two task records is the reuse
-# collision itself, whichever record is stale.
+# cleanup step, teardown reads the slot's owner claim before comparing task
+# records. A readable claim naming another task identifies the stale predecessor:
+# its duplicate record is ignored for exclusivity, and only its own cleanup runs.
+# Otherwise, teardown verifies record exclusivity: no OTHER task record in this
+# home or any locally registered Firstmate home may name the same live path in
+# its worktree= or home=.
 # That scan alone cannot prove THIS record is the current owner, because the task
 # that took the slot next may leave no record it can reach - its own worker may
 # have exited and its record been cleaned up, or it may live in a home this
