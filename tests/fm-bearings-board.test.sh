@@ -457,14 +457,14 @@ EOF
 SH
   chmod +x "$home/fakebin/lavish-axi"
 
-  PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$runtime" FM_HOME="$home" FM_BEARINGS_METRICS=off \
+  PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" FM_BEARINGS_METRICS=off \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
     LAVISH_FAKE_STATE="$home/lavish-state" LAVISH_AXI_STATE_DIR="$home/lavish-state" \
     FM_BEARINGS_BOARD_TEMPLATE="$ROOT/.agents/skills/bearings/assets/board-template.html" \
     REAL_LAVISH_ADAPTER="$ROOT/bin/fm-procevent-lavish.sh" \
     REAL_PROCEVENT="$ROOT/bin/fm-procevent.sh" ORDER_PROOF_HOLD="$hold" \
-    "$runtime/bin/fm-bearings-board.sh" build "$data" >/dev/null \
+    "$ROOT/bin/fm-bearings-board.sh" build "$data" >/dev/null \
     || fail "the order-proof board build failed"
 
   # Arm starts the listener, which captures the answer and closes the hold on
