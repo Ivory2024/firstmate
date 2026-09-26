@@ -2213,7 +2213,7 @@ require_exclusive_worktree_slot_record() {
   fm_treehouse_slot_owner_state "$slot" "$record_id"
   case "$FM_TREEHOUSE_SLOT_OWNER" in
     mine) claimed_owner=$FM_TREEHOUSE_SLOT_OWNER_ID ;;
-    other) return 0 ;;
+    other) claimed_owner=$FM_TREEHOUSE_SLOT_OWNER_ID ;;
   esac
   collect_local_firstmate_states "$record_state" || return 1
   for state_dir in "${TREEHOUSE_OWNER_STATES[@]}"; do
@@ -2221,7 +2221,7 @@ require_exclusive_worktree_slot_record() {
       [ -f "$other" ] && [ ! -L "$other" ] || continue
       [ "$other" != "$record_meta" ] || continue
       other_id=$(basename "$other" .meta)
-      [ -n "$claimed_owner" ] && [ "$other_id" != "$claimed_owner" ] && continue
+      [ -n "$claimed_owner" ] && [ "$other_id" = "$claimed_owner" ] && continue
       for field in worktree home; do
         other_path=$(fm_meta_get "$other" "$field")
         [ -n "$other_path" ] || continue

@@ -534,7 +534,7 @@ test_reused_pool_slot_refuses_before_touching_the_other_task() {
 }
 
 test_duplicate_pool_slot_records_follow_readable_claim() {
-  local dir id=stale-task other=live-task rc
+  local dir id=stale-task other=live-task unrelated=unrelated-task task rc
 
   dir=$(make_case duplicate-slot-claim)
   mark_case_as_treehouse_pool "$dir"
@@ -556,6 +556,27 @@ test_duplicate_pool_slot_records_follow_readable_claim() {
   assert_present "$dir/worktree/sentinel" "claimant worktree was reset"
   ! grep -Fq "treehouse <return>" "$dir/runtime.log" \
     || fail "stale duplicate cleanup returned the claimant's slot: $(cat "$dir/runtime.log")"
+
+  dir=$(make_case duplicate-slot-claim-third-party)
+  mark_case_as_treehouse_pool "$dir"
+  for task in "$id" "$other" "$unrelated"; do
+    fm_write_meta "$dir/home/state/$task.meta" \
+      "window=firstmate:fm-$task" "endpoint_task_id=$task" \
+      "worktree=$dir/worktree" "project=$dir/project" "kind=scout"
+  done
+  claim_pool_slot "$dir" "$other"
+
+  set +e
+  run_case "$dir" "$id" > "$dir/stdout" 2> "$dir/stderr"
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "a readable claim should not hide an unrelated duplicate task record"
+  assert_present "$dir/home/state/$id.meta" "stale record was removed despite an unrelated duplicate"
+  assert_present "$dir/home/state/$other.meta" "claimant record was removed despite an unrelated duplicate"
+  assert_present "$dir/home/state/$unrelated.meta" "unrelated record was removed despite a conflict"
+  assert_present "$dir/worktree/sentinel" "worktree was reset despite an unrelated duplicate"
+  assert_contains "$(cat "$dir/stderr")" "$unrelated" \
+    "refusal should name the unrelated task that still conflicts"
 
   pass "fm-teardown: duplicate records follow the readable slot claim"
 }
