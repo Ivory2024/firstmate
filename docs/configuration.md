@@ -695,6 +695,7 @@ Optional configuration variables in `.env`:
 - `FM_DISCORD_ALLOW_DMS`: `true` or `false` (defaults to `true`).
 - `FM_DISCORD_AUTHORIZED_USER_IDS`: comma-separated Discord user IDs allowed to answer pushed decisions, including the captain and any trusted operators; unset or empty authorizes nobody.
 Replies and follow-ups for self-hosted Discord mentions post directly to Discord's REST API using `FM_DISCORD_BOT_TOKEN`.
+Quiet-mode status reports also use the first configured channel; the report command refuses to run during away mode.
 
 When the self-hosted connector is enabled, firstmate also posts captain decisions to the first configured channel: a newly recorded captain hold (including a genuinely escalated `nm-` ask-user gate, held with the real question in its reason per `ask-user-authority`) or a pull request ready for review when `yolo=off`.
 A raw `nm-` ask-user gate observed in a worker's status log never posts by itself - most gates are decided in-scope with no captain involvement, so only the captain-hold recorded at actual escalation time reaches Discord.
