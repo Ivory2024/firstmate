@@ -1,0 +1,6 @@
+ok - absent key is off: one stderr line, exit 0, no network call
+not ok - .env key produces a clear result (missing: '  status: clear')
+--- output ---
+dispatch-resolve:
+  status: error
+  reason: resolution failed

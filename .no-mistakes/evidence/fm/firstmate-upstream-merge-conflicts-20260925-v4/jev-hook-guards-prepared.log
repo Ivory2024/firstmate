@@ -1,0 +1,100 @@
+TAP version 13
+# Subtest: fast-jev falls back without a key and sends no request
+ok 1 - fast-jev falls back without a key and sends no request
+  ---
+  duration_ms: 2.936042
+  type: 'test'
+  ...
+# Subtest: fast-jev preserves conversation text and configured goals in state
+ok 2 - fast-jev preserves conversation text and configured goals in state
+  ---
+  duration_ms: 0.389458
+  type: 'test'
+  ...
+# Subtest: fast-jev derives the default goal from recent human prompts
+ok 3 - fast-jev derives the default goal from recent human prompts
+  ---
+  duration_ms: 0.1035
+  type: 'test'
+  ...
+# Subtest: fast-jev omits dropped results whole and preserves kept results verbatim
+ok 4 - fast-jev omits dropped results whole and preserves kept results verbatim
+  ---
+  duration_ms: 0.158167
+  type: 'test'
+  ...
+# Subtest: fast-jev accepts only bounded Jev probabilities
+ok 5 - fast-jev accepts only bounded Jev probabilities
+  ---
+  duration_ms: 0.238667
+  type: 'test'
+  ...
+# Subtest: fast-jev uses its default after a mocked invalid-key response
+ok 6 - fast-jev uses its default after a mocked invalid-key response
+  ---
+  duration_ms: 962.777209
+  type: 'test'
+  ...
+# Subtest: fast-jev falls back to the authorized .env key after env and settings
+ok 7 - fast-jev falls back to the authorized .env key after env and settings
+  ---
+  duration_ms: 124.264792
+  type: 'test'
+  ...
+# Subtest: fast-jev fails closed when the local scanner is unavailable
+ok 8 - fast-jev fails closed when the local scanner is unavailable
+  ---
+  duration_ms: 0.836167
+  type: 'test'
+  ...
+# Subtest: winnow preserves the original result when the safety gate blocks its path
+ok 9 - winnow preserves the original result when the safety gate blocks its path
+  ---
+  duration_ms: 28.035042
+  type: 'test'
+  ...
+# Subtest: winnow sends live user and assistant context after the safety gate allows it
+ok 10 - winnow sends live user and assistant context after the safety gate allows it
+  ---
+  duration_ms: 127.399542
+  type: 'test'
+  ...
+# Subtest: winnow skips tool-result user messages when selecting human task context
+ok 11 - winnow skips tool-result user messages when selecting human task context
+  ---
+  duration_ms: 121.232584
+  type: 'test'
+  ...
+# Subtest: winnow fails closed when the local scanner is unavailable
+ok 12 - winnow fails closed when the local scanner is unavailable
+  ---
+  duration_ms: 0.526875
+  type: 'test'
+  ...
+# Subtest: winnow adds sidecar prompt context after the safety gate allows it
+ok 13 - winnow adds sidecar prompt context after the safety gate allows it
+  ---
+  duration_ms: 118.34275
+  type: 'test'
+  ...
+# Subtest: winnow preserves prompts when the safety gate blocks transmission
+ok 14 - winnow preserves prompts when the safety gate blocks transmission
+  ---
+  duration_ms: 27.452333
+  type: 'test'
+  ...
+# Subtest: MCP preload blocks an excluded path before invoking fetch
+ok 15 - MCP preload blocks an excluded path before invoking fetch
+  ---
+  duration_ms: 27.682291
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1622.548375
