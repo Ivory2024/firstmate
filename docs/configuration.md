@@ -699,6 +699,7 @@ Replies and follow-ups for self-hosted Discord mentions post directly to Discord
 When the self-hosted connector is enabled, firstmate also posts captain decisions to the first configured channel: a newly recorded captain hold (including a genuinely escalated `nm-` ask-user gate, held with the real question in its reason per `ask-user-authority`) or a pull request ready for review when `yolo=off`.
 A raw `nm-` ask-user gate observed in a worker's status log never posts by itself - most gates are decided in-scope with no captain involvement, so only the captain-hold recorded at actual escalation time reaches Discord.
 Each message includes the task id, a plain-language summary carrying the actual decision content, and the available choices.
+Pull-request review messages name the repository when the pull-request URL is a GitHub URL, so the captain can identify the project before opening it.
 Keep the configured channel private to the captain and trusted operators; only IDs in `FM_DISCORD_AUTHORIZED_USER_IDS` can answer decisions, and replies from other channel members are ignored.
 Reply directly to a decision message.
 The watcher captures that reply into the existing `state/x-inbox/` flow and `fmx-respond` applies it through `fm-captain-hold.sh answer-one` for a held task, or `fm-send.sh --resolve-key` for other keyed decisions.
