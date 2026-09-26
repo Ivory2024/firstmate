@@ -1,0 +1,6 @@
+ok - every matching ask-user finding auto-resolves through its keyed gate
+ok - a nonmatching finding remains an ordinary ask-user escalation
+ok - a mixed gate stays open when any ask-user finding lacks a record
+ok - a gate with different stored answers stays open for ordinary triage
+ok - watcher auto-applies a known regression on the cross-task decision wake
+ok - one resolved gate suppresses only its notification; sibling remains decision-owned
