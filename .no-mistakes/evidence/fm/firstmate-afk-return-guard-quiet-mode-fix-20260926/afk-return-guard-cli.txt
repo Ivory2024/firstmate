@@ -1,0 +1,73 @@
+=== quiet mode: fm-afk-return.sh guard ===
+exit=0
+=== quiet mode: fm-bearings-snapshot.sh --json ===
+exit=0
+stdout: {
+           "schema": "fm-bearings.v1",
+           "home": "T/fm-afk-return-qa-7z54qmqa",
+           "generated": "2026-09-26T08:26:13Z",
+           "prs": "not_requested (run: /bearings include PRs)",
+           "contributions": {
+             "scope": "owned contributions per home",
+             "known": 0,
+             "checked": 0,
+             "counts": {
+               "captain": 0,
+               "fleet": 0,
+               "maintainer": 0,
+               "nobody": 0
+             },
+             "complete": false,
+             "proven_clear": false,
+             "unmeasured_homes": 0,
+             "unreadable_records": 1,
+             "unmeasured": 0,
+             "stale_verdicts": 0,
+             "missing_verdicts": 0,
+             "captain_omitted": 0,
+             "captain": []
+           },
+           "in_flight": [],
+           "secondmates": [],
+           "secondmate_reconcile": [],
+           "decisions_open": [],
+           "landed": [],
+           "gates": [],
+           "reports": [],
+           "recorded_prs": [],
+           "omitted": [
+             {
+               "surface": "backlog item bodies",
+               "reveal": "--fields bodies"
+             },
+             {
+               "surface": "task paths",
+               "reveal": "--fields paths"
+             },
+             {
+               "surface": "watch/steer actions",
+               "reveal": "--fields actions"
+             },
+             {
+               "surface": "healthy endpoint detail",
+               "reveal": "--fields endpoints"
+             },
+             {
+               "surface": "full scout-report inventory",
+               "reveal": "--all-reports"
+             },
+             {
+               "surface": "live PR discovery + checks",
+               "reveal": "--include-prs"
+             }
+           ]
+         }
+=== away mode: fm-afk-return.sh guard ===
+exit=3
+stderr: fm-afk-return: away mode is still active; run bin/fm-afk-return.sh before ordinary captain work
+=== away mode: fm-bearings-snapshot.sh --json ===
+exit=3
+stderr: fm-afk-return: away mode is still active; run bin/fm-afk-return.sh before ordinary captain work
+=== expectations ===
+quiet_guard=0 quiet_bearings=0 away_guard=3 away_bearings=3
+assertions=pass
