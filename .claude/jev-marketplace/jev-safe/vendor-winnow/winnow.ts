@@ -127,4 +127,19 @@ export const register: Register = (on) => {
       return { ...answer, result: updated }
     })
   }
+
+  on('prompt.submit', async ($, e, next) => {
+    if (e.text.trim().length < 12) return next(e)
+    const where = await whereami($)
+    const res = await post($, `${base}/hook/user-prompt-submit`, {
+      hook_event_name: 'UserPromptSubmit',
+      source: 'function-hook',
+      ...where,
+      prompt: e.text,
+    }, where.cwd)
+    if (typeof res?.output?.systemMessage === 'string') $.ui.toast(res.output.systemMessage)
+    const extra = res?.output?.hookSpecificOutput?.additionalContext
+    if (typeof extra !== 'string' || extra === '') return next(e)
+    return next({ ...e, context: [...(e.context ?? []), extra] })
+  })
 }

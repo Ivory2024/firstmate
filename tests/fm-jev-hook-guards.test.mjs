@@ -271,8 +271,51 @@ test('winnow fails closed when the local scanner is unavailable', async () => {
   assert.equal(requests.length, 0);
 });
 
-test('winnow does not register prompt submission transmission', () => {
-  assert.equal(hooks().some(([event]) => event === 'prompt.submit'), false);
+test('winnow adds sidecar prompt context after the safety gate allows it', async () => {
+  const entry = hooks().find(([event]) => event === 'prompt.submit');
+  const handler = entry.at(-1);
+  const requests = [];
+  const event = { text: 'Find the relevant runtime setting.', context: ['existing context'] };
+  let forwarded;
+  await handler({
+    http: { async fetch(url, init) {
+      requests.push({ url, body: init?.body });
+      return { status: 200, ok: true, text: '{"hookSpecificOutput":{"additionalContext":"matched context"}}', headers: {} };
+    } },
+    session: {
+      async id() { return 'synthetic'; },
+      async cwd() { return safetyRoot; },
+    },
+    ui: ui(),
+  }, event, async (updated) => { forwarded = updated; return updated; });
+  assert.equal(requests.length, 1);
+  assert.match(requests[0].url, /127\.0\.0\.1:47311\/hook\/user-prompt-submit$/);
+  assert.deepEqual(JSON.parse(requests[0].body), {
+    hook_event_name: 'UserPromptSubmit',
+    source: 'function-hook',
+    session_id: 'synthetic',
+    cwd: safetyRoot,
+    prompt: event.text,
+  });
+  assert.deepEqual(forwarded.context, ['existing context', 'matched context']);
+});
+
+test('winnow preserves prompts when the safety gate blocks transmission', async () => {
+  const entry = hooks().find(([event]) => event === 'prompt.submit');
+  const handler = entry.at(-1);
+  const requests = [];
+  const event = { text: 'Find the data/captain.md preferences.' };
+  let forwarded;
+  await handler({
+    http: { async fetch(url) { requests.push(url); return { status: 200, ok: true, text: '{}' }; } },
+    session: {
+      async id() { return 'synthetic'; },
+      async cwd() { return safetyRoot; },
+    },
+    ui: ui(),
+  }, event, async (updated) => { forwarded = updated; return updated; });
+  assert.deepEqual(requests, []);
+  assert.equal(forwarded, event);
 });
 
 test('MCP preload blocks an excluded path before invoking fetch', async () => {
