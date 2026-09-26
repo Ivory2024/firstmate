@@ -913,7 +913,14 @@ resolve_merge_authority() {
     FM_PR_MERGE_AUTHORITY=$FM_MERGE_AUTHORITY
     return 0
   fi
-  echo "error: PR merge refused - the away-posture record could not be read; nothing was merged" >&2
+  case "${FM_MERGE_AUTHORITY_REASON:-}" in
+    not-granted)
+      echo "error: task $ID is held for the captain return (no merge grant recorded in away-posture record); nothing was merged" >&2
+      ;;
+    *)
+      echo "error: PR merge refused - the away-posture record could not be read; nothing was merged" >&2
+      ;;
+  esac
   return 1
 }
 
@@ -930,27 +937,6 @@ hold_away_record_for_merge() {
   return 1
 }
 
-require_current_away_authority() {
-  FM_PR_AWAY_POSTURE=false
-  if fm_afk_contract_present "$STATE"; then
-    FM_PR_AWAY_POSTURE=true
-    if [ "$PROVIDER" = github ] && [ "$FM_PR_GITHUB_AUTO_REQUESTED" = true ]; then
-      echo "error: --auto is attended-only; while the away-posture record exists only a synchronous merge may run under its authority lock" >&2
-      return 2
-    fi
-    if [ "$PROVIDER" = gitlab ] \
-      && { [ "$FM_PR_GITLAB_ASYNC_REQUESTED" = true ] || [ "$FM_PR_GITLAB_ASYNC_CONFIGURED" = true ]; }; then
-      echo "error: GitLab auto-merge is attended-only; while the away-posture record exists only an immediate merge may run under its authority lock" >&2
-      return 2
-    fi
-  fi
-  fm_lease_forbid_branch "PR merge (fm-pr-merge)" --away-relocated
-  require_away_merge_grant || return 1
-  if [ "$FM_PR_AWAY_POSTURE" = true ] && [ "${#ALLOW_RED[@]}" -gt 0 ]; then
-    echo "error: --allow-red is attended-only; while the away-posture record exists the green check is absolute" >&2
-    return 2
-  fi
-}
 
 persist_accepted_merge_authority() {
   local status=0
@@ -989,6 +975,28 @@ refuse_github_queue_while_away() {
   [ "$FM_PR_GITHUB_QUEUE_STATUS" = none ] && return 0
   echo "error: GitHub merge refused while away because the base branch's merge-queue state does not prove an immediate merge; nothing was handed to the forge" >&2
   return 2
+}
+
+require_current_away_authority() {
+  FM_PR_AWAY_POSTURE=false
+  if fm_afk_contract_present "$STATE"; then
+    FM_PR_AWAY_POSTURE=true
+    if [ "${#ALLOW_RED[@]}" -gt 0 ]; then
+      echo "error: --allow-red is attended-only; while the away-posture record exists the green check is absolute" >&2
+      return 2
+    fi
+    if [ "$PROVIDER" = github ] && [ "$FM_PR_GITHUB_AUTO_REQUESTED" = true ]; then
+      echo "error: --auto is attended-only; while the away-posture record exists only a synchronous merge may run under its authority lock" >&2
+      return 2
+    fi
+    if [ "$PROVIDER" = gitlab ] \
+      && { [ "$FM_PR_GITLAB_ASYNC_REQUESTED" = true ] || [ "$FM_PR_GITLAB_ASYNC_CONFIGURED" = true ]; }; then
+      echo "error: GitLab auto-merge is attended-only; while the away-posture record exists only an immediate merge may run under its authority lock" >&2
+      return 2
+    fi
+  fi
+  fm_lease_forbid_branch "PR merge (fm-pr-merge)" --away-relocated
+  resolve_merge_authority || return 1
 }
 
 require_recorded_pr_identity() {
