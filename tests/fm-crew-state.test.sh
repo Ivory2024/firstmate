@@ -2179,6 +2179,10 @@ test_codex_unverified_reports_only_conservative_idle_suspect() {
   make_fakebin "$d" >/dev/null
   printf 'old source\n' > "$d/wt/source.txt"
   touch -t 202001010000 "$d/wt/source.txt"
+  mkdir -p "$d/wt/removed-file"
+  printf 'old file\n' > "$d/wt/removed-file/old.txt"
+  touch -t 202001010000 "$d/wt/removed-file/old.txt"
+  find "$d/wt" -type d -exec touch -t 202001010000 {} +
   fm_write_meta "$d/state/codex-idle.meta" "window=fm:fm-codex-idle" \
     "worktree=$d/wt" "kind=ship" "harness=codex"
   FM_FAKE_TMUX_WINDOW_ACTIVITY=1000000000
@@ -2186,7 +2190,7 @@ test_codex_unverified_reports_only_conservative_idle_suspect() {
   out=$(run_crew_state "$d" codex-idle)
   assert_contains "$out" 'state: unknown' 'Codex remains unknown'
   assert_contains "$out" 'unknown codex-unverified' 'Codex semantic source remains unverified'
-  assert_contains "$out" 'idle-suspect: tmux activity and worktree files unchanged for at least 300s' \
+  assert_contains "$out" 'idle-suspect: tmux activity and worktree paths unchanged for at least 300s' \
     'old pane activity and old worktree file mtimes expose only an advisory suspect'
 
   FM_FAKE_TMUX_WINDOW_ACTIVITY=$(date +%s)
@@ -2196,6 +2200,20 @@ test_codex_unverified_reports_only_conservative_idle_suspect() {
 
   FM_FAKE_TMUX_WINDOW_ACTIVITY=1000000000
   export FM_FAKE_TMUX_WINDOW_ACTIVITY
+  rm "$d/wt/removed-file/old.txt"
+  out=$(run_crew_state "$d" codex-idle)
+  assert_not_contains "$out" 'idle-suspect:' 'recent directory activity from file deletion suppresses the advisory'
+
+  find "$d/wt" -type d -exec touch -t 202001010000 {} +
+  cat > "$d/fakebin/stat" <<'SH'
+#!/usr/bin/env bash
+exit 1
+SH
+  chmod +x "$d/fakebin/stat"
+  out=$(run_crew_state "$d" codex-idle)
+  assert_not_contains "$out" 'idle-suspect:' 'failed worktree scan suppresses the advisory'
+  rm "$d/fakebin/stat"
+
   touch "$d/wt/source.txt"
   out=$(run_crew_state "$d" codex-idle)
   assert_not_contains "$out" 'idle-suspect:' 'recent worktree file activity suppresses the advisory'

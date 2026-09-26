@@ -233,7 +233,7 @@ The app-server protocol schema does define the required lifecycle (`turn/started
 ### Codex inactivity advisory fallback, 2026-09-27
 
 Codex semantic busy sources remain unverified.
-For a Codex task using tmux that still classifies `unknown codex-unverified`, `bin/fm-crew-state.sh` may append `idle-suspect` when tmux `window_activity` and the newest regular-file mtime outside `.git` are both at least 300 seconds old. The worktree probe streams timestamps without a temporary file, scans through depth 6, and skips `node_modules`, `.venv`, and `vendor` trees to keep repeated fleet sweeps bounded.
+For a Codex task using tmux that still classifies `unknown codex-unverified`, `bin/fm-crew-state.sh` may append `idle-suspect` when tmux `window_activity` and the newest file or directory mtime outside `.git` are both at least 300 seconds old. The worktree probe streams timestamps without a temporary file, scans through depth 6, and prunes `node_modules`, `.venv`, and `vendor` trees to keep repeated fleet sweeps bounded; an unsuccessful scan suppresses the advisory.
 This is an advisory based on inactivity clocks, not proof that the model is idle; a recent, malformed, or unreadable probe leaves the original unknown result without the advisory.
 The window clock is intentionally conservative for split windows: activity in another pane can suppress the advisory.
 The portable regression is `tests/fm-crew-state.test.sh`, which exercises stale clocks and confirms recent tmux activity suppresses the advisory.
