@@ -50,22 +50,22 @@ GLOBAL_CLEANUP() {
 trap GLOBAL_CLEANUP EXIT
 
 enter_posture() {  # <home>
-  FM_HOME="$1" FM_STATE_OVERRIDE="$1/state" "$CONTRACT" enter >/dev/null 2>&1
+  FM_HOME="$1" FM_STATE_OVERRIDE="$1/state" "$CONTRACT" propose >/dev/null 2>&1 && FM_HOME="$1" FM_STATE_OVERRIDE="$1/state" "$CONTRACT" confirm >/dev/null 2>&1
 }
 
 # ---------------------------------------------------------------------------
-# UNIT 0: /afk is itself the go. `enter` writes the away-posture record in the
-# same call, with no separate confirmation, and prints the announcement and the
-# read-back after the record exists; on Pi the entry ends there, and every
-# daemon path requires that record.
 # ---------------------------------------------------------------------------
 unit_enter_records_the_posture_in_one_step_without_a_daemon() {
   local st out rc
   st=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-enter.XXXXXX")
   mkdir -p "$st/state"
-  out=$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" enter \
+  out=$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" propose \
     --words 'merge the windows fix when green' --expected-return 2026-09-08T08:00Z --spend 2 2>&1)
   rc=$?
+  if [ "$rc" -eq 0 ]; then
+    FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" confirm >>"$st/confirm.out" 2>&1 || rc=$?
+    out="$out$(cat "$st/confirm.out" 2>/dev/null || true)"
+  fi
   if [ "$rc" -eq 0 ] && [ -f "$st/state/.afk-contract" ] && [ ! -e "$st/state/.afk-contract.proposed" ] \
     && [ "$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$CONTRACT" words)" = 'merge the windows fix when green' ] \
     && [ "$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$CONTRACT" field expected_return)" = 2026-09-08T08:00Z ] \
@@ -73,48 +73,28 @@ unit_enter_records_the_posture_in_one_step_without_a_daemon() {
     && [ ! -e "$st/state/.afk" ] && [ ! -e "$st/state/.afk-daemon-terminal" ] \
     && printf '%s' "$out" | grep -F 'hold-for-return only. No phone channel is configured; anything that needs you waits for your return.' >/dev/null \
     && printf '%s' "$out" | grep -F '    merge the windows fix when green' >/dev/null \
-    && ! printf '%s' "$out" | grep -iE 'say go|to confirm|not yet confirmed' >/dev/null; then
-    pass "enter: one call writes the record with the words, expected return, and spend cap, reads it back without asking for a go, and launches no daemon"
+    && printf '%s' "$out" | grep -F 'Away posture confirmed' >/dev/null; then
+    pass "propose and confirm: the record keeps the words, expected return, and spend cap and launches no daemon"
   else
     fail "enter: record, read-back, or daemon state wrong (rc=$rc): $out"
   fi
-  out=$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" enter --words 'merge it' --grant fix-windows 2>&1)
+  out=$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" propose --words 'merge it' --grant fix-windows 2>&1)
   rc=$?
-  if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -F -- '--grant was retired' >/dev/null \
-    && [ "$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$CONTRACT" words)" = 'merge the windows fix when green' ]; then
-    pass "enter: the retired --grant flag is refused by name and leaves the standing record alone"
+  if [ "$rc" -eq 0 ] && FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" confirm >/dev/null 2>&1 \
+    && [ "$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$CONTRACT" grants)" = fix-windows ]; then
+    pass "propose and confirm: the explicit task grant is recorded"
   else
-    fail "enter: --grant was not refused by name (rc=$rc): $out"
+    fail "propose and confirm: the explicit task grant was not recorded (rc=$rc): $out"
   fi
   printf 'schema\tfm-afk-return.v1\nphase\tblocked\n' > "$st/state/.afk-return-catchup"
-  if FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" enter --words 'merge task a PR when green' >/dev/null 2>&1; then
-    fail "enter: accepted a new mandate while the prior return catch-up was pending"
-  elif [ "$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$CONTRACT" words)" = 'merge the windows fix when green' ]; then
-    pass "enter: refuses while the prior return catch-up is pending"
+  if FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" propose --words 'merge task a PR when green' >/dev/null 2>&1 \
+    && FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" confirm >/dev/null 2>&1; then
+    fail "propose/confirm: accepted a new mandate while the prior return catch-up was pending"
+  elif [ "$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$CONTRACT" words)" = 'merge it' ]; then
+    pass "propose/confirm: refuses while the prior return catch-up is pending"
   else
     fail "enter: a refused entry changed the standing record"
   fi
-  rm -rf "$st"
-}
-
-# No launch path waits for a separate go: the retired two-step subcommands are
-# refused by name and write nothing, so no caller can stage a mandate that then
-# waits on a human response before it binds.
-unit_retired_two_step_entry_is_refused() {
-  local st cmd out rc
-  st=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-retired.XXXXXX")
-  mkdir -p "$st/state"
-  for cmd in propose confirm; do
-    out=$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" "$cmd" --words 'merge it when green' 2>&1)
-    rc=$?
-    if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -F "'$cmd' was retired" >/dev/null \
-      && [ ! -e "$st/state/.afk-contract" ] && [ ! -e "$st/state/.afk-contract.proposed" ] \
-      && [ ! -d "$st/state/.afk-launch.lock" ]; then
-      pass "$cmd: the retired wait-for-go step is refused by name, writes nothing, and releases the launcher lock"
-    else
-      fail "$cmd: the retired step was not refused cleanly (rc=$rc): $out"
-    fi
-  done
   rm -rf "$st"
 }
 
@@ -198,17 +178,18 @@ unit_daemon_entry_requires_the_record() {
   out=$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" start-native 2>&1)
   rc=$?
   if [ "$rc" -ne 0 ] && [ ! -e "$st/state/.afk-contract" ] && [ ! -e "$st/state/.afk" ] \
-    && printf '%s' "$out" | grep -F 'an away-posture record is required; run enter' >/dev/null; then
+    && printf '%s' "$out" | grep -F 'a confirmed away-posture record is required; run propose and confirm' >/dev/null; then
     pass "daemon entry: no daemon lifecycle starts without the away-posture record"
   else
     fail "daemon entry: started without a record or the refusal was unclear (rc=$rc): $out"
   fi
-  if FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" enter --words 'merge task a PR when green' >/dev/null 2>&1 \
+  if FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" propose --words 'merge task a PR when green' >/dev/null 2>&1 \
+    && FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" confirm >/dev/null 2>&1 \
     && FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" start-native >/dev/null 2>&1 \
     && [ -e "$st/state/.afk" ]; then
-    pass "daemon entry: enter then start-native run back to back with no confirmation between them"
+    pass "daemon entry: propose, confirm, and start-native run back to back"
   else
-    fail "daemon entry: the record enter wrote did not permit lifecycle preparation"
+    fail "daemon entry: the confirmed record did not permit lifecycle preparation"
   fi
   FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" stop >/dev/null 2>&1
   rm -rf "$st"
@@ -896,7 +877,7 @@ unit_supervision_host_other_harnesses_run_no_away_daemon() {
     rm -f "$st/state/.afk-contract" "$st/config/supervision-host"
     [ "$2" = - ] || printf '%s\n' "$2" > "$st/config/supervision-host"
     FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" FM_TEST_HARNESS="$1" \
-      bash -c '. "$1"; fm_afk_launch_primary_harness() { printf "%s" "$FM_TEST_HARNESS"; }; fm_afk_launch_main enter --words "watch the fleet"' _ "$LAUNCH" 2>&1
+      bash -c '. "$1"; fm_afk_launch_primary_harness() { printf "%s" "$FM_TEST_HARNESS"; }; fm_afk_launch_main propose --words "watch the fleet" && fm_afk_launch_main confirm' _ "$LAUNCH" 2>&1
   }
   out=$(enter_with cursor ''); rc=$?
   [ "$rc" -eq 0 ] && [ -f "$st/state/.afk-contract" ] || fail "enter on an opted-in cursor home failed (rc=$rc): $out"
@@ -1342,7 +1323,6 @@ e2e_tmux() {
 
 unit_clear_stale
 unit_enter_records_the_posture_in_one_step_without_a_daemon
-unit_retired_two_step_entry_is_refused
 unit_pi_never_launches_the_daemon
 unit_test_harness_seam_requires_the_marker
 unit_pi_enter_stop_does_not_claim_a_daemon_terminal

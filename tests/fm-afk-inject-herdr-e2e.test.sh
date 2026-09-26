@@ -240,7 +240,7 @@ cat > "$HERDR_SHIM_DIR/herdr" <<SHIM
 #!/usr/bin/env bash
 if [ "\${1:-}" = "pane" ] && [ "\${2:-}" = "send-keys" ] && [ -f "$STATE_DIR/.swallow-enter" ]; then
   found_enter=0
-  for _a in "\$@"; do [ "\$_a" = "enter" ] && found_enter=1; done
+  for _a in "\$@"; do [ "\$_a" = "Enter" ] && found_enter=1; done
   if [ "\$found_enter" = 1 ]; then
     rm -f "$STATE_DIR/.swallow-enter"
     exit 0

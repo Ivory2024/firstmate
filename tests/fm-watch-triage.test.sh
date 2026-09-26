@@ -5986,7 +5986,7 @@ iso_utc_at() {  # <epoch>
 }
 
 write_away_record() {  # <state>
-  if ! FM_HOME="$(dirname "$1")" FM_STATE_OVERRIDE="$1" "$ROOT/bin/fm-afk-contract.sh" enter >/dev/null 2>&1; then
+  if ! FM_HOME="$(dirname "$1")" FM_STATE_OVERRIDE="$1" fm_test_confirm_away "$ROOT/bin/fm-afk-contract.sh" >/dev/null 2>&1; then
     fail "could not write the away-posture record in $1"
   fi
 }

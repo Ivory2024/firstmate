@@ -80,6 +80,13 @@ fail() {
   exit 1
 }
 
+fm_test_confirm_away() {
+  local contract=$1
+  shift
+  "$contract" propose "$@" >/dev/null || return
+  "$contract" confirm >/dev/null
+}
+
 pass() {
   printf 'ok - %s\n' "$1"
 }
