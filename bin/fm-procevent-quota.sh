@@ -27,6 +27,11 @@
 # The canonical source id is `quota` for the aggregate tracked provider.
 # A provider named with --provider sets the tracked provider and the source id
 # becomes `quota-<provider>`.
+#
+# Snapshots may be quota-axi schema 5 or 6 (bin/fm-quota-axi-lib.sh owns the
+# validator). Both watches read every matching account row independently,
+# without combining quotas. A --provider watch restricts those rows to the
+# requested provider; details preserve each row's accountKey when present.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -133,12 +138,12 @@ condition_status() {
       else classify($availability)
       end
     else
-      ([.providers[]? | select(.provider == $provider)] | first) as $p |
-      if ($p // null) == null then "error"
-      elif auth_required($p) then "error"
-      elif ($p.quotaSemantics.effectiveAvailability | length) == 0 and
-           ($p.quotaSemantics.status == "unknown" or $p.quotaSemantics.status == "partial") then "healthy"
-      else classify($p.quotaSemantics.effectiveAvailability // [])
+      [.providers[]? | select(.provider == $provider)] as $providers |
+      if ($providers | length) == 0 then "error"
+      elif any($providers[]; auth_required(.)) then "error"
+      elif all($providers[]; (.quotaSemantics.effectiveAvailability | length) == 0 and
+               (.quotaSemantics.status == "unknown" or .quotaSemantics.status == "partial")) then "healthy"
+      else classify([$providers[].quotaSemantics.effectiveAvailability[]?])
       end
     end
   ' 2>/dev/null || printf 'error\n'
@@ -160,12 +165,17 @@ details() {
       elif ($known | length) > 0 then ($known | min_by(.effectivePercentRemaining))
       else null
       end;
-    if $provider == "" then
+    [.providers[]? | select($provider == "" or .provider == $provider) |
+      {provider}
+      + (if has("accountKey") then {accountKey} else {} end)
+      + {best: best_detail(.quotaSemantics.effectiveAvailability // [])}
+    ] as $summary |
+    if $provider == "" or ($summary | length) > 1 then
       {
-        provider: "aggregate",
+        provider: (if $provider == "" then "aggregate" else $provider end),
         summary: [
-          (.providers[]? |
-            { provider: .provider } +
+          (.providers[]? | select($provider == "" or .provider == $provider) |
+            { provider: .provider } + (if has("accountKey") then {accountKey} else {} end) +
             (if auth_required(.)
              then {best: null, error: auth_cause(.)}
              else {best: best_detail(.quotaSemantics.effectiveAvailability // [])}
@@ -178,7 +188,8 @@ details() {
       {
         provider: $provider,
         best: (if auth_required($p) then null else best_detail($p.quotaSemantics.effectiveAvailability // []) end)
-      } + (if auth_required($p) then {error: auth_cause($p)} else {} end)
+      } + (if $p | has("accountKey") then {accountKey: $p.accountKey} else {} end)
+        + (if auth_required($p) then {error: auth_cause($p)} else {} end)
     end
   ' 2>/dev/null
 }
