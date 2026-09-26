@@ -474,8 +474,14 @@ SH
     "$runtime/bin/fm-bearings-board.sh" build "$data" >/dev/null \
     || fail "the order-proof board build failed"
 
-  show=$(cd "$home" && tasks-axi show "$hold" --full) \
-    || fail "the order-proof captain hold disappeared"
+  # Arm starts the listener, which captures the answer and closes the hold on
+  # its own schedule after build returns.
+  for _ in $(seq 1 100); do
+    show=$(cd "$home" && tasks-axi show "$hold" --full) \
+      || fail "the order-proof captain hold disappeared"
+    case "$show" in *"state: done"*) break ;; esac
+    sleep 0.1
+  done
   assert_contains "$show" "state: done" \
     "registration consumed its answer before the any-origin binding existed"
   assert_contains "$show" "Resolution mode: answered" \

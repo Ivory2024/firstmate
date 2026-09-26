@@ -289,6 +289,31 @@ fm_nm_branch_sync_state() {  # <toon-output>
   fm_nm_strip_quotes "$s"
 }
 
+# One scalar from a nested block of the top-level `branch_sync:` block in
+# captured `axi status` TOON $1: `<sub>.<key>` such as `next_action.code` or
+# `pipeline.current_head`. Empty when either block or the key is absent.
+# Indentation bounds each block, so a same-named key in a sibling sub-block
+# (every sub-block of branch_sync carries its own `head`-like keys) is never
+# read in its place.
+fm_nm_branch_sync_nested() {  # <toon-output> <sub-block> <key>
+  local s
+  s=$(printf '%s\n' "$1" | awk -v sub_block="$2" -v key="$3" '
+    function indent(line) { match(line, /[^ ]/); return RSTART - 1 }
+    /^[^[:space:]]/ { in_sync = ($0 ~ /^branch_sync:[[:space:]]*$/); in_sub = 0; next }
+    !in_sync { next }
+    {
+      ind = indent($0)
+      if (in_sub && ind <= sub_ind) in_sub = 0
+      if (!in_sub && $0 ~ ("^[[:space:]]+" sub_block ":[[:space:]]*$")) { in_sub = 1; sub_ind = ind; next }
+      if (in_sub && ind > sub_ind && $0 ~ ("^[[:space:]]+" key ":")) {
+        sub(("^[[:space:]]+" key ":[[:space:]]*"), "")
+        print
+        exit
+      }
+    }')
+  fm_nm_strip_quotes "$s"
+}
+
 # 0 if the run in captured `axi status` TOON $1 is still in flight: no
 # terminal outcome and no terminal status.
 fm_nm_run_is_active() {  # <toon-output>

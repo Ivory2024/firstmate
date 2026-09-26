@@ -101,6 +101,7 @@ test_flag_on_records_the_task_lifecycle() {
   rows=$(ledger_rows '[.event, .task] + (del(.v, .ts, .event, .task) | to_entries | map(.value))')
   assert_equals "$(cat <<EOF
 ["task.dispatched","$TASK","ship","sample","claude",null]
+["task.status","$TASK","working",null," spawned"]
 ["task.status","$TASK","working",null," setup done"]
 ["task.status","$TASK","needs-decision","pick-one"," choose \"a\"\\\\b or c"]
 ["task.status","$TASK","resolved","pick-one"," [key=pick-one]  chose a"]
@@ -153,6 +154,7 @@ test_flag_on_records_a_pr_registration() {
   rows=$(ledger_rows '[.event, .state, .pr]')
   assert_equals "$(cat <<EOF
 ["task.dispatched",null,null]
+["task.status","working",null]
 ["task.status","done",null]
 ["task.pr_ready",null,"$pr_url"]
 EOF

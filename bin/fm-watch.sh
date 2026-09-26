@@ -1266,7 +1266,7 @@ wedge_wait_evidence() {  # <task> -> one wait_record on stdout
   local task=$1 last until statusf run
   [ -n "$task" ] || return 1
   statusf="$STATE/$task.status"
-  last=$(last_status_line "$statusf")
+  last=$(status_declared_wait_line "$statusf")
   if status_is_captain_held "$last"; then
     wait_record 'captain-held' 'awaiting the captain - verified hold transfer' \
       captain 'answer the held decision or release the hold' "$statusf"
@@ -2650,6 +2650,10 @@ while :; do
   # Liveness beacon for fm-guard.sh: a fresh mtime here means a watcher is
   # alive. Supervision scripts warn when this goes stale with tasks in flight.
   touch "$STATE/.last-watcher-beat"
+
+  # Opt-in fleet activity ledger (docs/fleet-ledger.md): pick up newly appended
+  # status lines before this cycle can exit on a wake. Off costs one file test.
+  [ ! -e "$CONFIG/fleet-ledger" ] || FM_HOME=$FM_HOME FM_STATE_OVERRIDE=$STATE FM_CONFIG_OVERRIDE=$CONFIG "$SCRIPT_DIR/fm-fleet-ledger.sh" capture || true
 
   "$SCRIPT_DIR/fm-discord-notify.sh" --retry-pending >/dev/null \
     || triage_log "Discord decision notification retry failed"
