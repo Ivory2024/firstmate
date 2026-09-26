@@ -2601,7 +2601,12 @@ EOF
 $resolution
 EOF
         open_decisions=$(status_open_decisions "$status_file") || open_decisions=''
-        if ! printf '%s\n' "$open_decisions" | awk -F '\t' '$2 == "needs-decision" { found=1 } END { exit found ? 0 : 1 }'; then
+        remaining_needs_decision=0
+        status_span_first_actionable_record "$status_file" \
+          "$(fm_wake_signal_seen_size "$STATE" "$status_file")" \
+          remaining_record remaining_needs_decision >/dev/null || :
+        if ! printf '%s\n' "$open_decisions" | awk -F '\t' '$2 == "needs-decision" { found=1 } END { exit found ? 0 : 1 }' \
+          && [ "$remaining_needs_decision" -eq 0 ]; then
             remaining=''
             for candidate in $FM_SIGNAL_NEEDS_DECISION_FILES; do
               [ "$candidate" = "$status_file" ] || remaining="${remaining}${remaining:+ }${candidate}"
