@@ -2205,6 +2205,14 @@ test_codex_unverified_reports_only_conservative_idle_suspect() {
   assert_not_contains "$out" 'idle-suspect:' 'recent directory activity from file deletion suppresses the advisory'
 
   find "$d/wt" -type d -exec touch -t 202001010000 {} +
+  mkdir -p "$d/wt/node_modules/a/b/c/d/e/f/g"
+  printf 'recent deep file\n' > "$d/wt/node_modules/a/b/c/d/e/f/g/recent.txt"
+  find "$d/wt" -type d -exec touch -t 202001010000 {} +
+  out=$(run_crew_state "$d" codex-idle)
+  assert_not_contains "$out" 'idle-suspect:' 'recent deep dependency-tree activity suppresses the advisory'
+  rm -rf "$d/wt/node_modules"
+  find "$d/wt" -type d -exec touch -t 202001010000 {} +
+
   cat > "$d/fakebin/stat" <<'SH'
 #!/usr/bin/env bash
 exit 1
