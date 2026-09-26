@@ -19,6 +19,7 @@ fi
 
 fm_discord_load_config
 channel_id=${FM_DISCORD_CHANNELS%%,*}
+channel_id=$(fm_discord_trim "$channel_id")
 case "$channel_id" in ''|*[!0-9]*) echo "fm-discord-report: configure FM_DISCORD_CHANNEL_ID or FM_DISCORD_ALLOWED_CHANNELS" >&2; exit 2 ;; esac
 
 report=$("$SCRIPT_DIR/fm-bearings-snapshot.sh") || exit $?

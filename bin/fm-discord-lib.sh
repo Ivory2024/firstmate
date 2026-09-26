@@ -29,6 +29,13 @@ fm_discord_poll_shim_content() {
     "exec $(printf '%q' "$root/bin/fm-discord-poll.sh")"
 }
 
+fm_discord_trim() {
+  local value=$1
+  value=${value#"${value%%[![:space:]]*}"}
+  value=${value%"${value##*[![:space:]]}"}
+  printf '%s' "$value"
+}
+
 # Resolve self-hosted Discord settings.
 # FM_DISCORD_BOT_TOKEN (required for active self-hosted Discord connection)
 # FM_DISCORD_CHANNEL_ID or FM_DISCORD_ALLOWED_CHANNELS (optional target channel IDs)

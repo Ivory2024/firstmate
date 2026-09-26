@@ -38,7 +38,7 @@ fm_discord_load_config
 command -v node >/dev/null 2>&1 || { echo "fm-discord-notify: missing node for self-hosted Discord" >&2; exit 1; }
 
 if [ "$report_mode" -eq 1 ]; then
-  channel_id=$2
+  channel_id=$(fm_discord_trim "$2")
   case "$channel_id" in ''|*[!0-9]*) echo "fm-discord-notify: report channel id is invalid" >&2; exit 2 ;; esac
   [ -n "$3" ] || { echo "fm-discord-notify: report message is empty" >&2; exit 2; }
   export FM_HOME FM_STATE_OVERRIDE="$STATE" FM_DISCORD_BOT_TOKEN="$FM_DISCORD_TOKEN"

@@ -64,7 +64,7 @@ test_quiet_report_posts_plain_snapshot() {
   FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
     PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
     FM_DISCORD_BOT_TOKEN=fake-token \
-    "$ROOT/bin/fm-discord-notify.sh" --report 1000000000000000001 $'현황\n진행 중: 작업 A' >/dev/null \
+    "$ROOT/bin/fm-discord-notify.sh" --report ' 1000000000000000001 ' $'현황\n진행 중: 작업 A' >/dev/null \
     || fail "plain report post failed"
   body=$(jq -r '.payload.content' "$log")
   assert_equals $'현황\n진행 중: 작업 A' "$body" "report body is sent verbatim"
@@ -113,7 +113,8 @@ test_report_helper_sends_bearings_snapshot() {
 fm_afk_mode() { [ "$(head -n 1 "$1/.afk" 2>/dev/null)" = quiet ] && printf quiet || printf away; }
 SH
   cat > "$root/bin/fm-discord-lib.sh" <<'SH'
-fm_discord_load_config() { FM_DISCORD_CHANNELS=1000000000000000001; }
+fm_discord_load_config() { FM_DISCORD_CHANNELS=' 1000000000000000001 '; }
+fm_discord_trim() { local value=$1; value=${value#"${value%%[![:space:]]*}"}; value=${value%"${value##*[![:space:]]}"}; printf '%s' "$value"; }
 SH
   cat > "$root/bin/fm-bearings-snapshot.sh" <<'SH'
 #!/usr/bin/env bash
