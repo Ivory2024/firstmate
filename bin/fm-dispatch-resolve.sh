@@ -310,26 +310,27 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
   def rows($p; $lane): (prov($p; $lane) | .quotaSemantics.effectiveAvailability // []);
   def bare($m): ($m | split("/") | last);
   def provider_of($c): ($c.provider // $pmap[$c.harness] // null);
-  def auth_required($p):
-    $p == "agy" and (prov($p).state.status // "") == "auth_required";
-  def measured($p):
-    (prov($p) != null and
-     ((["known", "partial"] | index(prov($p).quotaSemantics.status)) != null or
-      (prov($p).quotaSemantics.status == "unknown" and
-       any((prov($p).quotaSemantics.effectiveAvailability // [])[]; .status == "known"))));
+  def provider_present($p): any($q.providers[]?; .provider == $p);
+  def auth_required($p; $lane):
+    $p == "agy" and (prov($p; $lane).state.status // "") == "auth_required";
+  def measured($p; $lane):
+    (prov($p; $lane) != null and
+     ((["known", "partial"] | index(prov($p; $lane).quotaSemantics.status)) != null or
+      (prov($p; $lane).quotaSemantics.status == "unknown" and
+       any((prov($p; $lane).quotaSemantics.effectiveAvailability // [])[]; .status == "known"))));
   def scope_applies($p; $scope; $m):
     $scope == "all_models" or $scope == "all_products" or
     ($p == "agy" and $scope == "gemini_only") or
     ($m != "" and ($scope == ("model:" + (bare($m))) or $scope == ("product:" + (bare($m)))));
-  def applicable($p; $m):
-    [rows($p)[] | select(
+  def applicable($p; $lane; $m):
+    [rows($p; $lane)[] | select(
       scope_applies($p; .scope; $m)
     )];
   def floor_state($f; $p; $lane):
     if $f == null then "none"
-    elif auth_required($p) then "unknown"
-    elif prov($p) == null or (measured($p) | not) then "unknown"
-    else [rows($p)[] | select(.scope == $f.scope)] as $matches
+    elif auth_required($p; $lane) then "unknown"
+    elif prov($p; $lane) == null or (measured($p; $lane) | not) then "unknown"
+    else [rows($p; $lane)[] | select(.scope == $f.scope)] as $matches
       | if ($matches | length) == 0 or any($matches[]; .status != "known") then "unknown"
         elif any($matches[]; .effectivePercentRemaining < $f.min_percent) then "below"
         else "ok"
@@ -337,17 +338,18 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
     end;
   def evidence($rows):
     $rows | map({scope, status, pct: (.effectivePercentRemaining // null), runway: (.runway.status // null), spendPriority: (.selection.spendPriority // null)});
-  def uncertainty($p):
-    if (prov($p).state.status // "") == "auth_required" then
-      "auth_required: " + ((prov($p).state.error // "authentication required") | tostring)
+  def uncertainty($p; $lane):
+    if (prov($p; $lane).state.status // "") == "auth_required" then
+      "auth_required: " + ((prov($p; $lane).state.error // "authentication required") | tostring)
     else null
     end;
   def evaluate($c):
-    (provider_of($c)) as $p | (lane_of($c)) as $lane |
+    (provider_of($c)) as $p | quota_lane($c.harness; $c.model) as $lane |
     if $p == null then {profile: $c, eligible: false, reason: "no provider family for harness \($c.harness); declare provider on the profile"}
-    elif prov($p) == null then {profile: $c, provider: $p, eligible: true, unranked: true, reason: "provider \($p) not in the quota snapshot"}
-    elif ($p == "agy" and (prov($p).state.status // "") == "auth_required") then
-      {profile: $c, provider: $p, eligible: true, unranked: true, unknown: true, uncertainty: uncertainty($p), reason: "provider \($p) unmeasured (\(prov($p).quotaSemantics.status))"}
+    elif prov($p; $lane) == null and provider_present($p) then {profile: $c, provider: $p, eligible: true, unranked: true, reason: "provider \($p) has no quota row for account \($lane)"}
+    elif prov($p; $lane) == null then {profile: $c, provider: $p, eligible: true, unranked: true, reason: "provider \($p) not in the quota snapshot"}
+    elif ($p == "agy" and (prov($p; $lane).state.status // "") == "auth_required") then
+      {profile: $c, provider: $p, eligible: true, unranked: true, unknown: true, uncertainty: uncertainty($p; $lane), reason: "provider \($p) unmeasured (\(prov($p; $lane).quotaSemantics.status))"}
     else
       (applicable($p; $lane; ($c.model // ""))) as $rows |
       (evidence($rows)) as $bounds |
@@ -366,7 +368,7 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
         {profile: $c, provider: $p, bounds: $bounds, scope: ($floor_row.scope // $c.floor.scope), pct: ($floor_row.effectivePercentRemaining // null), runway: ($floor_row.runway.status // null), eligible: false, reason: "profile floor \($c.floor.scope) below \($c.floor.min_percent)%"}
       elif (measured($p; $lane) | not) then
         ($rows | first) as $row |
-        {profile: $c, provider: $p, bounds: $bounds, scope: ($row.scope // null), pct: ($row.effectivePercentRemaining // null), runway: ($row.runway.status // null), eligible: true, unranked: true, unknown: true, uncertainty: uncertainty($p), reason: "provider \($p) unmeasured (\(prov($p).quotaSemantics.status))"}
+        {profile: $c, provider: $p, bounds: $bounds, scope: ($row.scope // null), pct: ($row.effectivePercentRemaining // null), runway: ($row.runway.status // null), eligible: true, unranked: true, unknown: true, uncertainty: uncertainty($p; $lane), reason: "provider \($p) unmeasured (\(prov($p; $lane).quotaSemantics.status))"}
       elif ($rows | length) == 0 then
         {profile: $c, provider: $p, bounds: $bounds, eligible: true, unranked: true, unknown: true, reason: "no applicable quota row for provider \($p)"}
       elif $profile_floor_state == "unknown" then

@@ -138,12 +138,12 @@ condition_status() {
       else classify($availability)
       end
     else
-      ([.providers[]? | select(.provider == $provider)] | first) as $p |
-      if ($p // null) == null then "error"
-      elif auth_required($p) then "error"
-      elif ($p.quotaSemantics.effectiveAvailability | length) == 0 and
-           ($p.quotaSemantics.status == "unknown" or $p.quotaSemantics.status == "partial") then "healthy"
-      else classify($p.quotaSemantics.effectiveAvailability // [])
+      [.providers[]? | select(.provider == $provider)] as $providers |
+      if ($providers | length) == 0 then "error"
+      elif any($providers[]; auth_required(.)) then "error"
+      elif all($providers[]; (.quotaSemantics.effectiveAvailability | length) == 0 and
+               (.quotaSemantics.status == "unknown" or .quotaSemantics.status == "partial")) then "healthy"
+      else classify([$providers[].quotaSemantics.effectiveAvailability[]?])
       end
     end
   ' 2>/dev/null || printf 'error\n'
@@ -172,10 +172,10 @@ details() {
     ] as $summary |
     if $provider == "" or ($summary | length) > 1 then
       {
-        provider: "aggregate",
+        provider: (if $provider == "" then "aggregate" else $provider end),
         summary: [
-          (.providers[]? |
-            { provider: .provider } +
+          (.providers[]? | select($provider == "" or .provider == $provider) |
+            { provider: .provider } + (if has("accountKey") then {accountKey} else {} end) +
             (if auth_required(.)
              then {best: null, error: auth_cause(.)}
              else {best: best_detail(.quotaSemantics.effectiveAvailability // [])}
@@ -188,7 +188,8 @@ details() {
       {
         provider: $provider,
         best: (if auth_required($p) then null else best_detail($p.quotaSemantics.effectiveAvailability // []) end)
-      } + (if auth_required($p) then {error: auth_cause($p)} else {} end)
+      } + (if $p | has("accountKey") then {accountKey: $p.accountKey} else {} end)
+        + (if auth_required($p) then {error: auth_cause($p)} else {} end)
     end
   ' 2>/dev/null
 }
