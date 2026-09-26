@@ -655,6 +655,25 @@ test_return_guard_refuses_while_the_record_exists() {
   pass "the read-only guard treats the away-posture record as active away mode without the legacy flag"
 }
 
+test_return_guard_distinguishes_quiet_from_away_flag() {
+  local dir out rc
+  dir="$TMP_ROOT/guard-mode"
+  install_runner "$dir"
+  printf 'quiet\n' > "$dir/home/state/.afk"
+  out=$(FM_HOME="$dir/home" FM_STATE_OVERRIDE="$dir/home/state" "$dir/bin/fm-afk-return.sh" guard 2>&1) \
+    || fail "guard should allow quiet mode to proceed (rc=$?): $out"
+  assert_not_contains "$out" 'away mode is still active' "quiet-mode guard emitted the away refusal"
+
+  printf 'away\n' > "$dir/home/state/.afk"
+  set +e
+  out=$(FM_HOME="$dir/home" FM_STATE_OVERRIDE="$dir/home/state" "$dir/bin/fm-afk-return.sh" guard 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -eq 3 ] || fail "guard should refuse away mode (rc=$rc): $out"
+  assert_contains "$out" 'away mode is still active' "away-mode guard did not preserve its refusal"
+  pass "the read-only guard allows quiet mode and still refuses away mode"
+}
+
 test_return_brief_health_leads_with_a_gap() {
   local dir out gap_line clean_line
   dir="$TMP_ROOT/brief-gap"
@@ -801,6 +820,7 @@ test_unreadable_outcome_store_keeps_catchup_gated
 test_failed_held_listing_keeps_catchup_gated
 test_unreadable_status_file_keeps_catchup_gated
 test_return_guard_refuses_while_the_record_exists
+test_return_guard_distinguishes_quiet_from_away_flag
 test_return_brief_health_leads_with_a_gap
 test_return_brief_does_not_report_an_acked_watcher_down_marker_as_a_gap
 test_return_brief_without_a_record_reports_the_legacy_flag
