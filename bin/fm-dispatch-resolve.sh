@@ -264,13 +264,26 @@ command -v quota-axi >/dev/null 2>&1 || emit_error "quota-axi not installed"
 quota-axi --json > "$QUOTA" 2>/dev/null || emit_error "quota-axi --json failed"
 fm_quota_json_valid < "$QUOTA" || emit_error "quota-axi --json returned an invalid snapshot"
 
+# Only an explicit, single-line horizon in the task brief is inspectable here.
+# An absent or malformed horizon leaves projected runway feasibility unresolved.
+HORIZON_SECONDS=$(awk '
+  /^Likely completion horizon:/ {
+    count++
+    if ($0 ~ /^Likely completion horizon: [1-9][0-9]* seconds$/) value = $4
+  }
+  END { if (count == 1 && value != "") print value }
+' "$BRIEF")
+
 # ---- resolution: declared gates + quota evidence + argmax, all in jq ------------
-RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg none_criterion "$DEFAULT_WHEN" --argjson pmap "$PMAP" \
+RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg none_criterion "$DEFAULT_WHEN" --arg horizon "$HORIZON_SECONDS" --argjson pmap "$PMAP" \
   --slurpfile resp "$RESP_FILE" --slurpfile rules "$RULES" --slurpfile quota "$QUOTA" '
   ($resp[0]) as $r | ($rules[0]) as $cfg | ($quota[0]) as $q | ($r.answers.rule) as $a |
   def profiles($v): if ($v | type) == "array" then $v elif ($v | type) == "object" then [$v] else [] end;
   def prov($p): ([$q.providers[] | select(.provider == $p)] | first) // null;
   def rows($p): (prov($p) | .quotaSemantics.effectiveAvailability // []);
+  def projected($row): ($row.runway.status // "") == "projected_exhaustion";
+  def runway_evidence($p; $row):
+    ([$q.exhaustion[]? | select(.provider == $p and .scope == $row.scope)] | first) // null;
   def bare($m): ($m | split("/") | last);
   def provider_of($c): ($c.provider // $pmap[$c.harness] // null);
   def auth_required($p):
@@ -315,6 +328,8 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
       (applicable($p; ($c.model // ""))) as $rows |
       (evidence($rows)) as $bounds |
       (floor_state($c.floor; $p)) as $profile_floor_state |
+      ([$rows[] | select(projected(.))] as $finite |
+       [$finite[] as $row | {scope: $row.scope, evidence: runway_evidence($p; $row)}]) as $runways |
       if any($rows[]; (.runway.status // "") == "exhausted_now") then
         ($rows | map(select((.runway.status // "") == "exhausted_now")) | first) as $bad |
         {profile: $c, provider: $p, bounds: $bounds, scope: $bad.scope, pct: ($bad.effectivePercentRemaining // null), runway: $bad.runway.status, eligible: false, reason: "runway exhausted_now at \($bad.scope)"}
@@ -327,6 +342,18 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
           .effectivePercentRemaining < $c.floor.min_percent
         )] | first) as $floor_row |
         {profile: $c, provider: $p, bounds: $bounds, scope: ($floor_row.scope // $c.floor.scope), pct: ($floor_row.effectivePercentRemaining // null), runway: ($floor_row.runway.status // null), eligible: false, reason: "profile floor \($c.floor.scope) below \($c.floor.min_percent)%"}
+      elif ($runways | length) > 0 and
+           (($horizon | test("^[1-9][0-9]*$")) | not or
+            any($runways[]; (.evidence.usableRunwaySeconds | type) != "number" or .evidence.usableRunwaySeconds < ($horizon | tonumber))) then
+        ($runways | map(select(($horizon | test("^[1-9][0-9]*$")) and (.evidence.usableRunwaySeconds | type) == "number" and .evidence.usableRunwaySeconds < ($horizon | tonumber))) | first) as $short |
+        if $short != null then
+          ($rows | map(select(.scope == $short.scope)) | first) as $row |
+          {profile: $c, provider: $p, bounds: $bounds, scope: $short.scope, pct: $row.effectivePercentRemaining, spendPriority: $row.selection.spendPriority, runway: $row.runway.status, eligible: false, reason: "projected runway at \($short.scope) is shorter than likely completion horizon \($horizon) seconds"}
+        else
+          ($runways | map(select((.evidence.usableRunwaySeconds | type) != "number")) | first) as $unknown |
+          ($rows | map(select(.scope == ($unknown.scope // $runways[0].scope))) | first) as $row |
+          {profile: $c, provider: $p, bounds: $bounds, scope: ($unknown.scope // $runways[0].scope), pct: $row.effectivePercentRemaining, spendPriority: $row.selection.spendPriority, runway: $row.runway.status, eligible: true, unranked: true, unknown: true, reason: (if ($horizon | test("^[1-9][0-9]*$")) then "projected runway evidence missing or unknown" else "likely completion horizon missing or invalid" end)}
+        end
       elif (measured($p) | not) then
         ($rows | first) as $row |
         {profile: $c, provider: $p, bounds: $bounds, scope: ($row.scope // null), pct: ($row.effectivePercentRemaining // null), runway: ($row.runway.status // null), eligible: true, unranked: true, unknown: true, uncertainty: uncertainty($p), reason: "provider \($p) unmeasured (\(prov($p).quotaSemantics.status))"}
