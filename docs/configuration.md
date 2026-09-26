@@ -691,7 +691,7 @@ It is off unless the firstmate home's gitignored `.env` contains a non-empty `FM
 When enabled, bootstrap writes `state/discord-watch.check.sh` and `config/discord-mode.env` (`FM_CHECK_INTERVAL=30`) so the watcher polls for mentions every 30 seconds.
 Optional configuration variables in `.env`:
 - `FM_DISCORD_CHANNEL_ID` / `FM_DISCORD_ALLOWED_CHANNELS`: comma-separated channel IDs to poll.
-- `FM_DISCORD_EXCLUDE_CHANNELS`: comma-separated channel IDs to ignore (defaults to `1551134713727426570` for collision prevention with gajae-way).
+- `FM_DISCORD_EXCLUDE_CHANNELS`: comma-separated channel IDs to ignore (defaults to `1551134713727426570` for collision prevention with gajae-way). An explicit allowlist overrides this built-in default with a warning; an explicitly configured exclusion still wins over an allowlist and produces a warning.
 - `FM_DISCORD_ALLOW_DMS`: `true` or `false` (defaults to `true`).
 - `FM_DISCORD_AUTHORIZED_USER_IDS`: comma-separated Discord user IDs allowed to answer pushed decisions, including the captain and any trusted operators; unset or empty authorizes nobody.
 Replies and follow-ups for self-hosted Discord mentions post directly to Discord's REST API using `FM_DISCORD_BOT_TOKEN`.
