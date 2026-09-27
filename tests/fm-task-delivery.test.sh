@@ -342,6 +342,13 @@ STUB
       || fail "$mode: promoted worker did not receive the machine-readable delivery contract"
     assert_grep "# Definition of done" "$payload" \
       "$mode: promoted worker did not receive a Definition of done"
+    if [ "$mode" = direct-PR ] || [ "$mode" = no-mistakes ]; then
+      # shellcheck disable=SC2016  # literal command substitution is expected in the delivered brief
+      assert_grep 'gh-axi pr edit <number> --title "$(date +%Y)-<number>: <original title>"' "$payload" \
+        "$mode: promoted worker did not receive the new-PR title rule"
+      assert_grep "do not rename existing PRs" "$payload" \
+        "$mode: promoted worker was not told to leave existing PRs unchanged"
+    fi
     assert_grep "pwd -P" "$payload" \
       "$mode: promoted worker was not told to verify its physical worktree"
     assert_grep "git rev-parse --show-toplevel" "$payload" \

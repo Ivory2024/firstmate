@@ -259,7 +259,9 @@ fm_dod_block() {  # <mode> <task-id>
 Delivery contract: mode=direct-PR
 This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
 The task is complete only when committed on your branch.
-When it is implemented and committed, push your branch and open a PR with \`gh-axi\`, then append \`done [at=<epoch>]: PR {url}\` to the status file and stop.
+When it is implemented and committed, push your branch and open a PR with \`gh-axi\`.
+Immediately after opening it, use the returned PR URL to get its number and run \`gh-axi pr edit <number> --title "\$(date +%Y)-<number>: <original title>"\`, replacing the placeholders with the PR number, the year at that moment, and the title you opened it with. Apply this only to the new PR; do not rename existing PRs.
+Then append \`done [at=<epoch>]: PR {url}\` to the status file and stop.
 Do NOT run /no-mistakes. The configured merge authority decides whether to merge the PR; firstmate relays the outcome.
 EOF
       ;;
@@ -280,6 +282,7 @@ EOF
 Delivery contract: mode=no-mistakes
 After committing, immediately invoke \`/no-mistakes\` yourself and continue through its gates; do not append \`done\` or stop merely because you committed.
 The task is complete only at the CI-green return point below, after \`/no-mistakes\` reports CI green.
+Whenever this flow opens a new PR, immediately use its returned URL to get the PR number and run \`gh-axi pr edit <number> --title "\$(date +%Y)-<number>: <original title>"\`, replacing the placeholders with the PR number, the year at that moment, and the title you opened it with. Apply this only to the new PR; do not rename existing PRs.
 
 During the test stage, when \`herdr\` is absent from \`PATH\` and this repository's \`.github/workflows/ci.yml\` defines a \`Behavior tests (Herdr)\` lane, record that Herdr live validation is unavailable locally and covered by that CI lane. Continue with the remaining validation without asking firstmate or the captain solely because Herdr is unavailable, and do not claim local Herdr validation passed.
 

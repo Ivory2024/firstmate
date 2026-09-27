@@ -213,6 +213,13 @@ test_ship_modes_generate_clean_briefs() {
     assert_grep "{FIRSTMATE_SPEC}" "$brief" "$id: brief missing the {FIRSTMATE_SPEC} placeholder"
     assert_grep "## Captain's intent" "$brief" "$id: brief missing Captain's intent subsection"
     assert_grep "## Firstmate spec" "$brief" "$id: brief missing Firstmate spec subsection"
+    if [ "$mode" = direct-PR ] || [ "$mode" = no-mistakes ]; then
+      # shellcheck disable=SC2016  # literal command substitution is expected in the generated brief
+      assert_grep 'gh-axi pr edit <number> --title "$(date +%Y)-<number>: <original title>"' "$brief" \
+        "$id: new PR title must receive its opening year and forge-assigned number"
+      assert_grep "do not rename existing PRs" "$brief" \
+        "$id: PR title instruction must leave existing PRs unchanged"
+    fi
     assert_grep 'never a bare number such as "PR 108"' "$brief" "$id: brief missing the full-PR-URL rule"
     assert_grep "mid-task \`working:\` line (including setup complete) is nonterminal" "$brief" \
       "$id: brief missing nonterminal working:/setup-complete gate protection"
