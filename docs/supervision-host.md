@@ -20,7 +20,7 @@ An arm owner is the component in each primary harness that starts watcher cycles
 
 ## Scope today
 
-The host is opt-in per home through `config/supervision-host`; [configuration.md](configuration.md#supervision-host-configsupervision-host) owns the file.
+The host is opt-in per home through `config/supervision-host`; this document owns its behavior and [configuration.md](configuration.md) owns the home layout.
 Without the file every home behaves exactly as it does without the host.
 Today it runs beside a Claude, Cursor, OpenCode, omp, Grok, or Codex primary and only takes wakes in the away posture.
 

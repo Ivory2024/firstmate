@@ -382,6 +382,21 @@ Its `remove` action excises only the marker-delimited Firstmate region and remov
 For Pi and pi-signed secondmate launches, `fm-spawn.sh` starts the selected executable with `-e` pointed at the secondmate home's own tracked `.pi/extensions/fm-primary-pi-watch.ts` and `.pi/extensions/fm-primary-turnend-guard.ts`, both already present from the secondmate home's git worktree.
 For omp secondmate launches, `fm-spawn.sh` passes no `-e` at all: omp auto-discovers the home's tracked `.omp/extensions/` with no trust gate, and naming a discovered file with `-e` as well loads it twice; every omp launch instead carries the tracked `.omp/fm-worker-overlay.yml` posture overlay through `--config`, which [`fm-spawn.sh --help`](../bin/fm-spawn.sh) owns.
 
+## Worker account pin (config/claude-account, config/pi-account)
+
+These optional local, gitignored files select and verify the account used for worker launches from this home.
+With no pin, Claude, Pi, and pi-signed keep their existing ambient account behavior.
+`config/claude-account` contains `ordinary` or one absolute path to an existing readable and searchable Claude configuration directory.
+`ordinary` selects Claude's vendor default with `CLAUDE_CONFIG_DIR` unset.
+`config/pi-account` contains that same account selector on line 1 and one or more space-separated provider names on line 2.
+For Pi, `ordinary` selects `$HOME/.pi/agent`.
+A pinned Pi launch must name a declared provider in `--model <provider>/<id>`; Firstmate also passes `--provider` explicitly.
+The runner checks the selected account's sign-in state with ambient credentials cleared and refuses the launch if the account is unavailable or the pin is malformed.
+The check runs before a spawn creates an endpoint and before a relaunch stops the existing agent.
+Claude launches also remove environment credentials that would outrank the selected stored login.
+Firstmate does not copy credentials or change a global login.
+The secondmate home uses its own pin; these files are not inherited.
+
 ## Claude permission mode (config/claude-permission-mode)
 
 The optional local, gitignored `config/claude-permission-mode` holds one token selecting the permission flag every Claude worker launch carries: crewmates, scouts, Claude secondmates, and control-plane relaunches alike.
