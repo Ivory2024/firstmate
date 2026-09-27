@@ -21,6 +21,11 @@ its classification policy, its reliability properties - is owned once by the
 The only things quiet mode changes are which mode the flag declares and what
 exits it.
 
+When the captain explicitly asks in chat for a Discord status report while
+quiet mode is active, run `bin/fm-discord-report.sh`; it sends the current
+bounded fleet snapshot to the configured Discord channel. This reporting path
+is quiet-only because the snapshot owner refuses an active away window.
+
 ## What it does
 
 1. **Enter the lifecycle through `bin/fm-afk-launch.sh`, exactly as `/afk`
