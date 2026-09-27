@@ -343,9 +343,13 @@ STUB
     assert_grep "# Definition of done" "$payload" \
       "$mode: promoted worker did not receive a Definition of done"
     if [ "$mode" = direct-PR ] || [ "$mode" = no-mistakes ]; then
-      # shellcheck disable=SC2016  # literal command substitution is expected in the delivered brief
-      assert_grep 'gh-axi pr edit <number> --title "$(date +%Y)-<number>: <original title>"' "$payload" \
+      # shellcheck disable=SC2016  # literal placeholders are expected in the delivered brief
+      assert_grep 'gh-axi pr edit <number> --title "<createdAt year>-<number>: <original title>"' "$payload" \
         "$mode: promoted worker did not receive the new-PR title rule"
+      assert_grep 'gh-axi pr view <number> --json createdAt' "$payload" \
+        "$mode: promoted worker was not told to read the year from the PR"
+      assert_grep "never from the current date" "$payload" \
+        "$mode: promoted worker was not told to forbid the wall-clock year"
       assert_grep "do not rename existing PRs" "$payload" \
         "$mode: promoted worker was not told to leave existing PRs unchanged"
     fi

@@ -214,9 +214,13 @@ test_ship_modes_generate_clean_briefs() {
     assert_grep "## Captain's intent" "$brief" "$id: brief missing Captain's intent subsection"
     assert_grep "## Firstmate spec" "$brief" "$id: brief missing Firstmate spec subsection"
     if [ "$mode" = direct-PR ] || [ "$mode" = no-mistakes ]; then
-      # shellcheck disable=SC2016  # literal command substitution is expected in the generated brief
-      assert_grep 'gh-axi pr edit <number> --title "$(date +%Y)-<number>: <original title>"' "$brief" \
+      # shellcheck disable=SC2016  # literal placeholders are expected in the generated brief
+      assert_grep 'gh-axi pr edit <number> --title "<createdAt year>-<number>: <original title>"' "$brief" \
         "$id: new PR title must receive its opening year and forge-assigned number"
+      assert_grep 'gh-axi pr view <number> --json createdAt' "$brief" \
+        "$id: the title year must be read from the PR itself, not the wall clock"
+      assert_grep "never from the current date" "$brief" \
+        "$id: the brief must forbid taking the year from the current date"
       assert_grep "do not rename existing PRs" "$brief" \
         "$id: PR title instruction must leave existing PRs unchanged"
     fi
