@@ -302,7 +302,8 @@ quota-axi --json > "$QUOTA" 2>/dev/null || emit_error "quota-axi --json failed"
 fm_quota_json_valid < "$QUOTA" || emit_error "quota-axi --json returned an invalid snapshot"
 
 # ---- resolution: declared gates + quota evidence + argmax, all in jq ------------
-RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg none_criterion "$DEFAULT_WHEN" --argjson pmap "$PMAP" \
+HORIZON=$(jq -nr --rawfile brief "$BRIEF" '$brief | try capture("(?m)^Likely completion horizon: (?<n>[0-9]+) seconds$").n catch ""') || emit_error "could not read completion horizon"
+RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg none_criterion "$DEFAULT_WHEN" --argjson pmap "$PMAP" --arg horizon "$HORIZON" \
   --slurpfile resp "$RESP_FILE" --slurpfile rules "$RULES" --slurpfile quota "$QUOTA" "$FM_QUOTA_ROW_JQ"'
   ($resp[0]) as $r | ($rules[0]) as $cfg | ($quota[0]) as $q | ($r.answers.rule) as $a |
   def profiles($v): if ($v | type) == "array" then $v elif ($v | type) == "object" then [$v] else [] end;
@@ -343,6 +344,11 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
       "auth_required: " + ((prov($p; $lane).state.error // "authentication required") | tostring)
     else null
     end;
+  def runway_shorter($row; $provider; $quota; $horizon):
+    any($quota.exhaustion[]?; .provider == $provider and .scope == $row.scope and
+      (.usableRunwaySeconds | type) == "number" and .usableRunwaySeconds < ($horizon | tonumber));
+  def runway_evidence_missing($row; $provider; $quota):
+    ([$quota.exhaustion[]? | select(.provider == $provider and .scope == $row.scope and (.usableRunwaySeconds | type) == "number")] | length) == 0;
   def evaluate($c):
     (provider_of($c)) as $p | quota_lane($c.harness; $c.model) as $lane |
     if $p == null then {profile: $c, eligible: false, reason: "no provider family for harness \($c.harness); declare provider on the profile"}
@@ -366,6 +372,12 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
           .effectivePercentRemaining < $c.floor.min_percent
         )] | first) as $floor_row |
         {profile: $c, provider: $p, bounds: $bounds, scope: ($floor_row.scope // $c.floor.scope), pct: ($floor_row.effectivePercentRemaining // null), runway: ($floor_row.runway.status // null), eligible: false, reason: "profile floor \($c.floor.scope) below \($c.floor.min_percent)%"}
+      elif ($horizon | test("^[1-9][0-9]*$")) and any($rows[]; .runway.status == "projected_exhaustion" and runway_shorter(.; $p; $q; $horizon)) then
+        ($rows | map(select(.runway.status == "projected_exhaustion" and runway_shorter(.; $p; $q; $horizon))) | first) as $bad |
+        {profile: $c, provider: $p, bounds: $bounds, scope: $bad.scope, pct: $bad.effectivePercentRemaining, spendPriority: $bad.selection.spendPriority, runway: $bad.runway.status, eligible: false, reason: "projected runway at \($bad.scope) is shorter than likely completion horizon \($horizon) seconds"}
+      elif ($q.exhaustion | type) == "array" and any($rows[]; .runway.status == "projected_exhaustion") and ((($horizon | test("^[1-9][0-9]*$")) | not) or any($rows[]; .runway.status == "projected_exhaustion" and runway_evidence_missing(.; $p; $q))) then
+        ($rows | map(select(.runway.status == "projected_exhaustion")) | first) as $bad |
+        {profile: $c, provider: $p, bounds: $bounds, scope: $bad.scope, pct: $bad.effectivePercentRemaining, spendPriority: (if any($rows[]; (.selection.spendPriority | type) != "number") then null else ($rows | min_by(.selection.spendPriority) | .selection.spendPriority) end), runway: $bad.runway.status, eligible: true, unranked: true, unknown: true, projected_unresolved: true, reason: "likely completion horizon missing or invalid"}
       elif (measured($p; $lane) | not) then
         ($rows | first) as $row |
         {profile: $c, provider: $p, bounds: $bounds, scope: ($row.scope // null), pct: ($row.effectivePercentRemaining // null), runway: ($row.runway.status // null), eligible: true, unranked: true, unknown: true, uncertainty: uncertainty($p; $lane), reason: "provider \($p) unmeasured (\(prov($p; $lane).quotaSemantics.status))"}
@@ -449,7 +461,8 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
     else
       ($elig | max_by(.spendPriority)) as $best |
       ([$elig[] | select(.spendPriority == $best.spendPriority)] | length) as $ties |
-      if $ties > 1 then $ev + {status: "escalate", reason: "genuine spendPriority tie", note: $sel.note, candidates: $cands}
+      if any($unranked[]; .projected_unresolved and (.spendPriority | type) == "number" and .spendPriority > $best.spendPriority) then $ev + {status: "escalate", reason: "projected runway feasibility is unresolved for a candidate that could outrank the feasible selection", note: $sel.note, candidates: $cands}
+      elif $ties > 1 then $ev + {status: "escalate", reason: "genuine spendPriority tie", note: $sel.note, candidates: $cands}
       else $ev + {status: "clear", note: $sel.note, candidates: $cands, chosen: $best}
         + (if ($unranked | length) > 0 then
              {unranked_note: "\($unranked | length) eligible candidate(s) unranked (\([$unranked[].provider] | unique | join(", ")))"}
