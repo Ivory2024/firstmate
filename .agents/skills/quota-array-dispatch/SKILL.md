@@ -103,7 +103,7 @@ When every remaining candidate is tight, dispatch inside the strongest-reasoning
 
 Known runway that will not last until the inspectable likely-completion horizon fails this gate, even when that candidate has the highest `spendPriority`.
 Read `runway` from the `quota[]` row: `through_reset` passes this generic feasibility floor because the window reaches its refill without exhausting; never compare its `resetsAt` with the completion horizon as though reset were an exhaustion deadline.
-`exhausted_now` is zero, and `projected_exhaustion` uses the matching `exhaustion[]` row's `usableRunwaySeconds`.
+`exhausted_now` is zero, and `projected_exhaustion` uses the `exhaustion[]` row bound to the candidate's own `provider`, scope, and (schema 6) `accountKey`/lane the same way as the `quota[]` row above; a sibling account's `exhaustion[]` row never rejects or clears a candidate bound to a different account.
 The resolver brief's exact horizon line and unresolved-evidence behavior are owned by [`docs/configuration.md`](../../../docs/configuration.md#typed-dispatch-resolution-env-typesafe_api_key).
 A high `spendPriority` on a nearly empty window that will exhaust soon must not route into a mid-task stall.
 Unknown or unmeasurable runway stays eligible with disclosed uncertainty and is never assumed to pass.

@@ -871,6 +871,52 @@ assert_contains "$out" '  reason: quota-axi --json returned an invalid snapshot'
 cp "$BASE_RULES" "$RULES"
 pass "schema 6: each candidate binds to its account row; schema 5 is unchanged"
 
+# --- schema 6: projected-runway exhaustion evidence binds to accountKey/lane ----
+# Two same-provider accounts can each carry their own exhaustion[] row. A
+# candidate bound to the healthy account must not be rejected by the sibling
+# account's short runway, and must not be cleared by the sibling account's
+# runway evidence when its own account has none.
+LANE_EXHAUSTION="$TMP_ROOT/lane-exhaustion-rules.json"
+cat > "$LANE_EXHAUSTION" <<'JSON'
+{ "rules": [ { "when": "Codex work.",
+  "use": { "harness": "pi", "model": "openai-codex-work/gpt-5.6-terra", "provider": "codex" } } ] }
+JSON
+EXHAUSTION_SCHEMA6="$TMP_ROOT/exhaustion-schema6.json"
+cat > "$EXHAUSTION_SCHEMA6" <<'JSON'
+{
+  "generatedAt": "2030-01-01T00:00:00Z",
+  "schemaVersion": 6,
+  "providers": [
+    { "provider": "codex", "accountKey": "openai-codex", "quotaSemantics": { "status": "known", "effectiveAvailability": [
+      { "scope": "all_models", "status": "known", "effectivePercentRemaining": 79, "runway": { "status": "projected_exhaustion" }, "selection": { "spendPriority": -0.5 } } ] } },
+    { "provider": "codex", "accountKey": "openai-codex-work", "quotaSemantics": { "status": "known", "effectiveAvailability": [
+      { "scope": "all_models", "status": "known", "effectivePercentRemaining": 79, "runway": { "status": "projected_exhaustion" }, "selection": { "spendPriority": -0.5 } } ] } }
+  ],
+  "exhaustion": [
+    { "provider": "codex", "accountKey": "openai-codex", "scope": "all_models", "usableRunwaySeconds": 60 },
+    { "provider": "codex", "accountKey": "openai-codex-work", "scope": "all_models", "usableRunwaySeconds": 86400 }
+  ]
+}
+JSON
+cp "$LANE_EXHAUSTION" "$RULES"
+reset_log
+TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$EXHAUSTION_SCHEMA6" run code out err "$BRIEF"
+expect_code 0 "$code" "lane-bound exhaustion evidence exits 0"
+assert_contains "$out" '  status: clear' "the candidate's own account runway clears it despite a sibling account's short runway"
+assert_contains "$out" "  profile: --harness 'pi' --model 'openai-codex-work/gpt-5.6-terra'" "the healthy-lane candidate is chosen"
+
+jq '(.exhaustion[] | select(.accountKey == "openai-codex-work").usableRunwaySeconds) = 60' "$EXHAUSTION_SCHEMA6" > "$TMP_ROOT/exhaustion-schema6-own-short.json"
+reset_log
+TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$TMP_ROOT/exhaustion-schema6-own-short.json" run code out err "$BRIEF"
+assert_contains "$out" 'not eligible: projected runway at all_models is shorter than likely completion horizon 3600 seconds' "the candidate's own short runway still rejects it"
+
+jq '.exhaustion |= map(select(.accountKey != "openai-codex-work"))' "$EXHAUSTION_SCHEMA6" > "$TMP_ROOT/exhaustion-schema6-own-missing.json"
+reset_log
+TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$TMP_ROOT/exhaustion-schema6-own-missing.json" run code out err "$BRIEF"
+assert_contains "$out" 'eligible, unranked: likely completion horizon missing or invalid: disclosed uncertainty' "a sibling account's runway evidence cannot stand in for the candidate's own missing evidence"
+cp "$BASE_RULES" "$RULES"
+pass "schema 6: projected-runway exhaustion evidence binds to the candidate's own accountKey/lane"
+
 # --- quota-axi is read exactly once --------------------------------------------
 reset_log
 write_response "$RESPONSE" rule_4 0.9
