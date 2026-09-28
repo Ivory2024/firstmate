@@ -1,0 +1,7 @@
+$ bin/fm-doc-audience-check.sh
+fm-doc-audience-check: ok surfaces=106 local_links=439
+$ tests/fm-documentation-audiences.test.sh
+ok - documentation inventory classifies every maintained prose surface exactly once
+ok - classification, setup routing, and maintained-prose scope fail safely
+ok - required documentation owner pointers cannot silently disappear
+ok - local links resolve while dates, versions, commands, and incident prose remain semantically reviewed

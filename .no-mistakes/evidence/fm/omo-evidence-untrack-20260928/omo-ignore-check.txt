@@ -1,0 +1,2 @@
+.gitignore:24:.omo/	.omo/evidence/live-machine-state.json
+visible-machine-state.json is not ignored
