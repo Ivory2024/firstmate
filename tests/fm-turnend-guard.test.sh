@@ -17,6 +17,12 @@ set -u
 . "$ROOT/bin/fm-supervision-lib.sh"
 
 TMP_ROOT=$(fm_test_tmproot fm-turnend-guard)
+# The shared guard resolves FM_HOME from the environment before its own root, so
+# an inherited FM_HOME silently retargets every case that does not pin it - the
+# grok cases select a home with GROK_WORKSPACE_ROOT only. Under a real firstmate
+# shell that made the suite read the operator's live home and abort on it. The
+# cases that assert FM_HOME authority set it per invocation.
+unset FM_HOME
 CTX_LIB="$ROOT/tests/lib/fm-opencode-ctx.mjs"
 fm_git_identity fmtest fmtest@example.invalid
 
