@@ -1,7 +1,8 @@
 // Cross-plugin adapter for OpenCode 2.x, which dropped the V1 `event` hook in
 // favour of a subscription to the public event stream. One owner for the
-// subscription boilerplate and for the turn-end event set, so the arm
-// coordinator and the turn-end guard cannot drift apart on either.
+// subscription boilerplate, the turn-end event set, and the key the arm plugin
+// publishes its coordinator under, so the arm coordinator and the turn-end
+// guard cannot drift apart on any of them.
 // bin/fm-operational-input.sh still owns the marker protocol itself.
 
 export const TURN_END_EVENTS = [
@@ -9,6 +10,14 @@ export const TURN_END_EVENTS = [
   "session.execution.failed",
   "session.execution.interrupted",
 ];
+
+// OpenCode 2 loads a plugin once per location, so two loaded firstmate checkouts
+// share one process. The key is scoped by root: without it the second location's
+// setup overwrites the first's coordinator and the turn-end guard would arm the
+// wrong home.
+export function watchArmCoordinatorKey(root) {
+  return `__firstmateOpenCodeWatchArm:${root}`;
+}
 
 // OpenCode 2 events arrive as { type, data }. `handler` runs serially, one
 // event at a time, so an awaited handler cannot interleave with the next

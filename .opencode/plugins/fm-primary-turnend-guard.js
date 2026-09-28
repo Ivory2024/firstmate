@@ -2,11 +2,12 @@ import { spawn } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
-import { subscribeEvents, TURN_END_EVENTS } from "./lib/fm-opencode-events.js";
+import { subscribeEvents, TURN_END_EVENTS, watchArmCoordinatorKey } from "./lib/fm-opencode-events.js";
 
-const COORDINATOR_KEY = "__firstmateOpenCodeWatchArm";
-
-let skipNextTurnEnd = false;
+// Per session, not per module: OpenCode 2 loads this plugin once per location and
+// serves every session in it, so one shared flag would let one session's injected
+// recovery prompt suppress another session's turn-end check.
+const skipNextTurnEnd = new Set();
 
 function runProcess(command, args, input = "") {
   return new Promise((resolve) => {
@@ -48,8 +49,10 @@ function runGuard(root) {
   return runProcess(`${root}/bin/fm-turnend-guard.sh`, [], '{"stop_hook_active":false}');
 }
 
-async function letWatchArmRun(sessionID, ctx) {
-  const coordinator = globalThis[COORDINATOR_KEY];
+async function letWatchArmRun(sessionID, ctx, root) {
+  // Keyed by this guard's own root, so it can only ever ask the arm coordinator
+  // for the home it actually supervises.
+  const coordinator = globalThis[watchArmCoordinatorKey(root)];
   if (!coordinator?.ensureArmed) return false;
   const status = await coordinator.ensureArmed(sessionID, ctx);
   return status === "armed" || status === "wake" || status === "failed";
@@ -61,15 +64,14 @@ export default {
     const root = await resolveRoot(ctx.location?.directory);
 
     return subscribeEvents(ctx, TURN_END_EVENTS, async (event) => {
-      if (skipNextTurnEnd) {
-        skipNextTurnEnd = false;
-        return;
-      }
-
       const sessionID = event.data?.sessionID;
       if (!sessionID) return;
 
-      if (await letWatchArmRun(sessionID, ctx)) return;
+      // Suppress exactly the turn end caused by this guard's own injected
+      // recovery prompt, and only for the session that received it.
+      if (skipNextTurnEnd.delete(sessionID)) return;
+
+      if (await letWatchArmRun(sessionID, ctx, root)) return;
 
       const result = await runGuard(root);
       if (result.code !== 2) return;
@@ -83,9 +85,9 @@ export default {
             result.stderr,
         );
         await ctx.session.prompt({ sessionID, text });
-        skipNextTurnEnd = true;
+        skipNextTurnEnd.add(sessionID);
       } catch {
-        skipNextTurnEnd = false;
+        skipNextTurnEnd.delete(sessionID);
       }
     });
   },

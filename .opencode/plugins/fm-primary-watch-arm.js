@@ -2,9 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
-import { subscribeEvents, TURN_END_EVENTS } from "./lib/fm-opencode-events.js";
-
-const COORDINATOR_KEY = "__firstmateOpenCodeWatchArm";
+import { subscribeEvents, TURN_END_EVENTS, watchArmCoordinatorKey } from "./lib/fm-opencode-events.js";
 // 35s on Windows so the budget stays above arm's MSYS confirm default (30s in
 // bin/fm-watch-arm.sh): a slow but successful Git Bash cold start must not be
 // SIGTERMed mid-confirmation. Conditioned on win32 so other platforms keep 12s.
@@ -416,7 +414,9 @@ function spawnArm(paths, sessionID, ctx, predecessorArmPid = "") {
       setArmStatus("failed");
       return;
     }
-    void scheduleRetry(paths, sessionID, ctx, classification.message, predecessor);
+    void scheduleRetry(paths, sessionID, ctx, classification.message, predecessor).catch(() => {
+      // A rejected retry must not become an unhandled rejection that outlives the turn.
+    });
   });
   armChild.on("error", (error) => {
     if (settled) return;
@@ -434,7 +434,9 @@ function spawnArm(paths, sessionID, ctx, predecessorArmPid = "") {
       ctx,
       `watcher: FAILED - OpenCode arm child failed: ${error.message}`,
       String(armChild.pid ?? ""),
-    );
+    ).catch(() => {
+      // A rejected retry must not become an unhandled rejection that outlives the turn.
+    });
   });
   return armChild;
 }
@@ -478,14 +480,41 @@ export default {
   async setup(ctx) {
     const root = await resolveRoot(ctx.location?.directory);
     const paths = effectivePaths(root);
-    globalThis[COORDINATOR_KEY] = {
+    // Keyed by root: OpenCode loads a plugin per location, so an unkeyed global
+    // let a second firstmate checkout overwrite this one's coordinator and the
+    // turn-end guard would then arm the wrong home.
+    const coordinatorKey = watchArmCoordinatorKey(root);
+    const coordinator = {
       ensureArmed: (sessionID, activeCtx) => ensureArm(paths, sessionID, activeCtx ?? ctx),
     };
+    globalThis[coordinatorKey] = coordinator;
 
-    return subscribeEvents(ctx, TURN_END_EVENTS, async (event) => {
+    const stop = subscribeEvents(ctx, TURN_END_EVENTS, async (event) => {
       const sessionID = event.data?.sessionID;
       if (!sessionID) return;
-      void ensureArm(paths, sessionID, ctx);
+      void ensureArm(paths, sessionID, ctx).catch(() => {
+        // OpenCode owns arm failures; they surface as a failed watcher, not a dead plugin.
+      });
     });
+
+    // Unload must not leave an orphan arm child owning wake delivery for a home
+    // this plugin instance no longer supervises, nor a coordinator the reloaded
+    // instance would resolve to this retired one.
+    return () => {
+      stop();
+      // Only retire the coordinator if a reload has not already installed a
+      // newer instance for this root.
+      if (globalThis[coordinatorKey] === coordinator) {
+        delete globalThis[coordinatorKey];
+      }
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+        retryFailures = 0;
+      }
+      const retiring = child;
+      child = null;
+      if (retiring) void retireArm(retiring).catch(() => {});
+    };
   },
 };
