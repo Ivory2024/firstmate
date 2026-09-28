@@ -6,10 +6,10 @@ import { spawn } from "node:child_process";
 // the primary firstmate checkout before the agent's bash tool relocates the
 // shell out of the home (see bin/fm-cd-pretool-check.sh and docs/cd-guard.md).
 // This mirrors fm-primary-pretool-check.js, calling the cd-guard owner instead
-// of the watcher-arm one. tool.execute.before can block by throwing (verified
-// 2026-07-09 against OpenCode 1.17.15 for the watcher-arm plugin; the same
-// mechanism carries this guard). The owner script is itself inert outside the
-// real primary checkout, so a crewmate/scout worktree is never affected.
+// of the watcher-arm one. OpenCode 2's ctx.tool.hook("execute.before") blocks by
+// throwing, the same mechanism the V1 tool.execute.before hook used. The owner
+// script is itself inert outside the real primary checkout, so a
+// crewmate/scout worktree is never affected.
 
 function runProcess(command, args) {
   return new Promise((resolvePromise) => {
@@ -39,19 +39,18 @@ async function resolveRoot(anchor) {
   }
 }
 
-export const FmPrimaryCdCheck = async ({ directory, worktree }) => {
-  const root = worktree ? (() => {
-    try {
-      return realpathSync(worktree);
-    } catch {
-      return resolve(worktree);
-    }
-  })() : await resolveRoot(directory);
+export default {
+  id: "fm-primary-cd-check",
+  async setup(ctx) {
+    const root = await resolveRoot(ctx.location?.directory);
+    if (!root) return;
 
-  return {
-    "tool.execute.before": async (input, output) => {
-      if (!root || input?.tool !== "bash") return;
-      const command = output?.args?.command;
+    await ctx.tool.hook("execute.before", async (event) => {
+      // OpenCode 2 reports the bash tool's internal id as "shell" (verified
+      // 2.0.18); "bash" is kept so this seatbelt can never fail open if the id
+      // differs again. Throwing blocks the call - verified 2.0.18.
+      if (event?.tool !== "shell" && event?.tool !== "bash") return;
+      const command = event.input?.command;
       if (!command || typeof command !== "string") return;
 
       const result = await runProcess(`${root}/bin/fm-cd-pretool-check.sh`, ["--command", command]);
@@ -59,6 +58,6 @@ export const FmPrimaryCdCheck = async ({ directory, worktree }) => {
 
       const reason = result.stderr.trim() || "denied by the cd-guard PreToolUse seatbelt";
       throw new Error(reason);
-    },
-  };
+    });
+  },
 };
