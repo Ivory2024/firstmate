@@ -321,6 +321,8 @@ async function scheduleRetry(paths, sessionID, ctx, reason, predecessorArmPid) {
     void ensureArm(paths, sessionID, ctx, predecessorArmPid).then((status) => {
       if (["armed", "starting", "wake"].includes(status)) return;
       surfaceFailure(paths, ctx, sessionID, `watcher: FAILED - OpenCode could not launch a continuity retry (${status})`);
+    }).catch(() => {
+      // A rejected retry must not become an unhandled rejection that outlives the turn.
     });
   }, retryDelay(retryFailures));
   timer.unref();
@@ -441,13 +443,17 @@ function spawnArm(paths, sessionID, ctx, predecessorArmPid = "") {
   return armChild;
 }
 
-async function beginArm(paths, sessionID, ctx, predecessorArmPid) {
+async function beginArm(paths, sessionID, ctx, predecessorArmPid, generation) {
   if (!sessionID) return { status: "skipped", armChild: null };
   if (!(await isPrimaryRoot(paths.root, paths.home))) return { status: "not-primary", armChild: null };
   if (!(await sessionOwnsLock(paths))) return { status: "read-only", armChild: null };
   if (child) return { status: "existing", armChild: child };
   if (retryTimer) return { status: "retrying", armChild: null };
   if (!shouldArm(paths)) return { status: "not-needed", armChild: null };
+  // Every await above can outlive the instance that started this arm, so the
+  // generation is rechecked here: a retired or superseded plugin instance must
+  // not spawn a watcher that nobody will ever own.
+  if (!instanceIsActive(generation)) return { status: "inactive", armChild: null };
   return { status: "spawned", armChild: spawnArm(paths, sessionID, ctx, predecessorArmPid) };
 }
 
@@ -455,10 +461,13 @@ function armAttempt(status, armChild, includeArmChild) {
   return includeArmChild ? { status, armChild } : status;
 }
 
-async function ensureArm(paths, sessionID, ctx, predecessorArmPid = "", includeArmChild = false) {
+// `generation` defaults to the currently active instance, which is what the
+// internal retry/restore paths want; the external entry points pass their own
+// so a retired instance can never launch anything.
+async function ensureArm(paths, sessionID, ctx, predecessorArmPid = "", includeArmChild = false, generation = activeGeneration) {
   let launchResult = null;
   if (!launchInFlight) {
-    const launch = beginArm(paths, sessionID, ctx, predecessorArmPid);
+    const launch = beginArm(paths, sessionID, ctx, predecessorArmPid, generation);
     launchInFlight = launch;
     try {
       launchResult = await launch;
@@ -475,9 +484,25 @@ async function ensureArm(paths, sessionID, ctx, predecessorArmPid = "", includeA
   return armAttempt(await waitForArmReady(armChild), armChild, includeArmChild);
 }
 
+// Advances per setup() call, not per process: a reload must retire only the
+// state its own instance created, and must never touch a newer instance's
+// child, coordinator, or retry timer. `activeGeneration` is null while no
+// instance owns this module, which is what beginArm checks before spawning -
+// so an arm already in flight when cleanup runs cannot spawn afterwards.
+let instanceGeneration = 0;
+let activeGeneration = null;
+
+function instanceIsActive(generation) {
+  return generation !== null && generation === activeGeneration;
+}
+
 export default {
   id: "fm-primary-watch-arm",
   async setup(ctx) {
+    instanceGeneration += 1;
+    const generation = instanceGeneration;
+    activeGeneration = generation;
+
     const root = await resolveRoot(ctx.location?.directory);
     const paths = effectivePaths(root);
     // Keyed by root: OpenCode loads a plugin per location, so an unkeyed global
@@ -485,14 +510,15 @@ export default {
     // turn-end guard would then arm the wrong home.
     const coordinatorKey = watchArmCoordinatorKey(root);
     const coordinator = {
-      ensureArmed: (sessionID, activeCtx) => ensureArm(paths, sessionID, activeCtx ?? ctx),
+      ensureArmed: (sessionID, activeCtx) =>
+        instanceIsActive(generation) ? ensureArm(paths, sessionID, activeCtx ?? ctx, "", false, generation) : "inactive",
     };
     globalThis[coordinatorKey] = coordinator;
 
     const stop = subscribeEvents(ctx, TURN_END_EVENTS, async (event) => {
       const sessionID = event.data?.sessionID;
-      if (!sessionID) return;
-      void ensureArm(paths, sessionID, ctx).catch(() => {
+      if (!sessionID || !instanceIsActive(generation)) return;
+      void ensureArm(paths, sessionID, ctx, "", false, generation).catch(() => {
         // OpenCode owns arm failures; they surface as a failed watcher, not a dead plugin.
       });
     });
@@ -502,8 +528,10 @@ export default {
     // instance would resolve to this retired one.
     return () => {
       stop();
-      // Only retire the coordinator if a reload has not already installed a
-      // newer instance for this root.
+      if (generation !== activeGeneration) return;
+      // Deactivate first: anything already in flight now sees a retired
+      // generation and cannot spawn a successor into an unloaded home.
+      activeGeneration = null;
       if (globalThis[coordinatorKey] === coordinator) {
         delete globalThis[coordinatorKey];
       }

@@ -7,7 +7,20 @@ import { subscribeEvents, TURN_END_EVENTS, watchArmCoordinatorKey } from "./lib/
 // Per session, not per module: OpenCode 2 loads this plugin once per location and
 // serves every session in it, so one shared flag would let one session's injected
 // recovery prompt suppress another session's turn-end check.
+// Bounded on size: a session that receives the prompt and then never ends another
+// turn would otherwise leave an entry behind forever. The oldest insertion is
+// evicted first, which can only re-enable the guard for that one stale session -
+// the safe direction to fail in.
+const SKIP_LIMIT = 64;
 const skipNextTurnEnd = new Set();
+
+function rememberSkip(sessionID) {
+  if (skipNextTurnEnd.size >= SKIP_LIMIT) {
+    const oldest = skipNextTurnEnd.values().next().value;
+    if (oldest !== undefined) skipNextTurnEnd.delete(oldest);
+  }
+  skipNextTurnEnd.add(sessionID);
+}
 
 function runProcess(command, args, input = "") {
   return new Promise((resolve) => {
@@ -85,7 +98,7 @@ export default {
             result.stderr,
         );
         await ctx.session.prompt({ sessionID, text });
-        skipNextTurnEnd.add(sessionID);
+        rememberSkip(sessionID);
       } catch {
         skipNextTurnEnd.delete(sessionID);
       }

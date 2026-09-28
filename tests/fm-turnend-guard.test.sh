@@ -17,6 +17,7 @@ set -u
 . "$ROOT/bin/fm-supervision-lib.sh"
 
 TMP_ROOT=$(fm_test_tmproot fm-turnend-guard)
+CTX_LIB="$ROOT/tests/lib/fm-opencode-ctx.mjs"
 fm_git_identity fmtest fmtest@example.invalid
 
 REQUIRED_REASON='watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn'
@@ -1007,39 +1008,45 @@ test_opencode_plugin_anchors_guard_to_worktree() {
   git init -q "$parent"
   worktree_dir="$parent/nested/opencode-plugin-worktree"
   wrong_dir="$TMP_ROOT/opencode-plugin-cwd/subdir"
-  mkdir -p "$worktree_dir/bin" "$wrong_dir"
-  cat > "$worktree_dir/bin/fm-turnend-guard.sh" <<'EOF'
+  mkdir -p "$worktree_dir/bin" "$parent/bin" "$wrong_dir"
+  cat > "$parent/bin/fm-turnend-guard.sh" <<'EOF'
 #!/usr/bin/env bash
 cat >/dev/null
 printf 'guard-fired\n' >&2
 exit 2
 EOF
-  chmod +x "$worktree_dir/bin/fm-turnend-guard.sh"
+  # A guard inside the nested directory must never run: the plugin anchors to
+  # the git root of its own location, not to the raw location path.
+  cat > "$worktree_dir/bin/fm-turnend-guard.sh" <<'EOF'
+#!/usr/bin/env bash
+cat >/dev/null
+printf 'nested guard executed\n' >&2
+exit 2
+EOF
+  chmod +x "$parent/bin/fm-turnend-guard.sh" "$worktree_dir/bin/fm-turnend-guard.sh"
   # Runtime module-format warnings are host noise; this assertion owns plugin output only.
-  out=$(NODE_NO_WARNINGS=1 PLUGIN="$plugin" DIRECTORY="$wrong_dir" WORKTREE="$worktree_dir" node 2>&1 <<'EOF'
+  out=$(NODE_NO_WARNINGS=1 PLUGIN="$plugin" CTX_LIB="$CTX_LIB" DIRECTORY="$worktree_dir" node 2>&1 <<'EOF'
 import { pathToFileURL } from "node:url";
 
+const { makeOpenCodeCtx } = await import(pathToFileURL(process.env.CTX_LIB).href);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 let promptBody = "";
-const client = {
-  session: {
-    promptAsync: async (request) => {
-      promptBody = request.body.parts[0].text;
-    },
-  },
-};
-const hooks = await mod.FmPrimaryTurnendGuard({
-  client,
+const { ctx, emit } = makeOpenCodeCtx({
   directory: process.env.DIRECTORY,
-  worktree: process.env.WORKTREE,
+  onPrompt: ({ text }) => { promptBody = text; },
 });
-await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } });
+await mod.default.setup(ctx);
+await emit("session.execution.succeeded", { sessionID: "session-test" });
 if (!promptBody.startsWith("\u2063FIRSTMATE_OP: v1 turn-end-guard: ")) {
   console.error(`untyped operational prompt: ${promptBody}`);
   process.exit(1);
 }
 if (!promptBody.includes("guard-fired")) {
   console.error(`missing prompt body: ${promptBody}`);
+  process.exit(1);
+}
+if (promptBody.includes("nested guard executed")) {
+  console.error(`guard path was not resolved to the project root: ${promptBody}`);
   process.exit(1);
 }
 if (!promptBody.includes("watcher cycle is missing, failed, or unhealthy")) {
@@ -1053,9 +1060,9 @@ if (promptBody.includes("Resume supervision according to the session-start opera
 EOF
 )
   status=$?
-  expect_code 0 "$status" "OpenCode plugin must run the guard from worktree even when directory is elsewhere"
+  expect_code 0 "$status" "OpenCode plugin must run the guard from the project root of its own location"
   [ -z "$out" ] || fail "OpenCode plugin worktree-root test printed output: $out"
-  pass ".opencode primary plugin: guard path is anchored to worktree, not directory"
+  pass ".opencode primary plugin: guard path is anchored to the project root, not the raw location"
 }
 
 test_pi_extension_injects_once_per_logical_agent_run() {
