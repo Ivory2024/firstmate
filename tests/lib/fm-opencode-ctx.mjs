@@ -6,23 +6,18 @@
 //   ctx.session.prompt       - V2 injection: ({ sessionID, text })
 //   ctx.tool.hook            - "execute.before"; throwing blocks the call
 //
-// The event stream is one queue shared by every subscription, exactly as
-// OpenCode's bus is. `emit` resolves only once every subscriber has pulled its
-// next event, which can happen only after each handler for the emitted event
-// has returned - so an assertion right after `await emit(...)` is
-// deterministic, with no timer polling and no busy-wait. Emit one event at a
-// time and await it before emitting the next.
+// Each event subscription receives its own copy, as on OpenCode's broadcast
+// event bus. `emit` resolves only after every active subscriber has returned
+// from handling that event, so assertions after `await emit(...)` are
+// deterministic. Emit one event at a time and await it before emitting the next.
 
 export function makeOpenCodeCtx({ directory, onPrompt } = {}) {
-  const queue = [];
-  const waiters = [];
   const subscriptions = [];
   const toolHooks = new Map();
   const prompts = [];
-  let aborted = false;
 
-  const wake = () => {
-    for (const waiter of waiters.splice(0)) waiter();
+  const wake = (subscription) => {
+    for (const waiter of subscription.waiters.splice(0)) waiter();
   };
 
   const ctx = {
@@ -36,11 +31,14 @@ export function makeOpenCodeCtx({ directory, onPrompt } = {}) {
     },
     event: {
       subscribe: ({ signal } = {}) => {
-        const subscription = { pulls: 0 };
+        const subscription = { pulls: 0, queue: [], waiters: [], aborted: false };
         subscriptions.push(subscription);
         if (signal) {
-          if (signal.aborted) aborted = true;
-          else signal.addEventListener("abort", () => { aborted = true; wake(); });
+          if (signal.aborted) subscription.aborted = true;
+          else signal.addEventListener("abort", () => {
+            subscription.aborted = true;
+            wake(subscription);
+          }, { once: true });
         }
         return {
           [Symbol.asyncIterator]() {
@@ -48,9 +46,9 @@ export function makeOpenCodeCtx({ directory, onPrompt } = {}) {
               async next() {
                 subscription.pulls += 1;
                 for (;;) {
-                  if (queue.length) return { done: false, value: queue.shift() };
-                  if (aborted) return { done: true, value: undefined };
-                  await new Promise((resolve) => waiters.push(resolve));
+                  if (subscription.queue.length) return { done: false, value: subscription.queue.shift() };
+                  if (subscription.aborted) return { done: true, value: undefined };
+                  await new Promise((resolve) => subscription.waiters.push(resolve));
                 }
               },
             };
@@ -70,16 +68,16 @@ export function makeOpenCodeCtx({ directory, onPrompt } = {}) {
   // handling it.
   const emit = async (type, data) => {
     const marks = subscriptions.map((subscription) => subscription.pulls);
-    queue.push({ type, data });
-    wake();
+    for (const subscription of subscriptions) {
+      if (subscription.aborted) continue;
+      subscription.queue.push({ type, data });
+      wake(subscription);
+    }
     for (;;) {
-      if (aborted) return;
-      if (queue.length) {
-        await new Promise((resolve) => setImmediate(resolve));
-        continue;
-      }
-      const settled = subscriptions.every(
-        (subscription, index) => subscription.pulls > marks[index],
+      const settled = subscriptions.every((subscription, index) =>
+        subscription.aborted || (
+          subscription.pulls > marks[index] && subscription.queue.length === 0
+        ),
       );
       if (settled) return;
       await new Promise((resolve) => setImmediate(resolve));
