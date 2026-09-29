@@ -6,16 +6,6 @@
       "why": "Grok is the preferred dispatch when current web-connected context is central to the work. grok has one provider family, so it needs no provider declaration."
     },
     {
-      "when": "The task is a trivial mechanical edit such as a rote rename, formatting sweep, targeted typo fix, or simple file gathering.",
-      "use": { "harness": "claude", "model": "haiku", "effort": "low" },
-      "why": "Use the cheapest fast profile when the task is narrow and low ambiguity. The session default model is the right default for code work, and a stronger model earns its cost only when the task really needs one."
-    },
-    {
-      "when": "The task is code work a third-party model service would read, and the operator accepts that service's current data-retention terms.",
-      "use": { "harness": "opencode", "model": "opencode-go/space-bunny-free", "provider": "opencode-go" },
-      "why": "opencode is multi-provider, so typed resolution needs its provider named. It has no effort axis, so an effort here is a CREW_DISPATCH error rather than a stronger run. Confirm the model in the live `opencode models` catalog before dispatch."
-    },
-    {
       "when": "The task is a big or ambiguous multi-file feature, a risky refactor, or work that requires holding many moving parts in mind.",
       "floor": { "scope": "all_models", "min_percent": 20, "provider": "codex" },
       "use": { "harness": "opencode", "model": "opencode-go/space-bunny-free", "provider": "opencode-go" },

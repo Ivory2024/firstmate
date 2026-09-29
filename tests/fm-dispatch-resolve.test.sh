@@ -421,7 +421,7 @@ cp "$ROOT/docs/examples/crew-dispatch.json" "$RULES"
 OPENCODE_QUOTA="$TMP_ROOT/opencode-quota.json"
 jq '.providers += [{"provider":"opencode-go","state":{"status":"fresh"},"quotaSemantics":{"status":"known","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":100,"runway":{"status":"through_reset"},"selection":{"spendPriority":0.5}}]}}]' "$QUOTA" > "$OPENCODE_QUOTA"
 cat > "$RESPONSE" <<'JSON'
-{"model":"jev-1.13.0","answers":{"rule":{"type":"choice","choice":"default","confidence":0.9,"probabilities":{"rule_1":0.02,"rule_2":0.01,"rule_3":0.01,"rule_4":0.02,"default":0.94}}},"usage":{"input_tokens":812,"output_tokens":60}}
+{"model":"jev-1.13.0","answers":{"rule":{"type":"choice","choice":"default","confidence":0.9,"probabilities":{"rule_1":0.02,"rule_2":0.02,"default":0.96}}},"usage":{"input_tokens":812,"output_tokens":60}}
 JSON
 reset_log
 TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$OPENCODE_QUOTA" run code out err "$BRIEF"
@@ -431,14 +431,7 @@ assert_contains "$out" "  profile: --harness 'opencode' --model 'opencode-go/spa
 assert_not_contains "$err" 'malformed rules file' "the documented example reaches resolution"
 
 cat > "$RESPONSE" <<'JSON'
-{"model":"jev-1.13.0","answers":{"rule":{"type":"choice","choice":"rule_3","confidence":0.95,"probabilities":{"rule_1":0.01,"rule_2":0.01,"rule_3":0.96,"rule_4":0.01,"default":0.01}}},"usage":{"input_tokens":812,"output_tokens":60}}
-JSON
-reset_log
-TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$OPENCODE_QUOTA" run code out err "$BRIEF"
-assert_contains "$out" "  profile: --harness 'opencode' --model 'opencode-go/space-bunny-free'" "the documented OpenCode rule selects its explicit ZDR model"
-
-cat > "$RESPONSE" <<'JSON'
-{"model":"jev-1.13.0","answers":{"rule":{"type":"choice","choice":"rule_4","confidence":0.95,"probabilities":{"rule_1":0.01,"rule_2":0.01,"rule_3":0.01,"rule_4":0.96,"default":0.01}}},"usage":{"input_tokens":812,"output_tokens":60}}
+{"model":"jev-1.13.0","answers":{"rule":{"type":"choice","choice":"rule_2","confidence":0.95,"probabilities":{"rule_1":0.01,"rule_2":0.96,"default":0.03}}},"usage":{"input_tokens":812,"output_tokens":60}}
 JSON
 reset_log
 TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$OPENCODE_QUOTA" run code out err "$BRIEF"
@@ -448,7 +441,7 @@ assert_contains "$out" "  profile: --harness 'opencode' --model 'opencode-go/spa
 EXAMPLE_BELOW_FLOOR="$TMP_ROOT/example-below-floor.json"
 jq '(.providers[] | select(.provider == "codex") | .quotaSemantics.effectiveAvailability[] | select(.scope == "all_models") | .effectivePercentRemaining) = 19' "$OPENCODE_QUOTA" > "$EXAMPLE_BELOW_FLOOR"
 TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$EXAMPLE_BELOW_FLOOR" run code out err "$BRIEF"
-assert_contains "$out" '  note: rule rule_4 floor all_models below 20%: fall through to default' "the documented rule floor engages below its own threshold"
+assert_contains "$out" '  note: rule rule_2 floor all_models below 20%: fall through to default' "the documented rule floor engages below its own threshold"
 assert_contains "$out" "  profile: --harness 'opencode' --model 'opencode-go/space-bunny-free'" "the documented floor fallback keeps the approved default model"
 cp "$BASE_RULES" "$RULES"
 pass "no-rule fallback, Agy, Gemini, and documented configurations resolve"
