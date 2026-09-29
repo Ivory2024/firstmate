@@ -432,6 +432,15 @@ assert_contains "$out" 'candidate: pi:anthropic/claude-sonnet-5  provider=claude
 assert_not_contains "$err" 'malformed rules file' "the documented example reaches resolution"
 
 cat > "$RESPONSE" <<'JSON'
+{"model":"jev-1.13.0","answers":{"rule":{"type":"choice","choice":"rule_3","confidence":0.95,"probabilities":{"rule_1":0.01,"rule_2":0.01,"rule_3":0.96,"rule_4":0.01,"default":0.01}}},"usage":{"input_tokens":812,"output_tokens":60}}
+JSON
+OPENCODE_QUOTA="$TMP_ROOT/opencode-quota.json"
+jq '.providers += [{"provider":"opencode-go","state":{"status":"fresh"},"quotaSemantics":{"status":"known","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":100,"runway":{"status":"through_reset"},"selection":{"spendPriority":0.5}}]}}]' "$QUOTA" > "$OPENCODE_QUOTA"
+reset_log
+TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$OPENCODE_QUOTA" run code out err "$BRIEF"
+assert_contains "$out" "  profile: --harness 'opencode' --model 'opencode-go/space-bunny-free'" "the documented OpenCode rule selects its explicit ZDR model"
+
+cat > "$RESPONSE" <<'JSON'
 {"model":"jev-1.13.0","answers":{"rule":{"type":"choice","choice":"rule_4","confidence":0.95,"probabilities":{"rule_1":0.01,"rule_2":0.01,"rule_3":0.01,"rule_4":0.96,"default":0.01}}},"usage":{"input_tokens":812,"output_tokens":60}}
 JSON
 reset_log
