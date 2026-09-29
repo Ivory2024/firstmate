@@ -375,6 +375,28 @@ test_active_dispatch_profile_allows_explicit_harness() {
   pass "active crew-dispatch profile allows an explicit resolved harness"
 }
 
+test_explicit_opencode_task_model_overrides_configured_fallback() {
+  local rec id out status launch
+  id=profile-opencode-task-override-z13a
+  rec=$(make_spawn_case profile-opencode-task-override opencode "$id")
+  read_case_record "$rec"
+  printf '%s\n' '{"default":{"harness":"opencode","model":"opencode-go/space-bunny-free","provider":"opencode-go"}}' \
+    > "$HOME_DIR/config/crew-dispatch.json"
+
+  out=$(FM_TEST_OPENCODE_MODELS=$'opencode-go/space-bunny-free\nopencode-go/longcat-2.5-preview-free' \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" --harness opencode --model opencode-go/longcat-2.5-preview-free)
+  status=$?
+  expect_code 0 "$status" "listed task-specific OpenCode model should override the configured fallback: $out"
+  assert_meta_profile "$HOME_DIR/state/$id.meta" opencode opencode-go/longcat-2.5-preview-free default
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "opencode --model 'opencode-go/longcat-2.5-preview-free' --prompt" \
+    "task-specific OpenCode model was not passed to the worker"
+  assert_not_contains "$launch" "--model 'opencode-go/space-bunny-free'" \
+    "configured fallback replaced the explicitly designated task model"
+  pass "explicit task OpenCode models override the configured fallback"
+}
+
 test_active_dispatch_profile_allows_positional_harness() {
   local rec id out status
   id=profile-positional-z14
@@ -1595,6 +1617,7 @@ test_unresolvable_relative_overrides_fail_loudly
 test_active_dispatch_profile_requires_explicit_harness_for_ship
 test_active_dispatch_profile_requires_explicit_harness_for_scout
 test_active_dispatch_profile_allows_explicit_harness
+test_explicit_opencode_task_model_overrides_configured_fallback
 test_active_dispatch_profile_allows_positional_harness
 test_active_dispatch_profile_allows_raw_launch_command
 test_claude_threads_model_and_effort
