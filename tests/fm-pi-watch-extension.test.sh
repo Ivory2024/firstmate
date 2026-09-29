@@ -3234,6 +3234,7 @@ await emit("session.execution.succeeded", { sessionID: "session-test" });
 for (let i = 0; i < 250 && !existsSync(process.env.FM_ARM_LOG); i += 1) {
   await new Promise((resolve) => setTimeout(resolve, 20));
 }
+
 if (!existsSync(process.env.FM_ARM_LOG)) {
   console.error("watch arm did not run");
   process.exit(1);
@@ -4121,6 +4122,66 @@ EOF
   pass "OpenCode healthy arm output does not suppress the turn-end guard"
 }
 
+test_opencode_watch_arm_isolates_multiple_locations() {
+  local plugin repo_a repo_b log_a log_b out status
+  plugin="$ROOT/.opencode/plugins/fm-primary-watch-arm.js"
+  repo_a="$TMP_ROOT/opencode-multi-root-a"
+  repo_b="$TMP_ROOT/opencode-multi-root-b"
+  log_a="$repo_a/watch.log"
+  log_b="$repo_b/watch.log"
+  mkdir -p "$repo_a/bin" "$repo_a/state" "$repo_b/bin" "$repo_b/state"
+  git init -q "$repo_a"
+  git init -q "$repo_b"
+  : > "$repo_a/AGENTS.md"
+  : > "$repo_b/AGENTS.md"
+  : > "$repo_a/state/task.meta"
+  : > "$repo_b/state/task.meta"
+  cat > "$repo_a/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'started pid=%s\n' "$$" >> "$FM_ROOT_OVERRIDE/watch.log"
+printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+exec sleep 30
+SH
+  cp "$repo_a/bin/fm-watch-arm.sh" "$repo_b/bin/fm-watch-arm.sh"
+  chmod +x "$repo_a/bin/fm-watch-arm.sh" "$repo_b/bin/fm-watch-arm.sh"
+out=$(PLUGIN="$plugin" CTX_LIB="$CTX_LIB" EVENTS_LIB="$EVENTS_LIB" ROOT_A="$repo_a" ROOT_B="$repo_b" LOG_A="$log_a" LOG_B="$log_b" env -u FM_HOME node --input-type=module 2>&1 <<'EOF'
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+const { makeOpenCodeCtx } = await import(pathToFileURL(process.env.CTX_LIB).href);
+const { watchArmCoordinatorKey } = await import(pathToFileURL(process.env.EVENTS_LIB).href);
+const a = makeOpenCodeCtx({ directory: process.env.ROOT_A });
+const b = makeOpenCodeCtx({ directory: process.env.ROOT_B });
+const disposeA = await mod.default.setup(a.ctx);
+const disposeB = await mod.default.setup(b.ctx);
+writeFileSync(`${process.env.ROOT_A}/state/.lock`, `${process.pid}\n`);
+writeFileSync(`${process.env.ROOT_B}/state/.lock`, `${process.pid}\n`);
+await Promise.all([
+  a.emit("session.execution.succeeded", { sessionID: "a" }),
+  b.emit("session.execution.succeeded", { sessionID: "b" }),
+]);
+for (let i = 0; i < 250 && (!existsSync(process.env.LOG_A) || !existsSync(process.env.LOG_B)); i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
+if (!existsSync(process.env.LOG_A) || !existsSync(process.env.LOG_B)) {
+  throw new Error("both Firstmate locations must start their watcher");
+}
+disposeA();
+await b.emit("session.execution.succeeded", { sessionID: "b" });
+const coordinatorB = globalThis[watchArmCoordinatorKey(process.env.ROOT_B)];
+const statusB = await coordinatorB.ensureArmed("b", b.ctx);
+if (statusB !== "armed") throw new Error(`second location did not remain armed after first cleanup: ${statusB}`);
+disposeB();
+EOF
+)
+  status=$?
+  [ "$status" = 0 ] || fail "OpenCode watchers must remain independent across locations: $out"
+  [ -z "$out" ] || fail "OpenCode multi-location watcher test printed output: $out"
+  pass "OpenCode watcher lifecycle is isolated by resolved root"
+}
+
+test_opencode_watch_arm_isolates_multiple_locations
 test_pi_extension_reports_external_healthy_watcher
 test_pi_tool_returns_agent_tool_result
 test_pi_redundant_tool_call_is_owned_noop
@@ -4157,6 +4218,7 @@ test_pi_process_exit_cleanup_listener_lifecycle
 test_pi_process_exit_cleanup_stops_arm_child
 test_opencode_plugin_package_boundary_is_explicit_esm
 test_opencode_primary_watch_plugin_uses_effective_state_home
+test_opencode_watch_arm_isolates_multiple_locations
 test_opencode_primary_watch_plugin_sources_effective_config
 test_opencode_primary_watch_plugin_requires_session_lock
 test_opencode_watch_arm_coordinator_respects_primary_scope
