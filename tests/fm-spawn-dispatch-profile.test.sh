@@ -655,6 +655,10 @@ test_opencode_threads_model_and_ignores_effort_axis() {
     args_file="$CASE_DIR/opencode-args"
     cat > "$FAKEBIN_DIR/opencode" <<'SH'
 #!/usr/bin/env bash
+if [ "${1:-}" = models ]; then
+  printf '%s\n' 'anthropic/claude-sonnet-4-5'
+  exit 0
+fi
 if [ "${1:-}" = mini ] && [ "${2:-}" = --help ]; then
   if [ "${FM_FAKE_OPENCODE_MINI:-1}" = 1 ]; then
     printf '%s\n' 'Usage: opencode mini [options]'

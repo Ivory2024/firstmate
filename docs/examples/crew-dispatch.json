@@ -7,9 +7,8 @@
     },
     {
       "when": "The task is a big or ambiguous multi-file feature, a risky refactor, or work that requires holding many moving parts in mind.",
-      "floor": { "scope": "all_models", "min_percent": 20, "provider": "codex" },
       "use": { "harness": "opencode", "model": "opencode-go/space-bunny-free", "provider": "opencode-go" },
-      "why": "Keep complex code work on the approved default; a higher model requires the captain's explicit per-task decision. The Codex rule floor remains the captain's headroom policy: a known shortfall falls through to default, while a floor naming a provider or scope quota-axi does not report is unverifiable and escalates instead."
+      "why": "Keep complex code work on the approved default; a higher model requires the captain's explicit per-task decision."
     }
   ],
   "default": { "harness": "opencode", "model": "opencode-go/space-bunny-free", "provider": "opencode-go" }
