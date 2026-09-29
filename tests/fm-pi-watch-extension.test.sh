@@ -3497,6 +3497,63 @@ EOF
   pass "OpenCode watcher plugin starts one successor before wake prompt delivery settles"
 }
 
+test_opencode_dispose_during_actionable_close_does_not_rearm() {
+  local plugin repo home log ready retired release out status
+  plugin="$ROOT/.opencode/plugins/fm-primary-watch-arm.js"
+  repo="$TMP_ROOT/opencode-dispose-actionable-root"
+  home="$TMP_ROOT/opencode-dispose-actionable-home"
+  log="$TMP_ROOT/opencode-dispose-actionable.log"
+  ready="$TMP_ROOT/opencode-dispose-actionable.ready"
+  retired="$TMP_ROOT/opencode-dispose-actionable.retired"
+  release="$TMP_ROOT/opencode-dispose-actionable.release"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  git init -q "$repo"
+  : > "$repo/AGENTS.md"
+  : > "$home/state/task.meta"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'arm=%s\n' "$$" >> "${FM_ARM_LOG:?}"
+trap 'printf "retired\n" > "${FM_RETIRED_FILE:?}"; while [ ! -e "$FM_RELEASE_FILE" ]; do sleep 0.02; done; exit 0' TERM INT
+printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+printf 'signal: delayed actionable close\n'
+printf 'ready\n' > "$FM_READY_FILE"
+while [ ! -e "$FM_RELEASE_FILE" ]; do sleep 0.02; done
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  out=$(PLUGIN="$plugin" CTX_LIB="$CTX_LIB" WORKTREE="$repo" FM_HOME="$home" FM_ARM_LOG="$log" FM_READY_FILE="$ready" FM_RETIRED_FILE="$retired" FM_RELEASE_FILE="$release" FM_WATCH_REARM_RETRY_BASE_MS=5 FM_WATCH_REARM_RETRY_MAX_MS=10 node 2>&1 <<'EOF'
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+const { makeOpenCodeCtx } = await import(pathToFileURL(process.env.CTX_LIB).href);
+const { ctx, emit, prompts } = makeOpenCodeCtx({ directory: process.env.WORKTREE });
+const dispose = await mod.default.setup(ctx);
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+await emit("session.execution.succeeded", { sessionID: "session-test" });
+for (let i = 0; i < 250 && !existsSync(process.env.FM_READY_FILE); i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+if (!existsSync(process.env.FM_READY_FILE)) throw new Error("actionable arm did not reach its close gate");
+dispose();
+for (let i = 0; i < 250 && !existsSync(process.env.FM_RETIRED_FILE); i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+if (!existsSync(process.env.FM_RETIRED_FILE)) throw new Error("dispose did not retire the active arm");
+writeFileSync(process.env.FM_RELEASE_FILE, "release\n");
+for (let i = 0; i < 250 && !prompts.some((prompt) => prompt.text.includes("delayed actionable close")); i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+await new Promise((resolve) => setTimeout(resolve, 100));
+const rows = readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split("\n");
+if (rows.length !== 1) throw new Error(`retired actionable close started a successor: ${rows.join(" | ")}`);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode disposal must prevent actionable-close successor arms"
+  [ -z "$out" ] || fail "OpenCode dispose/actionable-close test printed output: $out"
+  pass "OpenCode disposal prevents actionable-close rearming"
+}
+
 test_opencode_pre_ready_actionable_close_preserves_its_successor() {
   local plugin repo home log release retired stop out status
   plugin="$ROOT/.opencode/plugins/fm-primary-watch-arm.js"
@@ -4223,6 +4280,7 @@ test_opencode_primary_watch_plugin_sources_effective_config
 test_opencode_primary_watch_plugin_requires_session_lock
 test_opencode_watch_arm_coordinator_respects_primary_scope
 test_opencode_primary_watch_plugin_rearms_after_wake
+test_opencode_dispose_during_actionable_close_does_not_rearm
 test_opencode_pre_ready_actionable_close_preserves_its_successor
 test_opencode_hung_successor_falls_back_to_typed_wake
 test_opencode_unretired_successor_falls_back_without_retry

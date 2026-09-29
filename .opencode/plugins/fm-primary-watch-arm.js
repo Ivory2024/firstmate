@@ -281,10 +281,11 @@ function restorationFailure(status) {
   return `watcher: FAILED - OpenCode could not verify a ready successor watcher (${status || "idle"})`;
 }
 
-async function restoreAfterActionableClose(state, paths, sessionID, ctx, predecessorArmPid) {
+async function restoreAfterActionableClose(state, paths, sessionID, ctx, predecessorArmPid, generation) {
   let failure = "";
   for (let attempt = 0; attempt <= REARM_RETRY_LIMIT; attempt += 1) {
-    const { status, armChild } = await ensureArm(state, paths, sessionID, ctx, predecessorArmPid, true);
+    if (!instanceIsActive(state, generation)) return { failure: "" };
+    const { status, armChild } = await ensureArm(state, paths, sessionID, ctx, predecessorArmPid, true, generation);
     if (status === "armed") return { failure: "", recovery: state.armRecovery.get(armChild) };
     // An actionable line belongs to this arm's close handler.
     // Do not retire it before that handler can start the successor cycle.
@@ -302,9 +303,11 @@ async function restoreAfterActionableClose(state, paths, sessionID, ctx, predece
   return { failure: `${failure}\nwatcher: FAILED - OpenCode could not restore watcher continuity after ${REARM_RETRY_LIMIT} retries` };
 }
 
-async function scheduleRetry(state, paths, sessionID, ctx, reason, predecessorArmPid) {
+async function scheduleRetry(state, paths, sessionID, ctx, reason, predecessorArmPid, generation) {
+  if (!instanceIsActive(state, generation)) return;
   if (state.child || state.retryTimer) return;
   if (!(await sessionOwnsLock(paths))) {
+    if (!instanceIsActive(state, generation)) return;
     setArmStatus(state, "failed");
     surfaceFailure(paths, ctx, sessionID, `watcher: FAILED - OpenCode cannot restore continuity because this session no longer owns the lock\n${reason}`);
     return;
@@ -318,7 +321,8 @@ async function scheduleRetry(state, paths, sessionID, ctx, reason, predecessorAr
   setArmStatus(state, "retrying");
   const timer = setTimeout(() => {
     if (state.retryTimer === timer) state.retryTimer = null;
-    void ensureArm(state, paths, sessionID, ctx, predecessorArmPid).then((status) => {
+    if (!instanceIsActive(state, generation)) return;
+    void ensureArm(state, paths, sessionID, ctx, predecessorArmPid, false, generation).then((status) => {
       if (["armed", "starting", "wake"].includes(status)) return;
       surfaceFailure(paths, ctx, sessionID, `watcher: FAILED - OpenCode could not launch a continuity retry (${status})`);
     }).catch(() => {
@@ -329,7 +333,7 @@ async function scheduleRetry(state, paths, sessionID, ctx, reason, predecessorAr
   state.retryTimer = timer;
 }
 
-function spawnArm(state, paths, sessionID, ctx, predecessorArmPid = "") {
+function spawnArm(state, paths, sessionID, ctx, predecessorArmPid, generation) {
   setArmStatus(state, "starting");
   const env = {
     ...process.env,
@@ -392,7 +396,7 @@ function spawnArm(state, paths, sessionID, ctx, predecessorArmPid = "") {
       if (state.restorationInFlight) return;
       state.retryFailures = 0;
       setArmStatus(state, "wake");
-      const restoration = restoreAfterActionableClose(state, paths, sessionID, ctx, predecessor);
+      const restoration = restoreAfterActionableClose(state, paths, sessionID, ctx, predecessor, generation);
       state.restorationInFlight = restoration;
       void restoration.then(async (result) => {
         try {
@@ -416,7 +420,7 @@ function spawnArm(state, paths, sessionID, ctx, predecessorArmPid = "") {
       setArmStatus(state, "failed");
       return;
     }
-    void scheduleRetry(state, paths, sessionID, ctx, classification.message, predecessor).catch(() => {
+    void scheduleRetry(state, paths, sessionID, ctx, classification.message, predecessor, generation).catch(() => {
       // A rejected retry must not become an unhandled rejection that outlives the turn.
     });
   });
@@ -437,6 +441,7 @@ function spawnArm(state, paths, sessionID, ctx, predecessorArmPid = "") {
       ctx,
       `watcher: FAILED - OpenCode arm child failed: ${error.message}`,
       String(armChild.pid ?? ""),
+      generation,
     ).catch(() => {
       // A rejected retry must not become an unhandled rejection that outlives the turn.
     });
@@ -445,6 +450,7 @@ function spawnArm(state, paths, sessionID, ctx, predecessorArmPid = "") {
 }
 
 async function beginArm(state, paths, sessionID, ctx, predecessorArmPid, generation) {
+  if (!instanceIsActive(state, generation)) return { status: "inactive", armChild: null };
   if (!sessionID) return { status: "skipped", armChild: null };
   if (!(await isPrimaryRoot(paths.root, paths.home))) return { status: "not-primary", armChild: null };
   if (!(await sessionOwnsLock(paths))) return { status: "read-only", armChild: null };
@@ -455,17 +461,17 @@ async function beginArm(state, paths, sessionID, ctx, predecessorArmPid, generat
   // generation is rechecked here: a retired or superseded plugin instance must
   // not spawn a watcher that nobody will ever own.
   if (!instanceIsActive(state, generation)) return { status: "inactive", armChild: null };
-  return { status: "spawned", armChild: spawnArm(state, paths, sessionID, ctx, predecessorArmPid) };
+  return { status: "spawned", armChild: spawnArm(state, paths, sessionID, ctx, predecessorArmPid, generation) };
 }
 
 function armAttempt(status, armChild, includeArmChild) {
   return includeArmChild ? { status, armChild } : status;
 }
 
-// `generation` defaults to the currently active instance, which is what the
-// internal retry/restore paths want; the external entry points pass their own
-// so a retired instance can never launch anything.
-async function ensureArm(state, paths, sessionID, ctx, predecessorArmPid = "", includeArmChild = false, generation = state.generation) {
+async function ensureArm(state, paths, sessionID, ctx, predecessorArmPid, includeArmChild, generation) {
+  if (!instanceIsActive(state, generation)) {
+    return armAttempt("inactive", null, includeArmChild);
+  }
   let launchResult = null;
   if (!state.launchInFlight) {
     const launch = beginArm(state, paths, sessionID, ctx, predecessorArmPid, generation);
