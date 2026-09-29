@@ -417,25 +417,22 @@ TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
 assert_contains "$out" 'candidate: gemini:gemini-3.8-flash-high  provider=google  scope=all_models  remaining=72%  spendPriority=0.3  runway=through_reset  -> eligible' "Gemini resolves through its explicit provider"
 assert_contains "$out" "  profile: --harness 'gemini' --model 'gemini-3.8-flash-high'" "Gemini is a typed verified dispatch harness"
 
-# The shipped starting point is the five-axis form operators actually copy, so
-# its own provider, rule floor, and profile floor must engage in code, not just
-# parse. Rules here are grok/live facts, claude/trivial, opencode/third-party,
-# and the floored big-feature rule.
 cp "$ROOT/docs/examples/crew-dispatch.json" "$RULES"
+OPENCODE_QUOTA="$TMP_ROOT/opencode-quota.json"
+jq '.providers += [{"provider":"opencode-go","state":{"status":"fresh"},"quotaSemantics":{"status":"known","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":100,"runway":{"status":"through_reset"},"selection":{"spendPriority":0.5}}]}}]' "$QUOTA" > "$OPENCODE_QUOTA"
 cat > "$RESPONSE" <<'JSON'
 {"model":"jev-1.13.0","answers":{"rule":{"type":"choice","choice":"default","confidence":0.9,"probabilities":{"rule_1":0.02,"rule_2":0.01,"rule_3":0.01,"rule_4":0.02,"default":0.94}}},"usage":{"input_tokens":812,"output_tokens":60}}
 JSON
 reset_log
-TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
+TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$OPENCODE_QUOTA" run code out err "$BRIEF"
 assert_contains "$out" '  status: clear' "the documented example passes opted-in resolution"
-assert_contains "$out" 'candidate: pi:anthropic/claude-sonnet-5  provider=claude' "the documented Pi default uses its declared Claude provider"
+assert_contains "$out" 'candidate: opencode:opencode-go/space-bunny-free  provider=opencode-go' "the documented default uses the approved OpenCode model"
+assert_contains "$out" "  profile: --harness 'opencode' --model 'opencode-go/space-bunny-free'" "default code work selects the approved model"
 assert_not_contains "$err" 'malformed rules file' "the documented example reaches resolution"
 
 cat > "$RESPONSE" <<'JSON'
 {"model":"jev-1.13.0","answers":{"rule":{"type":"choice","choice":"rule_3","confidence":0.95,"probabilities":{"rule_1":0.01,"rule_2":0.01,"rule_3":0.96,"rule_4":0.01,"default":0.01}}},"usage":{"input_tokens":812,"output_tokens":60}}
 JSON
-OPENCODE_QUOTA="$TMP_ROOT/opencode-quota.json"
-jq '.providers += [{"provider":"opencode-go","state":{"status":"fresh"},"quotaSemantics":{"status":"known","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":100,"runway":{"status":"through_reset"},"selection":{"spendPriority":0.5}}]}}]' "$QUOTA" > "$OPENCODE_QUOTA"
 reset_log
 TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$OPENCODE_QUOTA" run code out err "$BRIEF"
 assert_contains "$out" "  profile: --harness 'opencode' --model 'opencode-go/space-bunny-free'" "the documented OpenCode rule selects its explicit ZDR model"
@@ -444,15 +441,15 @@ cat > "$RESPONSE" <<'JSON'
 {"model":"jev-1.13.0","answers":{"rule":{"type":"choice","choice":"rule_4","confidence":0.95,"probabilities":{"rule_1":0.01,"rule_2":0.01,"rule_3":0.01,"rule_4":0.96,"default":0.01}}},"usage":{"input_tokens":812,"output_tokens":60}}
 JSON
 reset_log
-TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
-assert_contains "$out" 'candidate: claude:claude-sonnet-5  provider=claude  scope=all_models  remaining=79%' "the documented profile floor admits its own provider's row"
-assert_contains "$out" "  profile: --harness 'codex' --model 'gpt-5.5' --effort 'high'" "the documented floored rule dispatches inside its own rule"
+TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$OPENCODE_QUOTA" run code out err "$BRIEF"
+assert_contains "$out" 'candidate: opencode:opencode-go/space-bunny-free  provider=opencode-go  scope=all_models  remaining=100%' "the documented complex-work rule admits the approved model"
+assert_contains "$out" "  profile: --harness 'opencode' --model 'opencode-go/space-bunny-free'" "complex code work keeps the approved model"
 
 EXAMPLE_BELOW_FLOOR="$TMP_ROOT/example-below-floor.json"
-jq '(.providers[] | select(.provider == "codex") | .quotaSemantics.effectiveAvailability[] | select(.scope == "all_models") | .effectivePercentRemaining) = 19' "$QUOTA" > "$EXAMPLE_BELOW_FLOOR"
+jq '(.providers[] | select(.provider == "codex") | .quotaSemantics.effectiveAvailability[] | select(.scope == "all_models") | .effectivePercentRemaining) = 19' "$OPENCODE_QUOTA" > "$EXAMPLE_BELOW_FLOOR"
 TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$EXAMPLE_BELOW_FLOOR" run code out err "$BRIEF"
 assert_contains "$out" '  note: rule rule_4 floor all_models below 20%: fall through to default' "the documented rule floor engages below its own threshold"
-assert_contains "$out" "  profile: --harness 'codex' --model 'gpt-5.5' --effort 'medium'" "the documented floor hands off to the default profile set"
+assert_contains "$out" "  profile: --harness 'opencode' --model 'opencode-go/space-bunny-free'" "the documented floor fallback keeps the approved default model"
 cp "$BASE_RULES" "$RULES"
 pass "no-rule fallback, Agy, Gemini, and documented configurations resolve"
 
