@@ -2139,6 +2139,22 @@ cursor)
     fi
   fi
   ;;
+opencode)
+  OPENCODE_BIN=$(command -v opencode) || {
+    echo "error: opencode executable not found on PATH; install it or select a different verified harness" >&2
+    exit 1
+  }
+  if [ -n "$MODEL" ] && [ "$MODEL" != default ]; then
+    if ! OPENCODE_MODELS=$("$OPENCODE_BIN" models); then
+      echo "error: could not verify OpenCode model '$MODEL' because '$OPENCODE_BIN models' failed; rerun 'opencode models' and choose a listed id" >&2
+      exit 1
+    fi
+    if ! printf '%s\n' "$OPENCODE_MODELS" | grep -F -x -- "$MODEL" >/dev/null; then
+      echo "error: OpenCode model '$MODEL' is not available from 'opencode models'; choose an id listed by that command or omit --model" >&2
+      exit 1
+    fi
+  fi
+  ;;
 omp)
   OMP_BIN=$(resolve_pi_executable omp) || {
     echo "error: omp executable not found on PATH; install Oh My Pi or select a different verified harness" >&2

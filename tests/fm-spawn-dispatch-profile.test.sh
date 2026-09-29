@@ -47,7 +47,15 @@ if [ "${1:-}" = --list-models ]; then
 fi
 exit 0
 SH
-  chmod +x "$fakebin/timeout" "$fakebin/cursor-agent"
+  cat > "$fakebin/opencode" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = models ]; then
+  [ "${FM_FAKE_OPENCODE_MODELS_STATUS:-0}" -eq 0 ] || exit "${FM_FAKE_OPENCODE_MODELS_STATUS}"
+  printf '%b\n' "${FM_FAKE_OPENCODE_MODELS:-anthropic/claude-sonnet-4-5\\nopencode-go/space-bunny-free}"
+fi
+exit 0
+SH
+  chmod +x "$fakebin/timeout" "$fakebin/cursor-agent" "$fakebin/opencode"
   make_spawn_pi_probe "$fakebin" pi
   make_spawn_pi_probe "$fakebin" pi-signed
   printf '%s\n' "$fakebin"
@@ -96,6 +104,8 @@ run_spawn() {
     FM_FAKE_LAUNCH_LOG="$launchlog" FM_FAKE_PI_VERSION="${FM_TEST_PI_VERSION:-0.84.0}" \
     FM_FAKE_CURSOR_MODELS="${FM_TEST_CURSOR_MODELS:-}" \
     FM_FAKE_CURSOR_LIST_STATUS="${FM_TEST_CURSOR_LIST_STATUS:-0}" \
+    FM_FAKE_OPENCODE_MODELS="${FM_TEST_OPENCODE_MODELS:-}" \
+    FM_FAKE_OPENCODE_MODELS_STATUS="${FM_TEST_OPENCODE_MODELS_STATUS:-0}" \
     GROK_HOME="$home/grok-home" \
     fm_test_run_spawn "$home" "$wt" "$fakebin" "$@"
 }
@@ -642,17 +652,55 @@ test_opencode_threads_model_and_ignores_effort_axis() {
   rec=$(make_spawn_case profile-opencode opencode "$id")
   read_case_record "$rec"
 
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model anthropic/claude-sonnet-4-5 --effort high)
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model opencode-go/space-bunny-free --effort high)
   status=$?
   expect_code 0 "$status" "opencode spawn with model and ignored effort should succeed"
-  assert_meta_profile "$HOME_DIR/state/$id.meta" opencode anthropic/claude-sonnet-4-5 high
+  assert_meta_profile "$HOME_DIR/state/$id.meta" opencode opencode-go/space-bunny-free high
   launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "opencode --model 'anthropic/claude-sonnet-4-5' --prompt" \
+  assert_contains "$launch" "opencode --model 'opencode-go/space-bunny-free' --prompt" \
     "opencode launch did not thread model"
   assert_not_contains "$launch" "--effort" "opencode launch must not pass unsupported --effort"
   assert_not_contains "$launch" "--variant" "opencode launch must not pass run-only --variant"
   assert_not_contains "$launch" "--thinking" "opencode launch must not pass pi thinking flag"
   pass "opencode receives --model and omits the unsupported effort axis"
+}
+
+test_opencode_refuses_model_absent_from_live_catalog() {
+  local rec id out status
+  id=profile-opencode-unsupported-z7a
+  rec=$(make_spawn_case profile-opencode-unsupported opencode "$id")
+  read_case_record "$rec"
+
+  FM_TEST_OPENCODE_MODELS='opencode-go/longcat-2.5-preview-free' \
+    out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+      --model opencode-go/space-bunny-free)
+  status=$?
+  expect_code 1 "$status" "OpenCode must refuse a model absent from a successful catalog"
+  assert_contains "$out" "OpenCode model 'opencode-go/space-bunny-free' is not available" \
+    "OpenCode model refusal did not identify the unavailable model"
+  assert_contains "$out" "opencode models" "OpenCode model refusal did not name the catalog command"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "unavailable OpenCode model published metadata"
+  [ ! -s "$LAUNCH_LOG" ] || fail "unavailable OpenCode model launched an agent"
+  pass "OpenCode refuses model ids absent from its live catalog"
+}
+
+test_opencode_refuses_unreadable_live_catalog() {
+  local rec id out status
+  id=profile-opencode-catalog-error-z7b
+  rec=$(make_spawn_case profile-opencode-catalog-error opencode "$id")
+  read_case_record "$rec"
+
+  FM_TEST_OPENCODE_MODELS_STATUS=1 \
+    out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+      --model opencode-go/space-bunny-free)
+  status=$?
+  expect_code 1 "$status" "OpenCode must refuse when its catalog cannot be read"
+  assert_contains "$out" "OpenCode model 'opencode-go/space-bunny-free'" \
+    "unreadable OpenCode catalog refusal did not identify the requested model"
+  assert_contains "$out" "opencode models" "unreadable OpenCode catalog refusal did not name the recovery command"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "unreadable OpenCode catalog published metadata"
+  [ ! -s "$LAUNCH_LOG" ] || fail "unreadable OpenCode catalog launched an agent"
+  pass "OpenCode refuses dispatch when its live catalog is unreadable"
 }
 
 test_native_effort_validator_keeps_axes_separate() {
@@ -1484,6 +1532,8 @@ test_cursor_threads_model_workspace_and_omits_effort_axis
 test_cursor_refuses_model_absent_from_live_catalog
 test_cursor_failed_catalog_probe_does_not_block_spawn
 test_opencode_threads_model_and_ignores_effort_axis
+test_opencode_refuses_model_absent_from_live_catalog
+test_opencode_refuses_unreadable_live_catalog
 test_native_effort_validator_keeps_axes_separate
 test_native_pi_ultra_is_explicit_and_model_scoped
 test_batch_preserves_native_ultra
