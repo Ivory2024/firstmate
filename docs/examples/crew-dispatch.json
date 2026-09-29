@@ -18,15 +18,9 @@
     {
       "when": "The task is a big or ambiguous multi-file feature, a risky refactor, or work that requires holding many moving parts in mind.",
       "floor": { "scope": "all_models", "min_percent": 20, "provider": "codex" },
-      "use": [
-        { "harness": "claude", "model": "claude-sonnet-5", "effort": "high", "floor": { "scope": "all_models", "min_percent": 20 } },
-        { "harness": "codex", "model": "gpt-5.5", "effort": "high" }
-      ],
-      "why": "Use a strong coding profile for big, ambiguous work; resolve the alternatives through quota-array-dispatch. The rule floor is the captain's own headroom policy: a known shortfall falls through to default, while a floor naming a provider or scope quota-axi does not report is unverifiable and escalates instead. A profile floor guards one candidate and always reads that profile's own provider."
+      "use": { "harness": "opencode", "model": "opencode-go/space-bunny-free", "provider": "opencode-go" },
+      "why": "Keep complex code work on the approved default; a higher model requires the captain's explicit per-task decision. The Codex rule floor remains the captain's headroom policy: a known shortfall falls through to default, while a floor naming a provider or scope quota-axi does not report is unverifiable and escalates instead."
     }
   ],
-  "default": [
-    { "harness": "codex", "model": "gpt-5.5", "effort": "medium" },
-    { "harness": "pi", "model": "anthropic/claude-sonnet-5", "effort": "medium", "provider": "claude" }
-  ]
+  "default": { "harness": "opencode", "model": "opencode-go/space-bunny-free", "provider": "opencode-go" }
 }
