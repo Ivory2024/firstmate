@@ -12,8 +12,8 @@
     },
     {
       "when": "The task is code work a third-party model service would read, and the operator accepts that service's current data-retention terms.",
-      "use": { "harness": "opencode", "provider": "opencode-go" },
-      "why": "opencode is multi-provider, so typed resolution needs its provider named. It has no effort axis, so an effort here is a CREW_DISPATCH error rather than a stronger run. Set model from the live `opencode models` catalog, choosing only a model that service's current terms cover for private code, or leave it unset to take the harness default."
+      "use": { "harness": "opencode", "model": "opencode-go/space-bunny-free", "provider": "opencode-go" },
+      "why": "opencode is multi-provider, so typed resolution needs its provider named. It has no effort axis, so an effort here is a CREW_DISPATCH error rather than a stronger run. Confirm the model in the live `opencode models` catalog before dispatch."
     },
     {
       "when": "The task is a big or ambiguous multi-file feature, a risky refactor, or work that requires holding many moving parts in mind.",
