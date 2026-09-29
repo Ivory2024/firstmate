@@ -11,8 +11,8 @@ Verified on 2026-06-11 across versions 1.15.7 through 1.17.6, with busy-queue be
 | Interrupt | Double Escape; it is known to be flaky while a long shell command runs, so use `../../../bin/fm-control.sh <task-id> relaunch` for a wedged pane. |
 | Skill invocation | No separate verified form beyond normal slash-command behavior; use natural language when the exact command is uncertain. |
 | Resume | Relaunch with `--continue` to resume the most recent session for the current directory, then send the next instruction after the TUI is ready because `--prompt` does not auto-submit alongside `--continue`. |
-| Model flag | `--model <provider/model>`. |
-| Effort flag | None for Firstmate's interactive `opencode --prompt` launch verified on 1.17.6; `opencode run` has `--variant`, but that is not this path. |
+| Interactive task launch | Firstmate probes `opencode mini --help` for a `Usage: opencode mini` line; OpenCode v2 uses `opencode mini`, while legacy releases use the top-level command. Both receive the requested `--model <provider/model>` and worker brief through `--prompt`. |
+| Effort flag | None for the interactive task launch; `opencode run` has `--variant`, but that is a different, non-interactive path. |
 | Model discovery | Run `opencode models [provider]` to list available provider/model identifiers. |
 | Trust dialog | None. |
 | Marker | None; OpenCode publishes no identity marker, so `../../../bin/fm-harness.sh` identifies it from process ancestry. |

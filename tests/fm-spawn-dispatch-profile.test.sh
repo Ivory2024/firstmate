@@ -637,22 +637,56 @@ test_cursor_failed_catalog_probe_does_not_block_spawn() {
 }
 
 test_opencode_threads_model_and_ignores_effort_axis() {
-  local rec id out status launch
-  id=profile-opencode-z7
-  rec=$(make_spawn_case profile-opencode opencode "$id")
-  read_case_record "$rec"
-
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model anthropic/claude-sonnet-4-5 --effort high)
-  status=$?
-  expect_code 0 "$status" "opencode spawn with model and ignored effort should succeed"
-  assert_meta_profile "$HOME_DIR/state/$id.meta" opencode anthropic/claude-sonnet-4-5 high
-  launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "opencode --model 'anthropic/claude-sonnet-4-5' --prompt" \
-    "opencode launch did not thread model"
-  assert_not_contains "$launch" "--effort" "opencode launch must not pass unsupported --effort"
-  assert_not_contains "$launch" "--variant" "opencode launch must not pass run-only --variant"
-  assert_not_contains "$launch" "--thinking" "opencode launch must not pass pi thinking flag"
-  pass "opencode receives --model and omits the unsupported effort axis"
+  local rec id out status launch args_file mini_mode
+  for mini_mode in 1 0 2; do
+    id="profile-opencode-$mini_mode-z7"
+    rec=$(make_spawn_case "profile-opencode-$mini_mode" opencode "$id")
+    read_case_record "$rec"
+    args_file="$CASE_DIR/opencode-args"
+    cat > "$FAKEBIN_DIR/opencode" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = mini ] && [ "${2:-}" = --help ]; then
+  if [ "${FM_FAKE_OPENCODE_MINI:-1}" = 1 ]; then
+    printf '%s\n' 'Usage: opencode mini [options]'
+    exit 0
+  fi
+  if [ "${FM_FAKE_OPENCODE_MINI:-1}" = 2 ]; then
+    printf '%s\n' 'Usage: opencode [options] [command]' 'Commands: run, auth, models'
+    exit 0
+  fi
+  exit 127
+fi
+printf '%s\n' "$@" > "$FM_FAKE_OPENCODE_ARGS"
+SH
+    chmod +x "$FAKEBIN_DIR/opencode"
+    out=$(FM_FAKE_OPENCODE_MINI="$mini_mode" \
+      run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+        --model anthropic/claude-sonnet-4-5 --effort high)
+    status=$?
+    expect_code 0 "$status" "OpenCode spawn with mini-supported=$mini_mode should succeed: $out"
+    assert_meta_profile "$HOME_DIR/state/$id.meta" opencode anthropic/claude-sonnet-4-5 high
+    launch=$(cat "$LAUNCH_LOG")
+    FM_FAKE_OPENCODE_MINI="$mini_mode" FM_FAKE_OPENCODE_ARGS="$args_file" \
+      PATH="$FAKEBIN_DIR:$PATH" bash -c "$launch" \
+      || fail "OpenCode launch failed for mini-supported=$mini_mode"
+    if [ "$mini_mode" = 1 ]; then
+      [ "$(sed -n '1p' "$args_file")" = mini ] \
+        || fail "OpenCode v2 launch did not select the mini interface"
+    else
+      [ "$(sed -n '1p' "$args_file")" = --model ] \
+        || fail "legacy OpenCode launch did not retain its top-level interface"
+    fi
+    grep -Fxq 'anthropic/claude-sonnet-4-5' "$args_file" \
+      || fail "OpenCode launch did not pass the requested model"
+    grep -Fxq -- '--prompt' "$args_file" \
+      || fail "OpenCode launch did not pass its worker prompt"
+    grep -Fq 'FIRSTMATE_OP: v1 launch-brief' "$args_file" \
+      || fail "OpenCode launch did not deliver the encoded worker brief"
+    assert_not_contains "$launch" "--effort" "OpenCode launch must not pass unsupported --effort"
+    assert_not_contains "$launch" "--variant" "OpenCode launch must not pass run-only --variant"
+    assert_not_contains "$launch" "--thinking" "OpenCode launch must not pass pi thinking flag"
+  done
+  pass "OpenCode v2 and legacy interactive launch forms preserve model and prompt while omitting effort"
 }
 
 test_native_effort_validator_keeps_axes_separate() {
