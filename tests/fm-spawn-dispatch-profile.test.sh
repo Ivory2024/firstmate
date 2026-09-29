@@ -638,7 +638,7 @@ test_cursor_failed_catalog_probe_does_not_block_spawn() {
 
 test_opencode_threads_model_and_ignores_effort_axis() {
   local rec id out status launch args_file mini_mode
-  for mini_mode in 1 0; do
+  for mini_mode in 1 0 2; do
     id="profile-opencode-$mini_mode-z7"
     rec=$(make_spawn_case "profile-opencode-$mini_mode" opencode "$id")
     read_case_record "$rec"
@@ -646,7 +646,14 @@ test_opencode_threads_model_and_ignores_effort_axis() {
     cat > "$FAKEBIN_DIR/opencode" <<'SH'
 #!/usr/bin/env bash
 if [ "${1:-}" = mini ] && [ "${2:-}" = --help ]; then
-  [ "${FM_FAKE_OPENCODE_MINI:-1}" = 1 ] && exit 0
+  if [ "${FM_FAKE_OPENCODE_MINI:-1}" = 1 ]; then
+    printf '%s\n' 'Usage: opencode mini [options]'
+    exit 0
+  fi
+  if [ "${FM_FAKE_OPENCODE_MINI:-1}" = 2 ]; then
+    printf '%s\n' 'Usage: opencode [options] [command]' 'Commands: run, auth, models'
+    exit 0
+  fi
   exit 127
 fi
 printf '%s\n' "$@" > "$FM_FAKE_OPENCODE_ARGS"

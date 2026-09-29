@@ -1866,7 +1866,8 @@ launch_template() {
     fi
     ;;
   opencode)
-    if opencode mini --help >/dev/null 2>&1; then
+    mini_help=$(opencode mini --help 2>&1 || :)
+    if printf '%s\n' "$mini_help" | grep -Eiq '^[[:space:]]*usage:[[:space:]]*opencode mini([[:space:]]|$)'; then
       printf '%s' 'OPENCODE_CONFIG_CONTENT='\''{"permission":{"*":"allow"}}'\'' opencode mini __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
     else
       printf '%s' 'OPENCODE_CONFIG_CONTENT='\''{"permission":{"*":"allow"}}'\'' opencode __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
