@@ -4037,65 +4037,7 @@ test_opencode_watch_arm_coordinates_with_turnend_guard() {
   git init -q "$repo"
   : > "$repo/AGENTS.md"
   : > "$home/state/task.meta"
-  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
-#!/usr/bin/env bash
-printf 'arm\n' >> "${FM_ARM_LOG:?}"
-printf 'watcher: started pid=1 (beacon fresh)\n'
-SH
-  cat > "$repo/bin/fm-turnend-guard.sh" <<'SH'
-#!/usr/bin/env bash
-printf 'guard\n' >> "${FM_GUARD_LOG:?}"
-printf 'guard should not run\n' >&2
-exit 2
-SH
-  chmod +x "$repo/bin/fm-watch-arm.sh" "$repo/bin/fm-turnend-guard.sh"
-  out=$(ARM_PLUGIN="$arm_plugin" CTX_LIB="$CTX_LIB" GUARD_PLUGIN="$guard_plugin" WORKTREE="$repo" FM_HOME="$home" FM_ARM_LOG="$log" FM_GUARD_LOG="$guard_log" node 2>&1 <<'EOF'
-import { existsSync, writeFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
-
-const armMod = await import(pathToFileURL(process.env.ARM_PLUGIN).href);
-const guardMod = await import(pathToFileURL(process.env.GUARD_PLUGIN).href);
-const { makeOpenCodeCtx } = await import(pathToFileURL(process.env.CTX_LIB).href);
-let promptBody = "";
-// Both plugins load against one ctx, so they share the one event stream OpenCode
-// gives them: the turn end reaches the guard, which then asks the arm
-// coordinator for the same home before it runs its own check.
-const { ctx, emit } = makeOpenCodeCtx({
-  directory: process.env.WORKTREE,
-  onPrompt: async ({ text }) => {
-    promptBody = text;
-  },
-});
-// setup() returns the disposer that aborts the plugin's event subscription and
-// retires its arm child. Both plugins keep running until that runs, so the
-// assertion block below has to release them even when it fails: an abandoned
-// subscription holds the event loop open and node never exits.
-const disposeArm = await armMod.default.setup(ctx);
-const disposeGuard = await guardMod.default.setup(ctx);
-try {
-  writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
-  await emit("session.execution.succeeded", { sessionID: "session-test" });
-  for (let i = 0; i < 250 && !existsSync(process.env.FM_ARM_LOG); i += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  if (!existsSync(process.env.FM_ARM_LOG)) {
-    console.error("watch arm did not run");
-    process.exit(1);
-  }
-  if (existsSync(process.env.FM_GUARD_LOG)) {
-    console.error("turn-end guard ran before the watch arm could establish supervision");
-    process.exit(1);
-  }
-  if (promptBody) {
-    console.error(`unexpected prompt: ${promptBody}`);
-    process.exit(1);
-  }
-} finally {
-  disposeGuard();
-  disposeArm();
-}
-EOF
-)
+  out=$(ARM_PLUGIN="$arm_plugin" CTX_LIB="$CTX_LIB" GUARD_PLUGIN="$guard_plugin" WORKTREE="$repo" FM_HOME="$home" FM_ARM_LOG="$log" FM_GUARD_LOG="$guard_log" node "$ROOT/tests/fm-opencode-coordination.mjs" 2>&1)
   status=$?
   expect_code 0 "$status" "OpenCode turn-end guard must let the auto-arm plugin establish supervision first"
   [ -z "$out" ] || fail "OpenCode coordination test printed output: $out"
@@ -4114,65 +4056,7 @@ test_opencode_healthy_arm_output_does_not_suppress_guard() {
   git init -q "$repo"
   : > "$repo/AGENTS.md"
   : > "$home/state/task.meta"
-  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
-#!/usr/bin/env bash
-printf 'args=%s\n' "$*" >> "${FM_ARM_LOG:?}"
-printf 'watcher: healthy pid=1 (beacon 0s)\n'
-SH
-  cat > "$repo/bin/fm-turnend-guard.sh" <<'SH'
-#!/usr/bin/env bash
-printf 'guard\n' >> "${FM_GUARD_LOG:?}"
-printf 'guard ran after external healthy watcher\n' >&2
-exit 2
-SH
-  chmod +x "$repo/bin/fm-watch-arm.sh" "$repo/bin/fm-turnend-guard.sh"
-  out=$(ARM_PLUGIN="$arm_plugin" CTX_LIB="$CTX_LIB" GUARD_PLUGIN="$guard_plugin" WORKTREE="$repo" FM_HOME="$home" FM_ARM_LOG="$log" FM_GUARD_LOG="$guard_log" node 2>&1 <<'EOF'
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
-
-const armMod = await import(pathToFileURL(process.env.ARM_PLUGIN).href);
-const guardMod = await import(pathToFileURL(process.env.GUARD_PLUGIN).href);
-const { makeOpenCodeCtx } = await import(pathToFileURL(process.env.CTX_LIB).href);
-let promptBody = "";
-// Both plugins load against one ctx, so they share the one event stream OpenCode
-// gives them: the turn end reaches the guard, which then asks the arm
-// coordinator for the same home before it runs its own check.
-const { ctx, emit } = makeOpenCodeCtx({
-  directory: process.env.WORKTREE,
-  onPrompt: async ({ text }) => {
-    promptBody = text;
-  },
-});
-const disposeArm = await armMod.default.setup(ctx);
-const disposeGuard = await guardMod.default.setup(ctx);
-try {
-  writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
-  await emit("session.execution.succeeded", { sessionID: "session-test" });
-  for (let i = 0; i < 250 && !existsSync(process.env.FM_GUARD_LOG); i += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  if (!existsSync(process.env.FM_ARM_LOG)) {
-    console.error("watch arm did not run");
-    process.exit(1);
-  }
-  if (!readFileSync(process.env.FM_ARM_LOG, "utf8").includes("args=--restart")) {
-    console.error("watch arm was not asked to restart into an owned child");
-    process.exit(1);
-  }
-  if (!existsSync(process.env.FM_GUARD_LOG)) {
-    console.error("turn-end guard was suppressed by an external healthy watcher");
-    process.exit(1);
-  }
-  if (!promptBody.includes("TURN WOULD END BLIND")) {
-    console.error(`missing blind-turn prompt: ${promptBody}`);
-    process.exit(1);
-  }
-} finally {
-  disposeGuard();
-  disposeArm();
-}
-EOF
-)
+  out=$(ARM_PLUGIN="$arm_plugin" CTX_LIB="$CTX_LIB" GUARD_PLUGIN="$guard_plugin" WORKTREE="$repo" FM_HOME="$home" FM_ARM_LOG="$log" FM_GUARD_LOG="$guard_log" node "$ROOT/tests/fm-opencode-healthy-arm.mjs" 2>&1)
   status=$?
   expect_code 0 "$status" "OpenCode watch plugin must not treat external healthy output as an owned arm"
   [ -z "$out" ] || fail "OpenCode external-healthy test printed output: $out"
@@ -4186,52 +4070,7 @@ test_opencode_watch_arm_isolates_multiple_locations() {
   repo_b="$TMP_ROOT/opencode-multi-root-b"
   log_a="$repo_a/watch.log"
   log_b="$repo_b/watch.log"
-  mkdir -p "$repo_a/bin" "$repo_a/state" "$repo_b/bin" "$repo_b/state"
-  git init -q "$repo_a"
-  git init -q "$repo_b"
-  : > "$repo_a/AGENTS.md"
-  : > "$repo_b/AGENTS.md"
-  : > "$repo_a/state/task.meta"
-  : > "$repo_b/state/task.meta"
-  cat > "$repo_a/bin/fm-watch-arm.sh" <<'SH'
-#!/usr/bin/env bash
-printf 'started pid=%s\n' "$$" >> "$FM_ROOT_OVERRIDE/watch.log"
-printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
-exec sleep 30
-SH
-  cp "$repo_a/bin/fm-watch-arm.sh" "$repo_b/bin/fm-watch-arm.sh"
-  chmod +x "$repo_a/bin/fm-watch-arm.sh" "$repo_b/bin/fm-watch-arm.sh"
-out=$(PLUGIN="$plugin" CTX_LIB="$CTX_LIB" EVENTS_LIB="$EVENTS_LIB" ROOT_A="$repo_a" ROOT_B="$repo_b" LOG_A="$log_a" LOG_B="$log_b" env -u FM_HOME node --input-type=module 2>&1 <<'EOF'
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
-
-const mod = await import(pathToFileURL(process.env.PLUGIN).href);
-const { makeOpenCodeCtx } = await import(pathToFileURL(process.env.CTX_LIB).href);
-const { watchArmCoordinatorKey } = await import(pathToFileURL(process.env.EVENTS_LIB).href);
-const a = makeOpenCodeCtx({ directory: process.env.ROOT_A });
-const b = makeOpenCodeCtx({ directory: process.env.ROOT_B });
-const disposeA = await mod.default.setup(a.ctx);
-const disposeB = await mod.default.setup(b.ctx);
-writeFileSync(`${process.env.ROOT_A}/state/.lock`, `${process.pid}\n`);
-writeFileSync(`${process.env.ROOT_B}/state/.lock`, `${process.pid}\n`);
-await Promise.all([
-  a.emit("session.execution.succeeded", { sessionID: "a" }),
-  b.emit("session.execution.succeeded", { sessionID: "b" }),
-]);
-for (let i = 0; i < 250 && (!existsSync(process.env.LOG_A) || !existsSync(process.env.LOG_B)); i += 1) {
-  await new Promise((resolve) => setTimeout(resolve, 20));
-}
-if (!existsSync(process.env.LOG_A) || !existsSync(process.env.LOG_B)) {
-  throw new Error("both Firstmate locations must start their watcher");
-}
-disposeA();
-await b.emit("session.execution.succeeded", { sessionID: "b" });
-const coordinatorB = globalThis[watchArmCoordinatorKey(process.env.ROOT_B)];
-const statusB = await coordinatorB.ensureArmed("b", b.ctx);
-if (statusB !== "armed") throw new Error(`second location did not remain armed after first cleanup: ${statusB}`);
-disposeB();
-EOF
-)
+  out=$(PLUGIN="$plugin" CTX_LIB="$CTX_LIB" EVENTS_LIB="$EVENTS_LIB" ROOT_A="$repo_a" ROOT_B="$repo_b" LOG_A="$log_a" LOG_B="$log_b" env -u FM_HOME -u FM_ROOT_OVERRIDE -u FM_STATE_OVERRIDE -u FM_CONFIG_OVERRIDE node "$ROOT/tests/fm-opencode-multi-location.mjs" 2>&1)
   status=$?
   [ "$status" = 0 ] || fail "OpenCode watchers must remain independent across locations: $out"
   [ -z "$out" ] || fail "OpenCode multi-location watcher test printed output: $out"
