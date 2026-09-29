@@ -671,8 +671,8 @@ test_opencode_refuses_model_absent_from_live_catalog() {
   rec=$(make_spawn_case profile-opencode-unsupported opencode "$id")
   read_case_record "$rec"
 
-  FM_TEST_OPENCODE_MODELS='opencode-go/longcat-2.5-preview-free' \
-    out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+  out=$(FM_TEST_OPENCODE_MODELS='opencode-go/longcat-2.5-preview-free' \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
       --model opencode-go/space-bunny-free)
   status=$?
   expect_code 1 "$status" "OpenCode must refuse a model absent from a successful catalog"
@@ -690,8 +690,8 @@ test_opencode_refuses_unreadable_live_catalog() {
   rec=$(make_spawn_case profile-opencode-catalog-error opencode "$id")
   read_case_record "$rec"
 
-  FM_TEST_OPENCODE_MODELS_STATUS=1 \
-    out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+  out=$(FM_TEST_OPENCODE_MODELS_STATUS=1 \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
       --model opencode-go/space-bunny-free)
   status=$?
   expect_code 1 "$status" "OpenCode must refuse when its catalog cannot be read"
@@ -701,6 +701,46 @@ test_opencode_refuses_unreadable_live_catalog() {
   [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "unreadable OpenCode catalog published metadata"
   [ ! -s "$LAUNCH_LOG" ] || fail "unreadable OpenCode catalog launched an agent"
   pass "OpenCode refuses dispatch when its live catalog is unreadable"
+}
+
+test_opencode_secondmate_config_model_uses_live_catalog() {
+  local rec id sm out status launch
+  id=profile-opencode-secondmate-config-z7c
+  rec=$(make_spawn_case profile-opencode-secondmate-config opencode "$id")
+  read_case_record "$rec"
+  printf '%s\n' 'opencode opencode-go/space-bunny-free' > "$HOME_DIR/config/secondmate-harness"
+  sm="$CASE_DIR/secondmate-home"
+  make_seeded_secondmate_home "$sm" "$id"
+
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$sm" --secondmate)
+  status=$?
+  expect_code 0 "$status" "configured OpenCode secondmate model should pass when listed"
+  assert_meta_profile "$HOME_DIR/state/$id.meta" opencode opencode-go/space-bunny-free default
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "opencode --model 'opencode-go/space-bunny-free' --prompt" \
+    "configured OpenCode secondmate model was not launched"
+  pass "configured OpenCode secondmate models are checked and launched"
+}
+
+test_opencode_secondmate_config_refuses_model_absent_from_live_catalog() {
+  local rec id sm out status
+  id=profile-opencode-secondmate-unsupported-z7d
+  rec=$(make_spawn_case profile-opencode-secondmate-unsupported opencode "$id")
+  read_case_record "$rec"
+  printf '%s\n' 'opencode opencode-go/space-bunny-free' > "$HOME_DIR/config/secondmate-harness"
+  sm="$CASE_DIR/secondmate-home"
+  make_seeded_secondmate_home "$sm" "$id"
+
+  out=$(FM_TEST_OPENCODE_MODELS='opencode-go/longcat-2.5-preview-free' \
+    run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$sm" --secondmate)
+  status=$?
+  expect_code 1 "$status" "configured OpenCode secondmate model absent from catalog must refuse"
+  assert_contains "$out" "OpenCode model 'opencode-go/space-bunny-free' is not available" \
+    "configured OpenCode secondmate refusal did not name the pinned model"
+  assert_contains "$out" "opencode models" "configured OpenCode secondmate refusal did not name the catalog command"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "unavailable configured secondmate model published metadata"
+  [ ! -s "$LAUNCH_LOG" ] || fail "unavailable configured secondmate model launched an agent"
+  pass "configured OpenCode secondmate models cannot bypass the live catalog"
 }
 
 test_native_effort_validator_keeps_axes_separate() {
@@ -1534,6 +1574,8 @@ test_cursor_failed_catalog_probe_does_not_block_spawn
 test_opencode_threads_model_and_ignores_effort_axis
 test_opencode_refuses_model_absent_from_live_catalog
 test_opencode_refuses_unreadable_live_catalog
+test_opencode_secondmate_config_model_uses_live_catalog
+test_opencode_secondmate_config_refuses_model_absent_from_live_catalog
 test_native_effort_validator_keeps_axes_separate
 test_native_pi_ultra_is_explicit_and_model_scoped
 test_batch_preserves_native_ultra
