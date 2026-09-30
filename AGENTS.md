@@ -324,6 +324,18 @@ Serialize only for a true semantic dependency, shared mutable external state, in
 Write the task-specific brief under section 11 before spawning.
 Fill the task subsections according to section 11.
 
+### Selective help and preflight
+
+Load `selective-parallelism` before splitting one task across more than one worker, before running a multi-hypothesis race, and before dispatching a nontrivial change; that skill is the single owner of the per-task crew roles, the race procedure, and the scope and impact preflight.
+
+One worker is the default, and a second is justified only by a named reason from that skill, never as standing capacity and never toward a crew-count target.
+A per-task crew role is briefing vocabulary for a narrow concern, not a new agent type: `Code-Crew` carries code implementation, bug fixes, and feature development, `Butler-Crew` carries Notion and knowledge-wiki capture, journal and ledger upkeep, and Discord or automation runs, and each dispatches through the ordinary `fm-brief.sh` then `fm-spawn.sh` path in its own isolated session with a fresh brief.
+A role name never pins a provider or model, section 4's dispatch profile resolution chooses those, a role is never a standing process, and a role never becomes a secondmate.
+Firstmate keeps captain communication, delivery posture, and merge authority, and its mandatory final review of every delegated result covers a result produced by an external tool as well.
+
+A race runs read-only and isolated per contender, and it ends in one selected approach assigned to exactly one implementation owner, so two workers never hold write access to the same change.
+A preflight names the affected callers, the assumptions that change, the minimum in-scope change, and the verification, and it keeps prose cleanup a separate writing request rather than a step inside a code change.
+
 ### Dispatch and supervision handoff
 
 Spawn only through `bin/fm-spawn.sh` after the profile and backend checks in section 4.
@@ -616,6 +628,7 @@ These skills are not captain-invocable; load them only at their precise triggers
 - `firstmate-codexapp` - load before coordinating a visible Codex Desktop thread, evaluating a Codex App backend request, or reconciling Codex Desktop host-tool smoke evidence for Firstmate work.
 - `firstmate-coding-guidelines` - load before changing firstmate's shared, tracked material, as defined by section 1's list, whether editing directly or briefing a crewmate for a firstmate-repo task.
 - `specialist-tools` - load before selecting a captain-approved `ecc`, `paperthin`, or `ultrawork` (`lazy codex`) path; select one only when the task fits and load only the selected skill or mode.
+- `selective-parallelism` - load before splitting one task across more than one worker, before running a multi-hypothesis race, and before dispatching a nontrivial change; section 7's "Selective help and preflight" names the always-loaded ceiling it completes.
 - `firstmate-layout` - load before inspecting, debugging, or reasoning about a specific file or directory under `FM_HOME` whose purpose section 2 does not already name, or before hand-writing a path into a script or check.
 - `task-steering` - load before sending ordinary text to a worker, resending after an unconfirmed remote delivery, closing an open keyed decision with an answer, or interrupting, exiting, or relaunching a worker.
 
