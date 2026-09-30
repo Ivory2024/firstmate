@@ -41,12 +41,12 @@ The failure this policy prevents is workers exchanging partial, unverified resul
 A crew role is briefing vocabulary for a narrow concern, not a persistent agent.
 It is scaffolded and dispatched through the ordinary `bin/fm-brief.sh` then `bin/fm-spawn.sh` path, so it gets the same worktree isolation, durable state, supervision, and delivery contract as any other task.
 Each role runs in its own isolated session with a fresh brief, which reduces context bleed from earlier work without promising any particular context quality.
-Close a completed role session only through the ordinary task lifecycle after its deliverable and completion gates pass; never discard unlanded work or tear down a task whose required work remains.
+Close a completed role session only through the ordinary task lifecycle after its deliverable exists and delivery and landed-work gates permit teardown; never discard unlanded work or tear down a task whose required work remains.
 
 Two roles cover routine splitting:
 
 - **`Code-Crew`** carries code implementation, bug fixes, and feature development for one task.
-  TDD and verification follow the target repository's own contract and the task's risk; when the repository has no executable contract, verify the real surface directly instead of claiming a check passed.
+  For code behavior changes, begin with a failing behavioral test and implement against it; follow the target repository's test commands and safety constraints, and when it has no executable contract verify the real surface directly instead of claiming a check passed.
   Running a PR verification pass is input to review and never replaces the coordinator's final review, which the rules below state.
 - **`Butler-Crew`** carries the recurring non-engineering chores for one task: Notion and knowledge-wiki capture, journal and ledger upkeep, and Discord or other automation runs.
   Any write to an external system, any message it sends, and any merge it proposes still obey the existing approval and safety rules unchanged, so a specialist never gains a capability the coordinator lacks.
