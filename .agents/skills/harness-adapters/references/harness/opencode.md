@@ -63,4 +63,5 @@ On native Windows, the operational-input adapter runs its Bash helper through `b
 
 The companion `.opencode/plugins/fm-primary-watch-arm.js` owns normal TUI watcher supervision, re-arms on every turn-end event, and coordinates with the guard before a blind-turn follow-up.
 The PreToolUse-equivalent watcher-arm seatbelt blocks by throwing from the `execute.before` tool hook.
-Because 2.x loads a plugin once per location, each plugin scopes its module state per session rather than per module, and `.opencode/plugins/lib/fm-opencode-events.js` is the single owner of the event set, the subscription boilerplate, and the root-scoped arm coordinator key.
+Because 2.x loads a plugin once per location, the watcher scopes lifecycle state and its coordinator by resolved Firstmate root, while the turn-end guard scopes recovery-prompt suppression by session.
+`.opencode/plugins/lib/fm-opencode-events.js` owns the shared event set, subscription boilerplate, and root-scoped coordinator key.
