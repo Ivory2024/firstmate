@@ -4748,19 +4748,21 @@ test_outcomes_tools_match_stock_call_header_across_pi_releases() {
     echo "skip: node not found for the Pi stock call header compatibility test"
     return
   fi
-  command -v npm >/dev/null 2>&1 || {
-    echo "skip: npm not found, so no pinned Pi release can be materialized"
-    return
-  }
-  local installed_version checked=0 version prefix package_dir fixture out status
-  installed_version=${FM_PI_PACKAGE_DIR:+"$(node -p 'require(process.argv[1]).version || ""' \
-    "$FM_PI_PACKAGE_DIR/package.json" 2>/dev/null || printf '')"}
+  local installed_package_dir= checked=0 version prefix package_dir fixture out status
+  if [ -n "${FM_PI_PACKAGE_DIR:-}" ]; then
+    installed_package_dir=$FM_PI_PACKAGE_DIR
+  elif command -v npm >/dev/null 2>&1; then
+    installed_package_dir="$(npm root -g 2>/dev/null)/@earendil-works/pi-coding-agent"
+  fi
   for version in $PI_STOCK_HEADER_COMPAT_VERSIONS; do
     prefix="$TMP_ROOT/pi-$version"
-    # The release already under test needs no fetch, so an environment with no
-    # registry still proves parity on it rather than skipping outright.
-    if [ -n "${installed_version:-}" ] && [ "$installed_version" = "$version" ]; then
-      package_dir=$FM_PI_PACKAGE_DIR
+    if [ -n "$installed_package_dir" ] && [ -f "$installed_package_dir/package.json" ] \
+      && [ "$(node -p 'require(process.argv[1]).version || ""' \
+        "$installed_package_dir/package.json" 2>/dev/null || printf '')" = "$version" ]; then
+      package_dir=$installed_package_dir
+    elif ! command -v npm >/dev/null 2>&1; then
+      echo "skip: pinned Pi $version is not installed and npm is not found, so its stock call header stays unverified"
+      continue
     elif ! pi_install_pinned_version "$version" "$prefix"; then
       echo "skip: pinned Pi $version could not be installed, so its stock call header stays unverified"
       continue
