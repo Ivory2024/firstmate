@@ -1,6 +1,7 @@
 # OpenCode
 
-Verified on 2026-06-11 across versions 1.15.7 through 1.17.6, with busy-queue behavior re-verified on 2026-07-20 using 1.18.4.
+Harness behavior was verified on 2026-06-11 across versions 1.15.7 through 1.17.6, with busy-queue behavior re-verified on 2026-07-20 using 1.18.4.
+The worker busy-state lifecycle below describes the generated OpenCode 2 plugin.
 
 ## Operating facts
 
