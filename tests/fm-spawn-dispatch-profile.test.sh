@@ -65,6 +65,16 @@ fi
 exit 0
 SH
   chmod +x "$fakebin/timeout" "$fakebin/cursor-agent" "$fakebin/opencode"
+  cat > "$fakebin/curl" <<'SH'
+#!/usr/bin/env bash
+[ "${FM_FAKE_MODELS_DEV_STATUS:-0}" -eq 0 ] || exit "${FM_FAKE_MODELS_DEV_STATUS}"
+if [ -n "${FM_FAKE_MODELS_DEV_JSON:-}" ]; then
+  printf '%s\n' "$FM_FAKE_MODELS_DEV_JSON"
+else
+  printf '%s\n' '{"opencode-go":{"models":{"space-bunny-free":{"cost":{"input":0,"output":0}},"longcat-2.5-preview-free":{"cost":{"input":0,"output":0}},"claude-sonnet-4-5":{"cost":{"input":3,"output":15}}}}}'
+fi
+SH
+  chmod +x "$fakebin/curl"
   make_spawn_pi_probe "$fakebin" pi
   make_spawn_pi_probe "$fakebin" pi-signed
   printf '%s\n' "$fakebin"
@@ -116,6 +126,8 @@ run_spawn() {
     FM_FAKE_OPENCODE_MODELS="${FM_TEST_OPENCODE_MODELS:-}" \
     FM_FAKE_OPENCODE_MODELS_STATUS="${FM_TEST_OPENCODE_MODELS_STATUS:-0}" \
     FM_FAKE_OPENCODE_MODELS_ARGS="${FM_TEST_OPENCODE_MODELS_ARGS:-}" \
+    FM_FAKE_MODELS_DEV_JSON="${FM_TEST_MODELS_DEV_JSON:-}" \
+    FM_FAKE_MODELS_DEV_STATUS="${FM_TEST_MODELS_DEV_STATUS:-0}" \
     GROK_HOME="$home/grok-home" \
     fm_test_run_spawn "$home" "$wt" "$fakebin" "$@"
 }
@@ -688,7 +700,7 @@ test_opencode_threads_model_and_ignores_effort_axis() {
     cat > "$FAKEBIN_DIR/opencode" <<'SH'
 #!/usr/bin/env bash
 if [ "${1:-}" = models ]; then
-  printf '%s\n' 'anthropic/claude-sonnet-4-5'
+  printf '%s\n' 'opencode-go/space-bunny-free'
   exit 0
 fi
 if [ "${1:-}" = mini ] && [ "${2:-}" = --help ]; then
@@ -707,10 +719,10 @@ SH
     chmod +x "$FAKEBIN_DIR/opencode"
     out=$(FM_FAKE_OPENCODE_MINI="$mini_mode" \
       run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
-        --model anthropic/claude-sonnet-4-5 --effort high)
+        --model opencode-go/space-bunny-free --effort high)
     status=$?
     expect_code 0 "$status" "OpenCode spawn with mini-supported=$mini_mode should succeed: $out"
-    assert_meta_profile "$HOME_DIR/state/$id.meta" opencode anthropic/claude-sonnet-4-5 high
+    assert_meta_profile "$HOME_DIR/state/$id.meta" opencode opencode-go/space-bunny-free high
     launch=$(cat "$LAUNCH_LOG")
     FM_FAKE_OPENCODE_MINI="$mini_mode" FM_FAKE_OPENCODE_ARGS="$args_file" \
       PATH="$FAKEBIN_DIR:$PATH" bash -c "$launch" \
@@ -722,7 +734,7 @@ SH
       [ "$(sed -n '1p' "$args_file")" = --model ] \
         || fail "legacy OpenCode launch did not retain its top-level interface"
     fi
-    grep -Fxq 'anthropic/claude-sonnet-4-5' "$args_file" \
+    grep -Fxq 'opencode-go/space-bunny-free' "$args_file" \
       || fail "OpenCode launch did not pass the requested model"
     grep -Fxq -- '--prompt' "$args_file" \
       || fail "OpenCode launch did not pass its worker prompt"
@@ -771,6 +783,43 @@ test_opencode_refuses_unreadable_live_catalog() {
   [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "unreadable OpenCode catalog published metadata"
   [ ! -s "$LAUNCH_LOG" ] || fail "unreadable OpenCode catalog launched an agent"
   pass "OpenCode refuses dispatch when its live catalog is unreadable"
+}
+
+test_opencode_refuses_paid_catalog_model() {
+  local rec id out status
+  id=profile-opencode-paid-z7f
+  rec=$(make_spawn_case profile-opencode-paid opencode "$id")
+  read_case_record "$rec"
+
+  out=$(FM_TEST_OPENCODE_MODELS='opencode-go/paid-candidate' \
+    FM_TEST_MODELS_DEV_JSON='{"opencode-go":{"models":{"paid-candidate":{"cost":{"input":0.15,"output":0.6}}}}}' \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+      --model opencode-go/paid-candidate)
+  status=$?
+  expect_code 1 "$status" "catalog-listed paid OpenCode model must be refused"
+  assert_contains "$out" "is not classified as free by models.dev" \
+    "paid model refusal did not name the metadata classification"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "paid OpenCode model published metadata"
+  [ ! -s "$LAUNCH_LOG" ] || fail "paid OpenCode model launched an agent"
+  pass "OpenCode refuses catalog-listed models with nonzero pricing metadata"
+}
+
+test_opencode_refuses_when_free_pricing_metadata_is_unavailable() {
+  local rec id out status
+  id=profile-opencode-pricing-error-z7g
+  rec=$(make_spawn_case profile-opencode-pricing-error opencode "$id")
+  read_case_record "$rec"
+
+  out=$(FM_TEST_MODELS_DEV_STATUS=1 \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+      --model opencode-go/space-bunny-free)
+  status=$?
+  expect_code 1 "$status" "OpenCode must refuse when pricing metadata cannot be fetched"
+  assert_contains "$out" "could not verify OpenCode model 'opencode-go/space-bunny-free' free pricing metadata" \
+    "pricing metadata failure did not identify the selected model"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "missing OpenCode pricing metadata published metadata"
+  [ ! -s "$LAUNCH_LOG" ] || fail "missing OpenCode pricing metadata launched an agent"
+  pass "OpenCode refuses dispatch when free pricing metadata is unavailable"
 }
 
 test_opencode_catalog_probe_uses_no_provider_argument() {
@@ -1669,6 +1718,8 @@ test_cursor_failed_catalog_probe_does_not_block_spawn
 test_opencode_threads_model_and_ignores_effort_axis
 test_opencode_refuses_model_absent_from_live_catalog
 test_opencode_refuses_unreadable_live_catalog
+test_opencode_refuses_paid_catalog_model
+test_opencode_refuses_when_free_pricing_metadata_is_unavailable
 test_opencode_catalog_probe_uses_no_provider_argument
 test_opencode_secondmate_config_model_uses_live_catalog
 test_opencode_secondmate_config_refuses_model_absent_from_live_catalog
