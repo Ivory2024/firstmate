@@ -97,10 +97,6 @@ Name four things before choosing the shape:
 Keep prose cleanup a separate writing request, never a step inside a code change.
 A request to cut filler, hedging, or AI tells from a PR description, a document, or a report is about that prose; applying the same treatment to code is a refactor with its own scope and risk, and the two must not ride in one instruction.
 
-Express a requested tool as the outcome and how to check it rather than as a command name.
-A skill or command that happens to exist on one machine is not a portable instruction, so write what the worker must produce and how it is verified, and name a command only when it is installed for that worker's harness.
-When a captain-approved specialist tool does fit, route the selection through `specialist-tools`, which owns that choice and its cost boundary.
-
 ## What this skill does not change
 
 It does not touch hard rule 1's project-write boundary, hard rule 2's merge authority, section 7's delivery paths, the secondmate policy, or the coordinator's final review.
