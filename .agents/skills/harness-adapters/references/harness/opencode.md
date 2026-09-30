@@ -13,7 +13,7 @@ Verified on 2026-06-11 across versions 1.15.7 through 1.17.6, with busy-queue be
 | Resume | Relaunch with `--continue` to resume the most recent session for the current directory, then send the next instruction after the TUI is ready because `--prompt` does not auto-submit alongside `--continue`. |
 | Interactive task launch | Firstmate probes `opencode mini --help` for a `Usage: opencode mini` line; OpenCode v2 uses `opencode mini`, while legacy releases use the top-level command. Both receive the requested `--model <provider/model>` and worker brief through `--prompt`. |
 | Effort flag | None for the interactive task launch; `opencode run` has `--variant`, but that is a different, non-interactive path. |
-| Model discovery | Run `opencode models [provider]` to list available provider/model identifiers. |
+| Model discovery | Run `opencode models` with no argument to list every available `provider/model` identifier. The legacy `opencode models <provider>` form is rejected by OpenCode v2 ("Unexpected positional argument") and prints usage text rather than a catalog, so `../../../bin/fm-spawn.sh` reads the whole catalog and matches the exact id. |
 | Trust dialog | None. |
 | Marker | None; OpenCode publishes no identity marker, so `../../../bin/fm-harness.sh` identifies it from process ancestry. |
 

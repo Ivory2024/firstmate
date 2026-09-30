@@ -50,6 +50,15 @@ SH
   cat > "$fakebin/opencode" <<'SH'
 #!/usr/bin/env bash
 if [ "${1:-}" = models ]; then
+  # OpenCode v2 refuses a provider positional argument ("Unexpected positional
+  # argument") and prints usage text instead of a catalog, so this stub does
+  # the same. A regression to the legacy `opencode models <provider>` form
+  # therefore fails here rather than passing against a permissive stub.
+  if [ -n "${2:-}" ]; then
+    printf '%s\n' 'error: unexpected positional argument' >&2
+    exit 1
+  fi
+  [ -n "${FM_FAKE_OPENCODE_MODELS_ARGS:-}" ] && printf '%s\n' "$@" > "$FM_FAKE_OPENCODE_MODELS_ARGS"
   [ "${FM_FAKE_OPENCODE_MODELS_STATUS:-0}" -eq 0 ] || exit "${FM_FAKE_OPENCODE_MODELS_STATUS}"
   printf '%b\n' "${FM_FAKE_OPENCODE_MODELS:-anthropic/claude-sonnet-4-5\\nopencode-go/space-bunny-free}"
 fi
@@ -106,6 +115,7 @@ run_spawn() {
     FM_FAKE_CURSOR_LIST_STATUS="${FM_TEST_CURSOR_LIST_STATUS:-0}" \
     FM_FAKE_OPENCODE_MODELS="${FM_TEST_OPENCODE_MODELS:-}" \
     FM_FAKE_OPENCODE_MODELS_STATUS="${FM_TEST_OPENCODE_MODELS_STATUS:-0}" \
+    FM_FAKE_OPENCODE_MODELS_ARGS="${FM_TEST_OPENCODE_MODELS_ARGS:-}" \
     GROK_HOME="$home/grok-home" \
     fm_test_run_spawn "$home" "$wt" "$fakebin" "$@"
 }
@@ -761,6 +771,30 @@ test_opencode_refuses_unreadable_live_catalog() {
   [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "unreadable OpenCode catalog published metadata"
   [ ! -s "$LAUNCH_LOG" ] || fail "unreadable OpenCode catalog launched an agent"
   pass "OpenCode refuses dispatch when its live catalog is unreadable"
+}
+
+test_opencode_catalog_probe_uses_no_provider_argument() {
+  local rec id out status args_file
+  id=profile-opencode-catalog-args-z7e
+  rec=$(make_spawn_case profile-opencode-catalog-args opencode "$id")
+  read_case_record "$rec"
+  args_file="$CASE_DIR/models-args"
+
+  # OpenCode v2 rejects `opencode models <provider>`, so dispatch must read the
+  # whole catalog with no argument and match the exact provider/model id. The
+  # stub refuses a positional argument, so a legacy-form regression refuses.
+  out=$(FM_TEST_OPENCODE_MODELS_ARGS="$args_file" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+      --model opencode-go/space-bunny-free)
+  status=$?
+  expect_code 0 "$status" "OpenCode spawn should accept an exact catalog id: $out"
+  assert_meta_profile "$HOME_DIR/state/$id.meta" opencode opencode-go/space-bunny-free default
+  [ -s "$args_file" ] || fail "OpenCode dispatch never probed the model catalog"
+  [ "$(wc -l < "$args_file" | tr -d ' ')" = 1 ] \
+    || fail "OpenCode catalog probe passed a provider argument: $(tr '\n' ' ' < "$args_file")"
+  [ "$(sed -n '1p' "$args_file")" = models ] \
+    || fail "OpenCode catalog probe did not call the models subcommand"
+  pass "OpenCode reads the whole model catalog without a provider argument"
 }
 
 test_opencode_secondmate_config_model_uses_live_catalog() {
@@ -1635,6 +1669,7 @@ test_cursor_failed_catalog_probe_does_not_block_spawn
 test_opencode_threads_model_and_ignores_effort_axis
 test_opencode_refuses_model_absent_from_live_catalog
 test_opencode_refuses_unreadable_live_catalog
+test_opencode_catalog_probe_uses_no_provider_argument
 test_opencode_secondmate_config_model_uses_live_catalog
 test_opencode_secondmate_config_refuses_model_absent_from_live_catalog
 test_native_effort_validator_keeps_axes_separate
