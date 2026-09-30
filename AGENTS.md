@@ -326,16 +326,7 @@ Fill the task subsections according to section 11.
 
 ### Selective help and preflight
 
-Load `selective-parallelism` before splitting one task across more than one worker, before running a multi-hypothesis race, and before dispatching a nontrivial change; that skill is the single owner of the per-task crew roles, the race procedure, and the scope and impact preflight.
-
-One worker is the default, and a second is justified only by a named reason from that skill, never as standing capacity and never toward a crew-count target.
-A per-task crew role is briefing vocabulary for a narrow concern, not a new agent type: `Code-Crew` carries code implementation, bug fixes, and feature development, `Butler-Crew` carries Notion and knowledge-wiki capture, journal and ledger upkeep, and Discord or automation runs, and each dispatches through the ordinary `fm-brief.sh` then `fm-spawn.sh` path in its own isolated session with a fresh brief.
-Firstmate does not perform Code-Crew project work itself; hard rule 1 owns its project-write boundary and delegation requirement.
-A role name never pins a provider or model, section 4's dispatch profile resolution chooses those, a role is never a standing process, and a role never becomes a secondmate.
-Firstmate keeps captain communication, delivery posture, and merge authority, and its mandatory final review of every delegated result covers a result produced by an external tool as well.
-
-A race runs read-only and isolated per contender, and it ends in one selected approach assigned to exactly one implementation owner, so two workers never hold write access to the same change.
-A preflight names the affected callers, the assumptions that change, the minimum in-scope change, and the verification, and it keeps prose cleanup a separate writing request rather than a step inside a code change.
+Load `selective-parallelism` for per-task crew selection, multi-hypothesis races, and nontrivial dispatch preflight; that skill owns those procedures.
 
 ### Dispatch and supervision handoff
 
