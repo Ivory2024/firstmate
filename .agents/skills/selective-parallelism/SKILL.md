@@ -41,6 +41,7 @@ The failure this policy prevents is workers exchanging partial, unverified resul
 A crew role is briefing vocabulary for a narrow concern, not a persistent agent.
 It is scaffolded and dispatched through the ordinary `bin/fm-brief.sh` then `bin/fm-spawn.sh` path, so it gets the same worktree isolation, durable state, supervision, and delivery contract as any other task.
 Each role runs in its own isolated session with a fresh brief, which reduces context bleed from earlier work without promising any particular context quality.
+Close a completed role session only through the ordinary task lifecycle after its deliverable and completion gates pass; never discard unlanded work or tear down a task whose required work remains.
 
 Two roles cover routine splitting:
 
