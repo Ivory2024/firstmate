@@ -75,7 +75,8 @@ State each hypothesis in the brief so the contender investigates it rather than 
 Scaffold each contender with `bin/fm-brief.sh <task-id> <repo> --scout` and dispatch it the ordinary way, so each runs read-only in its own isolated scratch worktree and delivers a report at `data/<task-id>/report.md`.
 
 The coordinator does the comparing, never the contenders: read each report, weigh the evidence against the reproduction or the requirement, then state the selected approach and why the others lost.
-Assign exactly one implementation owner afterward, promoting the matching scout through `bin/fm-promote.sh` when its report is the selected one, or briefing one ship task when none is.
+The reports are evidence, not authorization: promote a selected scout or brief a ship task only after implementation is separately authorized under `AGENTS.md` section 7.
+Once authorized, assign exactly one implementation owner, promoting the matching scout through `bin/fm-promote.sh` when its report is selected, or briefing one ship task when none is.
 Never let two contenders carry the implementation forward, never blend hypotheses, and never let a race outlive its decision.
 
 A race is not the way to handle an undiagnosed bug.
