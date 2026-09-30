@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
-import { subscribeEvents } from "./lib/fm-opencode-events.js";
 
 const handledSessions = new Set();
 
@@ -33,15 +32,14 @@ async function resolveRoot(anchor) {
   return resolvePath(anchor);
 }
 
-export default {
-  id: "fm-primary-sessionstart-nudge",
-  async setup(ctx) {
-    const root = await resolveRoot(ctx.location?.directory);
-    if (!root) return () => {};
+export const FmPrimarySessionstartNudge = async ({ client, directory, worktree }) => {
+  const root = worktree ? resolvePath(worktree) : await resolveRoot(directory);
 
-    return subscribeEvents(ctx, ["session.created"], async (event) => {
-      const sessionID = event.data?.sessionID;
-      if (!sessionID || handledSessions.has(sessionID)) return;
+  return {
+    event: async ({ event }) => {
+      if (event.type !== "session.created") return;
+      const sessionID = event.properties?.info?.id ?? event.properties?.sessionID;
+      if (!sessionID || handledSessions.has(sessionID) || !root) return;
       handledSessions.add(sessionID);
 
       const result = await runProcess(`${root}/bin/fm-sessionstart-nudge.sh`, []);
@@ -49,9 +47,14 @@ export default {
       if (!nudge) return;
 
       try {
-        await ctx.session.prompt({ sessionID, text: nudge });
+        await client.session.promptAsync({
+          path: { id: sessionID },
+          body: {
+            parts: [{ type: "text", text: nudge }],
+          },
+        });
       } catch {
       }
-    });
-  },
+    },
+  };
 };

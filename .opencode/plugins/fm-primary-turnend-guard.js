@@ -2,25 +2,10 @@ import { spawn } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
-import { subscribeEvents, TURN_END_EVENTS, watchArmCoordinatorKey } from "./lib/fm-opencode-events.js";
 
-// Per session, not per module: OpenCode 2 loads this plugin once per location and
-// serves every session in it, so one shared flag would let one session's injected
-// recovery prompt suppress another session's turn-end check.
-// Bounded on size: a session that receives the prompt and then never ends another
-// turn would otherwise leave an entry behind forever. The oldest insertion is
-// evicted first, which can only re-enable the guard for that one stale session -
-// the safe direction to fail in.
-const SKIP_LIMIT = 64;
-const skipNextTurnEnd = new Set();
+const COORDINATOR_KEY = "__firstmateOpenCodeWatchArm";
 
-function rememberSkip(sessionID) {
-  if (skipNextTurnEnd.size >= SKIP_LIMIT) {
-    const oldest = skipNextTurnEnd.values().next().value;
-    if (oldest !== undefined) skipNextTurnEnd.delete(oldest);
-  }
-  skipNextTurnEnd.add(sessionID);
-}
+let skipNextIdle = false;
 
 function runProcess(command, args, input = "") {
   return new Promise((resolve) => {
@@ -62,29 +47,29 @@ function runGuard(root) {
   return runProcess(`${root}/bin/fm-turnend-guard.sh`, [], '{"stop_hook_active":false}');
 }
 
-async function letWatchArmRun(sessionID, ctx, root) {
-  // Keyed by this guard's own root, so it can only ever ask the arm coordinator
-  // for the home it actually supervises.
-  const coordinator = globalThis[watchArmCoordinatorKey(root)];
+async function letWatchArmRun(sessionID, client) {
+  const coordinator = globalThis[COORDINATOR_KEY];
   if (!coordinator?.ensureArmed) return false;
-  const status = await coordinator.ensureArmed(sessionID, ctx);
+  const status = await coordinator.ensureArmed(sessionID, client);
   return status === "armed" || status === "wake" || status === "failed";
 }
 
-export default {
-  id: "fm-primary-turnend-guard",
-  async setup(ctx) {
-    const root = await resolveRoot(ctx.location?.directory);
+export const FmPrimaryTurnendGuard = async ({ client, directory, worktree }) => {
+  const root = worktree ? resolvePath(worktree) : await resolveRoot(directory);
 
-    return subscribeEvents(ctx, TURN_END_EVENTS, async (event) => {
-      const sessionID = event.data?.sessionID;
+  return {
+    event: async ({ event }) => {
+      if (event.type !== "session.idle") return;
+
+      if (skipNextIdle) {
+        skipNextIdle = false;
+        return;
+      }
+
+      const sessionID = event.properties?.sessionID;
       if (!sessionID) return;
 
-      // Suppress exactly the turn end caused by this guard's own injected
-      // recovery prompt, and only for the session that received it.
-      if (skipNextTurnEnd.delete(sessionID)) return;
-
-      if (await letWatchArmRun(sessionID, ctx, root)) return;
+      if (await letWatchArmRun(sessionID, client)) return;
 
       const result = await runGuard(root);
       if (result.code !== 2) return;
@@ -97,11 +82,16 @@ export default {
             "The watcher cycle is missing, failed, or unhealthy. Follow the harness recovery instruction below before ending the turn.\n\n" +
             result.stderr,
         );
-        await ctx.session.prompt({ sessionID, text });
-        rememberSkip(sessionID);
+        await client.session.promptAsync({
+          path: { id: sessionID },
+          body: {
+            parts: [{ type: "text", text }],
+          },
+        });
+        skipNextIdle = true;
       } catch {
-        skipNextTurnEnd.delete(sessionID);
+        skipNextIdle = false;
       }
-    });
-  },
+    },
+  };
 };

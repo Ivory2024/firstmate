@@ -31,7 +31,6 @@ unset NO_MISTAKES_GATE
 TMP_ROOT=$(fm_test_tmproot fm-sessionstart-nudge)
 NUDGE="$ROOT/bin/fm-sessionstart-nudge.sh"
 RUN="$ROOT/bin/fm-sessionstart-run.sh"
-CTX_LIB="$ROOT/tests/lib/fm-opencode-ctx.mjs"
 # shellcheck source=/dev/null
 . "$ROOT/bin/fm-operational-input.sh"
 NUDGE_TEXT="Run \`bin/fm-session-start.sh\` now, exactly once, before executing any other instructions."
@@ -173,18 +172,31 @@ test_opencode_plugin_delivers_exact_nudge_once() {
     "$ROOT/bin/fm-gate-refuse-lib.sh" "$ROOT/bin/fm-operational-input.sh" "$root/bin/"
   chmod +x "$root/bin/fm-sessionstart-nudge.sh"
   out=$(PLUGIN="$ROOT/.opencode/plugins/fm-primary-sessionstart-nudge.js" \
-    CTX_LIB="$CTX_LIB" WORKTREE="$root" EXPECTED="$NUDGE_LINE" node --input-type=module 2>&1 <<'EOF'
+    WORKTREE="$root" EXPECTED="$NUDGE_LINE" node --input-type=module 2>&1 <<'EOF'
 import { pathToFileURL } from "node:url";
 
-const { makeOpenCodeCtx } = await import(pathToFileURL(process.env.CTX_LIB).href);
+const prompts = [];
+const client = {
+  session: {
+    promptAsync: async (request) => {
+      prompts.push(request.body.parts[0].text);
+    },
+  },
+};
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
-const { ctx, emit, prompts } = makeOpenCodeCtx({ directory: process.env.WORKTREE });
-await mod.default.setup(ctx);
-// The same session twice must still nudge once: the latch is per sessionID.
-await emit("session.created", { sessionID: "session-nudge-test" });
-await emit("session.created", { sessionID: "session-nudge-test" });
+const hooks = await mod.FmPrimarySessionstartNudge({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+const event = {
+  type: "session.created",
+  properties: { sessionID: "session-nudge-test", info: { id: "session-nudge-test" } },
+};
+await hooks.event({ event });
+await hooks.event({ event });
 if (prompts.length !== 1) throw new Error(`expected one prompt, got ${prompts.length}`);
-if (prompts[0].text !== process.env.EXPECTED) throw new Error(`unexpected prompt: ${prompts[0].text}`);
+if (prompts[0] !== process.env.EXPECTED) throw new Error(`unexpected prompt: ${prompts[0]}`);
 EOF
   ) || status=$?
   expect_code 0 "$status" "OpenCode exact nudge delivery"

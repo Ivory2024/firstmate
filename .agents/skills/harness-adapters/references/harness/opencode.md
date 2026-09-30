@@ -43,25 +43,12 @@ The live Herdr guard is `FM_HERDR_SUBMIT_CONFIRM_LIVE=1 ../../../tests/fm-herdr-
 
 ## Primary integration
 
-The primary integration was verified on 2026-07-08 with OpenCode 1.17.6, and re-verified on 2026-09-28 against OpenCode 2.0.18, whose plugin API replaced the 1.x contract.
-A 2.x plugin must `export default { id, setup(ctx) }`; the named-export factory and the `event` property 1.x passed to it are both gone, and a 1.x-shaped plugin fails to load silently.
-The 2.x equivalents used here:
-
-| 1.x | 2.x |
-|---|---|
-| `export const FmX = async () => ({ event }) => {}` | `export default { id, setup(ctx) }` |
-| `client.app.directory` | `ctx.location.directory` |
-| `client.event.subscribe()` delivering `{ type, properties }` | `ctx.event.subscribe({ signal })` delivering `{ type, data }`, stopped by aborting the signal |
-| `session.idle` | `session.execution.succeeded`, `session.execution.failed`, `session.execution.interrupted` |
-| `session.status` (`busy`/`retry`/`idle`) | no equivalent; busy/idle is derived from the `session.execution.*` lifecycle |
-| `client.session.promptAsync` | `ctx.session.prompt({ sessionID, text })` |
-| `tool.execute.before` with `properties.tool === "bash"` | `ctx.tool.hook("execute.before")` with `event.tool === "shell"` (the internal id) and the arguments in `event.input`; throwing still blocks the call |
-
-`.opencode/plugins/fm-primary-turnend-guard.js` subscribes to the three `session.execution.*` turn-end events and calls `ctx.session.prompt` once when `../../../bin/fm-turnend-guard.sh` returns 2.
-`bin/fm-spawn.sh` writes the per-task `fm-busy-state.js` busy-state plugin into each task worktree, so that file is 2.x-shaped too and derives busy from `session.execution.started` and idle from the three turn-end events.
+The primary integration was verified on 2026-07-08 with OpenCode 1.17.6.
+`.opencode/plugins/fm-primary-turnend-guard.js` listens for `session.idle`.
+Throwing from `session.idle` does not block `opencode run`, so the primary adapter treats the event as passive and uses `client.session.promptAsync` to force one follow-up turn when `../../../bin/fm-turnend-guard.sh` returns 2.
+The follow-up was verified in the interactive TUI.
+`opencode run` can exit before displaying a queued follow-up, so the adapter steps aside in headless mode.
 On native Windows, the operational-input adapter runs its Bash helper through `bash`; macOS and Linux invoke it directly.
 
-The companion `.opencode/plugins/fm-primary-watch-arm.js` owns normal TUI watcher supervision, re-arms on every turn-end event, and coordinates with the guard before a blind-turn follow-up.
-The PreToolUse-equivalent watcher-arm seatbelt blocks by throwing from the `execute.before` tool hook.
-Because 2.x loads a plugin once per location, the watcher scopes lifecycle state and its coordinator by resolved Firstmate root, while the turn-end guard scopes recovery-prompt suppression by session.
-`.opencode/plugins/lib/fm-opencode-events.js` owns the shared event set, subscription boilerplate, and root-scoped coordinator key.
+The companion `.opencode/plugins/fm-primary-watch-arm.js` owns normal TUI watcher supervision, wakes it with `client.session.promptAsync`, and coordinates with the guard before a blind-turn follow-up.
+The PreToolUse-equivalent watcher-arm seatbelt blocks by throwing from `tool.execute.before`.
