@@ -4748,7 +4748,7 @@ test_outcomes_tools_match_stock_call_header_across_pi_releases() {
     echo "skip: node not found for the Pi stock call header compatibility test"
     return
   fi
-  local installed_package_dir= checked=0 version prefix package_dir fixture out status
+  local installed_package_dir='' checked=0 version prefix package_dir fixture out status
   if [ -n "${FM_PI_PACKAGE_DIR:-}" ]; then
     installed_package_dir=$FM_PI_PACKAGE_DIR
   elif command -v npm >/dev/null 2>&1; then
