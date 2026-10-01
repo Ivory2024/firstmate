@@ -3608,6 +3608,10 @@ rm -f "$STATE/$ID.turn-ended" "$STATE/$ID.progress" \
 # retired endpoint; teardown only runs after landing is confirmed, so any
 # leftover unhandled steer here is moot rather than unlanded work.
 rm -rf "$STATE/$ID.inbox"
+# OpenCode permission request records (bin/fm-opencode-permission.sh). The
+# retired endpoint cannot answer them anymore, so the records go with it; a
+# request that was never answered has already expired on the server.
+rm -rf "$STATE/$ID.opencode-permission"
 # The record is gone, so the backlog must not still show this task in flight
 # when teardown reports success. Still under this task's meta lock, so a steer
 # racing the same id stays serialized exactly as it was before. A captain-held

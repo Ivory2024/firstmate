@@ -704,6 +704,23 @@ test_local_only_fork_remote_allows() {
   pass "local-only worktree with HEAD on a fork remote is torn down and the home summary is refreshed"
 }
 
+test_teardown_removes_opencode_permission_records() {
+  local case_dir out
+  case_dir=$(make_case opencode-permission-records)
+  write_meta "$case_dir" no-mistakes ship
+  seed_backlog_in_flight "$case_dir"
+  # A permission request that was never answered is still pending here, so this
+  # proves the retired endpoint's records go with it rather than lingering as
+  # records nobody can answer.
+  mkdir -p "$case_dir/state/task-x1.opencode-permission"
+  printf '{"schema":"fm-opencode-permission-request.v1","state":"pending"}\n' \
+    > "$case_dir/state/task-x1.opencode-permission/per_abc123.json"
+  out=$(run_teardown "$case_dir") || fail "teardown failed with a permission record present"
+  assert_absent "$case_dir/state/task-x1.opencode-permission" \
+    "teardown left a retired task's permission request records behind"
+  pass "teardown removes the retired task's OpenCode permission request records"
+}
+
 test_teardown_closes_the_backlog_item_itself() {
   local case_dir out
   case_dir=$(make_case tasks-axi-close)
@@ -3694,6 +3711,7 @@ EOF
 }
 
 test_local_only_fork_remote_allows
+test_teardown_removes_opencode_permission_records
 test_teardown_closes_the_backlog_item_itself
 test_teardown_accepts_an_already_archived_done_item
 test_teardown_manual_backend_leaves_the_backlog_to_the_operator
