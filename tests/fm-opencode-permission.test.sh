@@ -305,6 +305,88 @@ test_ask_is_idempotent_and_keeps_the_original_record() {
   pass "a repeated ask for the same request does not rewrite its record"
 }
 
+test_ask_retries_a_push_that_failed_and_leaves_the_record_untouched() {
+  # A notification that fails once must not be lost: the second ask for the
+  # same request has to retry it, or the captain never sees the decision and
+  # the worker stays blocked.
+  local home record pushes before after
+  home="$TMP_ROOT/ask-retry-push"; arm_task "$home"
+  make_fake_opencode "$home"
+  pushes="$home/state/notifier-calls.log"
+  mkdir -p "$home/shadow"
+  cp "$ROOT/bin/fm-opencode-permission.sh" "$home/shadow/fm-opencode-permission.sh"
+  cp "$ROOT/bin/fm-busy-lib.sh" "$home/shadow/fm-busy-lib.sh"
+  cat > "$home/shadow/fm-discord-notify.sh" <<'SH'
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "$*" >> "$FM_FAKE_NOTIFIER_CALLS"
+[ "${FM_FAKE_NOTIFIER_FAIL:-0}" = 1 ] && exit 1
+exit 0
+SH
+  chmod +x "$home/shadow/fm-opencode-permission.sh" "$home/shadow/fm-discord-notify.sh"
+  : > "$pushes"
+  record="$home/state/$TASK.opencode-permission/$REQUEST.json"
+
+  mapfile -t assigns < <(perm_env "$home" pending)
+  env "${assigns[@]}" "FM_FAKE_NOTIFIER_CALLS=$pushes" FM_FAKE_NOTIFIER_FAIL=1 \
+    "$home/shadow/fm-opencode-permission.sh" ask "$TASK" "$SESSION" "$REQUEST" \
+    >/dev/null 2>"$home/first.err"
+  assert_equals "1" "$(wc -l < "$pushes" | tr -d ' ')" "the first ask attempted the push"
+  assert_present "$record" "the record survives a failed push, so the decision is retryable"
+  assert_contains "$(cat "$home/first.err")" "push failed" "a failed push is reported as actionable"
+
+  before=$(cat "$record")
+  env "${assigns[@]}" "FM_FAKE_NOTIFIER_CALLS=$pushes" \
+    "$home/shadow/fm-opencode-permission.sh" ask "$TASK" "$SESSION" "$REQUEST" \
+    >/dev/null 2>"$home/second.err"
+  after=$(cat "$record")
+  assert_equals "2" "$(wc -l < "$pushes" | tr -d ' ')" "the repeated ask retried the captain push"
+  assert_equals "$before" "$after" "the retry left the captured record bytes untouched"
+  pass "a failed captain push is retried on the next ask without rewriting the record"
+}
+
+test_the_question_shows_every_resource_and_remembered_path() {
+  # Approving a request grants every resource it names, so the question must
+  # show all of them. A path can contain spaces, so a space-joined rendering
+  # would misstate the boundary between two entries.
+  local home summary
+  home="$TMP_ROOT/ask-multiple-resources"; arm_task "$home"
+  make_fake_opencode "$home"
+  cat > "$home/fake-bin/opencode" <<'SH'
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "$*" >> "$FM_FAKE_PERM_CALLS"
+printf '{"id":"%s","sessionID":"%s","action":"external_directory","resources":["/private/a","/private/b","/tmp/dir with space/x"],"save":["/private/a","/tmp/dir with space/x"],"metadata":{}}\n' \
+  "$FM_FAKE_PERM_REQUEST" "$FM_FAKE_PERM_SESSION"
+SH
+  chmod +x "$home/fake-bin/opencode"
+  calls="$home/state/notifier-calls.log"
+  mkdir -p "$home/shadow"
+  cp "$ROOT/bin/fm-opencode-permission.sh" "$home/shadow/fm-opencode-permission.sh"
+  cp "$ROOT/bin/fm-busy-lib.sh" "$home/shadow/fm-busy-lib.sh"
+  cat > "$home/shadow/fm-discord-notify.sh" <<'SH'
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "$*" >> "$FM_FAKE_NOTIFIER_CALLS"
+SH
+  chmod +x "$home/shadow/fm-opencode-permission.sh" "$home/shadow/fm-discord-notify.sh"
+  mapfile -t assigns < <(perm_env "$home" pending)
+  env "${assigns[@]}" "FM_FAKE_NOTIFIER_CALLS=$calls" \
+    "$home/shadow/fm-opencode-permission.sh" ask "$TASK" "$SESSION" "$REQUEST" >/dev/null 2>&1
+  summary=$(cat "$calls")
+  assert_contains "$summary" '/private/a' "the first resource is shown"
+  assert_contains "$summary" '/private/b' "the last resource is shown too, not only the first"
+  assert_contains "$summary" '/tmp/dir with space/x' "a resource containing a space is shown whole"
+  assert_contains "$summary" 'resources=["/private/a","/private/b","/tmp/dir with space/x"]' \
+    "the full resource list is shown with its element boundaries intact"
+  assert_contains "$summary" 'these paths: ["/private/a","/tmp/dir with space/x"]' \
+    "the complete remember scope is shown with its boundaries intact"
+  case "$summary" in
+    *$'\n'*) fail "the pushed summary must stay one line" ;;
+  esac
+  pass "the captain is shown every resource and every remembered path, boundaries intact"
+}
+
 test_concurrent_decides_post_exactly_once() {
   local home record posts
   home="$TMP_ROOT/decide-concurrent"; arm_task "$home"
@@ -472,7 +554,7 @@ SH
   summary=$(cat "$calls")
   assert_contains "$summary" "perm-ask $TASK perm-$REQUEST" "the push uses the perm-ask trigger and the perm- key"
   assert_contains "$summary" "action=external_directory" "the question states the action"
-  assert_contains "$summary" "resource=/tmp/fake-probe/*" "the question states the resource"
+  assert_contains "$summary" 'resources=["/tmp/fake-probe/*"]' "the question states the complete resource list"
   assert_contains "$summary" "would save" "the question states the proposed remember scope"
   assert_contains "$summary" "Recommendation:" "the question states a recommendation"
   assert_contains "$summary" "Approve once|Approve once and remember this|Reject the request" \
@@ -497,7 +579,9 @@ test_ask_refuses_a_mismatched_identity
 test_ask_refuses_without_a_task_generation
 test_ask_refuses_an_unusable_identity
 test_ask_is_idempotent_and_keeps_the_original_record
+test_ask_retries_a_push_that_failed_and_leaves_the_record_untouched
 test_ask_records_a_resource_containing_a_comma_verbatim
+test_the_question_shows_every_resource_and_remembered_path
 test_decide_applies_once_and_refuses_a_replay
 test_decide_refuses_an_expired_request_without_writing
 test_decide_refuses_a_stale_task_generation

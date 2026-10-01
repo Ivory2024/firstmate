@@ -105,8 +105,12 @@ json_field() {  # <json> <field>
   printf '%s' "$1" | jq -r --arg f "$2" '.[$f] // empty' 2>/dev/null || true
 }
 
-json_array() {  # <json> <field> -> newline-separated
-  printf '%s' "$1" | jq -r --arg f "$2" '(.[$f] // [])[] | tostring' 2>/dev/null || true
+# Compact one-line JSON for a field, so a caller can render a list with its
+# element boundaries intact. A delimiter-joined or space-joined rendering cannot
+# do that: a path may contain spaces, commas, or newlines, so any delimiter the
+# renderer picks can appear inside a value and silently misstate the scope.
+json_compact() {  # <json> <field>
+  printf '%s' "$1" | jq -c --arg f "$2" '(.[$f] // [])' 2>/dev/null || printf '[]'
 }
 
 command_ask() {
@@ -130,9 +134,9 @@ command_ask() {
     || fail "refusing: server returned session id '$live_session' for requested session '$session_id'"
   action=$(json_field "$body" action)
   [ -n "$action" ] || fail "refusing: request $request_id carries no action"
-  resources=$(json_array "$body" resources)
-  save=$(json_array "$body" save)
-  [ -n "$resources" ] || fail "refusing: request $request_id names no resource"
+  resources=$(json_compact "$body" resources)
+  save=$(json_compact "$body" save)
+  [ "$resources" != "[]" ] || fail "refusing: request $request_id names no resource"
 
   local dir gen
   dir=$(record_dir "$task_id")
@@ -141,6 +145,14 @@ command_ask() {
   # decision is checked against, and the notifier already made the push
   # single-fire for this key.
   if [ -e "$(record_path "$task_id" "$request_id")" ]; then
+    # A push that failed once must be retried here, or the captain never sees
+    # the decision and the worker stays blocked. The push is idempotent per
+    # (trigger, task, key) - the notifier derives its record path and Discord
+    # nonce from those, re-sends a prior failed record, and the poll's offered
+    # marker refuses a duplicate reply - so re-pushing is safe. The captured
+    # record is left untouched: its generation and lists are the identity a
+    # later decision is checked against, and come from that first server read.
+    push_captain_decision "$task_id" "$request_id" "$action" "$resources" "$save"
     printf 'perm-%s\n' "$request_id"
     return 0
   fi
@@ -179,20 +191,22 @@ command_ask() {
   printf 'perm-%s\n' "$request_id"
 }
 
-# The captain-facing question carries what the ask is, what it touches, what
-# would be remembered if the answer were `always`, and this surface's
-# recommendation, so the reply is answerable from the message alone.
-push_captain_decision() {  # <task-id> <request-id> <action> <resources> <save>
+# The captain-facing question carries what the ask is, every resource it
+# touches, everything an `always` answer would remember, and this surface's
+# recommendation, so the reply is answerable from the message alone. Both lists
+# arrive as compact JSON and are rendered whole: a request can name several
+# resources, and approving it grants all of them, so showing only the first
+# would have the captain approve scope he was never shown.
+push_captain_decision() {  # <task-id> <request-id> <action> <resources-json> <save-json>
   local task_id=$1 request_id=$2 action=$3 resources=$4 save=$5
-  local summary first_resource saved_note
-  first_resource=$(printf '%s\n' "$resources" | head -1)
-  if [ -n "$save" ]; then
-    saved_note="Choosing 'remember this' would save: $(printf '%s' "$save" | paste -sd' ' -)"
+  local summary saved_note
+  if [ "$save" != "[]" ]; then
+    saved_note="Choosing 'remember this' would save these paths: $save"
   else
     saved_note="Nothing would be remembered: this ask has no save pattern."
   fi
-  summary=$(printf 'OpenCode worker needs permission: action=%s resource=%s | %s | Recommendation: approve once and keep the saved scope unchanged; approve with remember only when the same path will be needed again this run.' \
-    "$action" "$first_resource" "$saved_note")
+  summary=$(printf 'OpenCode worker needs permission: action=%s resources=%s | %s | Recommendation: approve once and keep the saved scope unchanged; approve with remember only when the same path will be needed again this run.' \
+    "$action" "$resources" "$saved_note")
   [ "${#summary}" -le 1800 ] || summary="${summary:0:1800}…"
   "$SCRIPT_DIR/fm-discord-notify.sh" "$TRIGGER" "$task_id" "perm-$request_id" \
     "$summary" \
