@@ -105,19 +105,25 @@ if [ "$resolve_config" = 1 ]; then
            global:$global,
            docs:[$docs[] | {type, path, info:(.info | clean_info), variants:(.info | variant_map)}]}
     '
+    # `debug config` output is redirected to a real file rather than piped
+    # straight into jq: against the installed OpenCode CLI, piping its stdout
+    # silently truncates at 64KiB, which breaks jq on any config past that
+    # size. A regular file does not have that limit.
+    raw_config="$result_dir/config.raw.json"
     # shellcheck disable=SC2016  # single quotes are deliberate: ${...} expands in the probe's bash -c, not here
     if fm_run_timed "$bound" /bin/bash -c '
-      "$1" debug config 2>/dev/null | jq -c --arg global "$2" "$3"
-      pipeline=("${PIPESTATUS[@]}")
-      [ "${pipeline[0]}" -eq 0 ] || exit "${pipeline[0]}"
-      exit "${pipeline[1]}"
-    ' _ "$bin" "$global_config" "$normalize_filter" > "$result_dir/config.json"; then
+      "$1" debug config > "$2" 2>/dev/null
+      status=$?
+      [ "$status" -eq 0 ] || exit "$status"
+      jq -c --arg global "$3" "$4" < "$2"
+    ' _ "$bin" "$raw_config" "$global_config" "$normalize_filter" > "$result_dir/config.json"; then
       printf '0\n' > "$result_dir/config.status"
     else
       status=$?
       [ "$status" -ne 0 ] || status=65
       printf '%s\n' "$status" > "$result_dir/config.status"
     fi
+    rm -f "$raw_config" 2>/dev/null || true
   fi
   fi
 else
