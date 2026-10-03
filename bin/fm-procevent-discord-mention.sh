@@ -8,6 +8,7 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 CHANNEL_ID=1551134713727426570
 SOURCE_ID=discord-claude-mentions
 
+# shellcheck source=bin/fm-discord-lib.sh
 source "$SCRIPT_DIR/fm-discord-lib.sh"
 
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
