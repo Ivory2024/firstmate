@@ -152,6 +152,9 @@ def new_messages(cursor):
         if page and min(message_id(item) for item in page) >= oldest:
             raise PollError("pagination-did-not-advance", terminal=True)
         messages.extend(page)
+    else:
+        if page and min(message_id(item) for item in page) > cursor and len(page) >= LIMIT:
+            raise PollError("pagination-cap-exceeded", terminal=True)
     unique = {item["id"]: item for item in messages if message_id(item) > cursor}
     return [unique[key] for key in sorted(unique, key=int)]
 
