@@ -85,5 +85,5 @@ case "${1:-}" in
     jq -e '.status == "poll-error" and (.error == "missing-token" or .error == "invalid-response" or .error == "oversized-response" or .error == "unsafe-cursor" or .error == "invalid-cursor" or .error == "invalid-message-id" or .error == "pagination-did-not-advance" or .error == "pagination-cap-exceeded" or .error == "http-401" or .error == "http-403" or .error == "http-404")' "$2" >/dev/null
     ;;
   -h|--help) usage ;;
-  *) usage >&2; exit 2 ;;
+  *) usage >&2 ;;
 esac
