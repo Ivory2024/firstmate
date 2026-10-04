@@ -2,6 +2,7 @@
 
 Harness behavior was verified on 2026-06-11 across versions 1.15.7 through 1.17.6, with busy-queue behavior re-verified on 2026-07-20 using 1.18.4.
 The worker busy-state lifecycle below describes the generated OpenCode 2 plugin.
+The task launch command was re-verified live on 2026-10-04 against the installed 2.0.18 CLI after that CLI's `run`/`mini` flag syntax changed and the old mini-detection probe stopped matching it, breaking every OpenCode dispatch; see "Interactive task launch" below for the corrected contract.
 
 ## Operating facts
 
@@ -12,7 +13,7 @@ The worker busy-state lifecycle below describes the generated OpenCode 2 plugin.
 | Interrupt | Double Escape; it is known to be flaky while a long shell command runs, so use `../../../bin/fm-control.sh <task-id> relaunch` for a wedged pane. |
 | Skill invocation | No separate verified form beyond normal slash-command behavior; use natural language when the exact command is uncertain. |
 | Resume | Relaunch with `--continue` to resume the most recent session for the current directory, then send the next instruction after the TUI is ready because `--prompt` does not auto-submit alongside `--continue`. |
-| Interactive task launch | Firstmate probes `opencode mini --help` for a `Usage: opencode mini` line; OpenCode v2 uses `opencode mini`, while legacy releases use the top-level command. Both receive the requested `--model <provider/model>` and worker brief through `--prompt`. |
+| Interactive task launch | Firstmate probes `opencode mini --help` for an `opencode mini` usage token on its own line (matching both `Usage: opencode mini` and OpenCode 2.0.18's `USAGE\n  opencode mini`). When `mini` is a real subcommand, the launch is `opencode mini --model <provider/model> --prompt "<brief>"`; a release without it falls back to the legacy top-level interactive form `opencode --model <provider/model> --prompt "<brief>"`. |
 | Effort flag | None for the interactive task launch; `opencode run` has `--variant`, but that is a different, non-interactive path. |
 | Model discovery | Run `opencode models` with no argument to list every available `provider/model` identifier. The legacy `opencode models <provider>` form is rejected by OpenCode v2 ("Unexpected positional argument") and prints usage text rather than a catalog, so `../../../bin/fm-spawn.sh` reads the whole catalog and matches the exact id. |
 | Trust dialog | None. |

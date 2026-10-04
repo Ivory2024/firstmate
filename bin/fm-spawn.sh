@@ -1866,8 +1866,13 @@ launch_template() {
     fi
     ;;
   opencode)
+    # OpenCode 2.0.18's `opencode mini --help` prints "USAGE\n  opencode mini
+    # [flags]" rather than a single "Usage: opencode mini" line, while older
+    # v2 releases print "Usage: opencode mini [options]". Match both forms on
+    # their own line. A release without a real `mini` subcommand falls back to
+    # the legacy top-level interactive interface.
     mini_help=$(opencode mini --help 2>&1 || :)
-    if printf '%s\n' "$mini_help" | grep -Eiq '^[[:space:]]*usage:[[:space:]]*opencode mini([[:space:]]|$)'; then
+    if printf '%s\n' "$mini_help" | grep -Eiq '^[[:space:]]*(usage:[[:space:]]*)?opencode[[:space:]]+mini([[:space:]]|$)'; then
       printf '%s' 'OPENCODE_CONFIG_CONTENT='\''{"permission":{"*":"allow"}}'\'' opencode mini __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
     else
       printf '%s' 'OPENCODE_CONFIG_CONTENT='\''{"permission":{"*":"allow"}}'\'' opencode __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
@@ -2219,8 +2224,10 @@ if [ "$HARNESS" = opencode ]; then
     fi
     OPENCODE_HEALTH_FILE=
     for OPENCODE_HEALTH_CANDIDATE in \
+      "${FM_OPENCODE_HEALTH_CATALOG:-}" \
       "$HOME/Developer/IMAC/AutomationSync/knowledge/opencode-free-models.json" \
       "$HOME/Developer/IMAC/data/opencode-free-models.json"; do
+      [ -n "$OPENCODE_HEALTH_CANDIDATE" ] || continue
       if [ -f "$OPENCODE_HEALTH_CANDIDATE" ]; then
         OPENCODE_HEALTH_FILE="$OPENCODE_HEALTH_CANDIDATE"
         break
@@ -2228,12 +2235,12 @@ if [ "$HARNESS" = opencode ]; then
     done
     OPENCODE_HEALTH_ENTRY=
     if [ -n "$OPENCODE_HEALTH_FILE" ]; then
-      OPENCODE_HEALTH_ENTRY=$(jq -e --arg id "$OPENCODE_MODEL_ID" '
-        [.models[]? | select(.id == $id)] | first
+      OPENCODE_HEALTH_ENTRY=$(jq -e --arg provider "$OPENCODE_MODEL_PROVIDER" --arg id "$OPENCODE_MODEL_ID" '
+        [.models[]? | select((.id == $id) and ((.provider // $provider) == $provider))] | first
       ' "$OPENCODE_HEALTH_FILE" 2>/dev/null) || OPENCODE_HEALTH_ENTRY=
     fi
     if [ -z "$OPENCODE_HEALTH_FILE" ] || [ -z "$OPENCODE_HEALTH_ENTRY" ] || [ "$OPENCODE_HEALTH_ENTRY" = null ]; then
-      echo "warning: cannot verify '$MODEL' against the opencode free-model health catalog (file missing or unreadable) - proceeding on the models.dev check alone" >&2
+      echo "warning: cannot verify '$MODEL' against the opencode free-model health catalog (file missing/unreadable or model not tracked) - proceeding on the models.dev check alone" >&2
     else
       OPENCODE_HEALTH_STATUS=$(printf '%s' "$OPENCODE_HEALTH_ENTRY" | jq -r '.status // "unknown"')
       OPENCODE_HEALTH_TERMINATED=$(printf '%s' "$OPENCODE_HEALTH_ENTRY" | jq -r '.early_termination_detected // false')
@@ -2463,10 +2470,11 @@ effort_flag_for_harness() {
     # --config-override, but that flag is single-value (see
     # rovo_config_override_flag below) so it is built there, merged with the
     # mandatory allowedExternalPaths grant, rather than here.
-    # OpenCode v2 moved interactive model/prompt flags under `mini`; older
-    # releases keep them at the top level. The launch probes `mini --help` and
-    # uses the matching interactive form. No effort flag is verified, and the
-    # `run --variant` flag belongs to non-interactive mode, so it is not passed.
+    # OpenCode v2 has a real `mini` subcommand for an interactive launch
+    # pre-filled with a prompt; a release without it falls back to the legacy
+    # top-level interactive form (see launch_template()'s opencode case for the
+    # probe and both command forms). No effort flag is verified, and the `run
+    # --variant` flag belongs to non-interactive mode, so it is not passed.
     # kimi provider catalogs expose supported and default effort values, but a
     # launch flag and mapping have not been live-verified; the requested axis
     # stays in task metadata but never reaches the launch command. Cursor encodes

@@ -54,7 +54,8 @@ classified into `coding_large` / `deep_debug` / `scout_tool`, each carrying
 check below at dispatch time — it refuses to spawn opencode on a catalog entry
 flagged dead, so a dispatcher no longer has to remember to check that part by
 hand. It checks the same two candidate paths `opencode_model_router.py`'s
-`load_catalog()` uses, in the same order: `AutomationSync/knowledge/opencode-free-models.json`
+`load_catalog()` uses, in the same order (with `FM_OPENCODE_HEALTH_CATALOG`
+environment override taking precedence when set): `AutomationSync/knowledge/opencode-free-models.json`
 first, then `data/opencode-free-models.json` as fallback.
 
 Before dispatching an opencode free-model candidate:

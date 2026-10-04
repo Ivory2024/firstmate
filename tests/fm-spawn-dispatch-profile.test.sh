@@ -692,7 +692,7 @@ test_cursor_failed_catalog_probe_does_not_block_spawn() {
 
 test_opencode_threads_model_and_ignores_effort_axis() {
   local rec id out status launch args_file mini_mode
-  for mini_mode in 1 0 2; do
+  for mini_mode in 1 2 0 3; do
     id="profile-opencode-$mini_mode-z7"
     rec=$(make_spawn_case "profile-opencode-$mini_mode" opencode "$id")
     read_case_record "$rec"
@@ -705,11 +705,15 @@ if [ "${1:-}" = models ]; then
 fi
 if [ "${1:-}" = mini ] && [ "${2:-}" = --help ]; then
   if [ "${FM_FAKE_OPENCODE_MINI:-1}" = 1 ]; then
-    printf '%s\n' 'Usage: opencode mini [options]'
+    printf '%s\n' 'DESCRIPTION' '  Start the minimal interactive interface' '' 'USAGE' '  opencode mini [flags]'
     exit 0
   fi
   if [ "${FM_FAKE_OPENCODE_MINI:-1}" = 2 ]; then
-    printf '%s\n' 'Usage: opencode [options] [command]' 'Commands: run, auth, models'
+    printf '%s\n' 'Usage: opencode mini [options]'
+    exit 0
+  fi
+  if [ "${FM_FAKE_OPENCODE_MINI:-1}" = 3 ]; then
+    printf '%s\n' 'DESCRIPTION' '  OpenCode command line interface' '' 'USAGE' '  opencode <subcommand> [flags]' '' 'SUBCOMMANDS' '  run    Run OpenCode with a message'
     exit 0
   fi
   exit 127
@@ -727,17 +731,19 @@ SH
     FM_FAKE_OPENCODE_MINI="$mini_mode" FM_FAKE_OPENCODE_ARGS="$args_file" \
       PATH="$FAKEBIN_DIR:$PATH" bash -c "$launch" \
       || fail "OpenCode launch failed for mini-supported=$mini_mode"
-    if [ "$mini_mode" = 1 ]; then
+    if [ "$mini_mode" = 1 ] || [ "$mini_mode" = 2 ]; then
       [ "$(sed -n '1p' "$args_file")" = mini ] \
-        || fail "OpenCode v2 launch did not select the mini interface"
+        || fail "OpenCode v2 launch did not select the mini interface for mode $mini_mode"
+      grep -Fxq -- '--prompt' "$args_file" \
+        || fail "OpenCode mini launch did not pass its worker prompt via --prompt"
     else
       [ "$(sed -n '1p' "$args_file")" = --model ] \
-        || fail "legacy OpenCode launch did not retain its top-level interface"
+        || fail "legacy OpenCode launch did not retain its top-level interactive interface for mode $mini_mode"
+      grep -Fxq -- '--prompt' "$args_file" \
+        || fail "legacy OpenCode launch did not pass its worker prompt via --prompt"
     fi
     grep -Fxq 'opencode-go/space-bunny-free' "$args_file" \
       || fail "OpenCode launch did not pass the requested model"
-    grep -Fxq -- '--prompt' "$args_file" \
-      || fail "OpenCode launch did not pass its worker prompt"
     grep -Fq 'FIRSTMATE_OP: v1 launch-brief' "$args_file" \
       || fail "OpenCode launch did not deliver the encoded worker brief"
     assert_not_contains "$launch" "--effort" "OpenCode launch must not pass unsupported --effort"
