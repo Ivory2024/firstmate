@@ -913,7 +913,7 @@ fm_recovery_marker_reopen_announced() {
 }
 
 fm_lock_try_acquire() {
-  local lockdir=$1 pid steal cur rc steal_owner primary_owner current
+  local lockdir=$1 allow_steal=${2:-yes} pid steal cur rc steal_owner primary_owner current sblock_pid
   FM_LOCK_HELD_PID=
   FM_LOCK_OWNER_DIR=
   FM_LOCK_RECOVERED_PID=
@@ -950,27 +950,33 @@ fm_lock_try_acquire() {
   fi
 
   steal="$lockdir.steal"
-  if ! fm_lock_try_acquire "$steal"; then
-    FM_LOCK_HELD_PID=$(cat "$lockdir/pid" 2>/dev/null || true)
-    FM_LOCK_OWNER_DIR=
-    return 1
+  steal_owner=
+  if [ "$allow_steal" = yes ]; then
+    # The steal mutex serializes primary-lock recovery. It is acquired WITHOUT
+    # its own steal-mutex recovery (allow_steal=no): recursing here let a stale
+    # .steal lock grow an unbounded .steal.steal... chain until ENAMETOOLONG.
+    if ! fm_lock_try_acquire "$steal" no; then
+      FM_LOCK_HELD_PID=$(cat "$lockdir/pid" 2>/dev/null || true)
+      FM_LOCK_OWNER_DIR=
+      return 1
+    fi
+    steal_owner=${FM_LOCK_OWNER_DIR:-}
   fi
-  steal_owner=${FM_LOCK_OWNER_DIR:-}
 
   cur=$(cat "$lockdir/pid" 2>/dev/null || true)
   if fm_pid_alive "$cur"; then
-    fm_lock_release "$steal"
+    [ -n "$steal_owner" ] && fm_lock_release "$steal"
     FM_LOCK_HELD_PID=$cur
     FM_LOCK_OWNER_DIR=
     return 1
   fi
   if fm_lock_mid_acquire_is_fresh "$lockdir" "$cur"; then
-    fm_lock_release "$steal"
+    [ -n "$steal_owner" ] && fm_lock_release "$steal"
     FM_LOCK_HELD_PID=$cur
     FM_LOCK_OWNER_DIR=
     return 1
   fi
-  if ! fm_lock_points_to_owner "$steal" "$steal_owner"; then
+  if [ -n "$steal_owner" ] && ! fm_lock_points_to_owner "$steal" "$steal_owner"; then
     fm_lock_release "$steal"
     FM_LOCK_HELD_PID=$(cat "$lockdir/pid" 2>/dev/null || true)
     FM_LOCK_OWNER_DIR=
@@ -983,7 +989,7 @@ fm_lock_try_acquire() {
   fi
   cur=$(cat "$lockdir/pid" 2>/dev/null || true)
   if ! fm_lock_recheck_stale_owner "$lockdir" "$primary_owner" "$cur"; then
-    fm_lock_release "$steal"
+    [ -n "$steal_owner" ] && fm_lock_release "$steal"
     FM_LOCK_HELD_PID=$(cat "$lockdir/pid" 2>/dev/null || true)
     FM_LOCK_OWNER_DIR=
     return 1
@@ -991,10 +997,23 @@ fm_lock_try_acquire() {
 
   if [ "$lockdir" = "$STATE/.watch.lock" ] \
     && ! _fm_recovery_marker_publish "$STATE/.watcher-down" downtime; then
-    fm_lock_release "$steal"
+    [ -n "$steal_owner" ] && fm_lock_release "$steal"
     FM_LOCK_HELD_PID=$cur
     FM_LOCK_OWNER_DIR=
     return 1
+  fi
+  if [ "$allow_steal" = no ]; then
+    # One bounded level only: a stale serialization mutex left behind by an
+    # interrupted or long-dead recovery is reclaimed here directly, after the
+    # same dead-owner and mid-acquire-freshness checks, and we never recurse
+    # into its own steal lock.
+    if [ -e "$steal" ] || [ -L "$steal" ]; then
+      sblock_pid=$(cat "$steal/pid" 2>/dev/null || true)
+      if ! fm_pid_alive "$sblock_pid" \
+        && ! fm_lock_mid_acquire_is_fresh "$steal" "$sblock_pid"; then
+        fm_lock_remove_path "$steal" || true
+      fi
+    fi
   fi
   fm_lock_remove_path "$lockdir" || true
   rc=1
@@ -1008,7 +1027,7 @@ fm_lock_try_acquire() {
     FM_LOCK_HELD_PID=$(cat "$lockdir/pid" 2>/dev/null || true)
     FM_LOCK_OWNER_DIR=
   fi
-  fm_lock_release "$steal"
+  [ -n "$steal_owner" ] && fm_lock_release "$steal"
   return "$rc"
 }
 
