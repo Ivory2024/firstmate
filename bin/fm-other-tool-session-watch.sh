@@ -9,6 +9,8 @@ touch "$STATE"
 
 PATTERN='(^|/)(codex|opencode|agy|cursor-agent|grok|kimi)($| )'
 
+# ps|grep is intentional here, not pgrep
+# shellcheck disable=SC2009
 current_sessions() {
   ps -axo pid=,lstart=,comm=,args= 2>/dev/null \
     | grep -E "$PATTERN" \
