@@ -21,10 +21,9 @@ every brief by default.
 
 Everything mechanically verifiable should already be a script gate
 regardless of which model ran the work — this is not new policy, it's what
-`fm-pr-merge.sh` (merge-on-green only), the ownership check before any push or
-PR (`AGENTS.md`'s `gh api ... --jq .owner.login` rule), and `no-mistakes`'s own
-gates already do. A gate that only fires for some harnesses is a gap to close,
-not a tiering decision — route it to the pipeline, not to a doc.
+`fm-pr-merge.sh` (merge-on-green only) and `no-mistakes`'s own gates already
+do. A gate that only fires for some harnesses is a gap to close, not a
+tiering decision — route it to the pipeline, not to a doc.
 
 ## Tiering by model, not by harness
 
