@@ -822,6 +822,100 @@ test_opencode_refuses_when_free_pricing_metadata_is_unavailable() {
   pass "OpenCode refuses dispatch when free pricing metadata is unavailable"
 }
 
+write_opencode_health_catalog() {
+  local home=$1 json=$2 dir
+  dir="$home/user-home/Developer/IMAC/AutomationSync/knowledge"
+  mkdir -p "$dir"
+  printf '%s\n' "$json" > "$dir/opencode-free-models.json"
+}
+
+test_opencode_dispatch_proceeds_without_health_catalog() {
+  local rec id out status
+  id=profile-opencode-health-missing-z7h
+  rec=$(make_spawn_case profile-opencode-health-missing opencode "$id")
+  read_case_record "$rec"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+    --model opencode-go/space-bunny-free)
+  status=$?
+  expect_code 0 "$status" "OpenCode dispatch must proceed when the health catalog is absent"
+  assert_contains "$out" "cannot verify 'opencode-go/space-bunny-free' against the opencode free-model health catalog" \
+    "missing health catalog did not warn"
+  [ -e "$HOME_DIR/state/$id.meta" ] || fail "missing health catalog blocked a valid spawn"
+  pass "OpenCode proceeds on models.dev check alone when the health catalog is missing"
+}
+
+test_opencode_dispatch_proceeds_on_active_health_entry() {
+  local rec id out status
+  id=profile-opencode-health-active-z7i
+  rec=$(make_spawn_case profile-opencode-health-active opencode "$id")
+  read_case_record "$rec"
+  write_opencode_health_catalog "$HOME_DIR" \
+    '{"models":[{"id":"space-bunny-free","status":"active","early_termination_detected":false,"is_expiring_soon":false}]}'
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+    --model opencode-go/space-bunny-free)
+  status=$?
+  expect_code 0 "$status" "OpenCode dispatch must proceed for an active, non-terminated catalog entry"
+  assert_not_contains "$out" "flagged unhealthy" "active catalog entry wrongly refused"
+  [ -e "$HOME_DIR/state/$id.meta" ] || fail "active health entry blocked a valid spawn"
+  pass "OpenCode proceeds when the health catalog marks the model active"
+}
+
+test_opencode_refuses_early_terminated_health_entry() {
+  local rec id out status
+  id=profile-opencode-health-terminated-z7j
+  rec=$(make_spawn_case profile-opencode-health-terminated opencode "$id")
+  read_case_record "$rec"
+  write_opencode_health_catalog "$HOME_DIR" \
+    '{"models":[{"id":"space-bunny-free","status":"active","early_termination_detected":true,"is_expiring_soon":false}]}'
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+    --model opencode-go/space-bunny-free)
+  status=$?
+  expect_code 1 "$status" "OpenCode dispatch must refuse an early-terminated catalog entry"
+  assert_contains "$out" "flagged unhealthy in the free-model health catalog" \
+    "early-terminated health entry refusal did not name the catalog flag"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "early-terminated health entry published metadata"
+  [ ! -s "$LAUNCH_LOG" ] || fail "early-terminated health entry launched an agent"
+  pass "OpenCode refuses dispatch when the health catalog flags early termination"
+}
+
+test_opencode_refuses_inactive_health_entry() {
+  local rec id out status
+  id=profile-opencode-health-inactive-z7k
+  rec=$(make_spawn_case profile-opencode-health-inactive opencode "$id")
+  read_case_record "$rec"
+  write_opencode_health_catalog "$HOME_DIR" \
+    '{"models":[{"id":"space-bunny-free","status":"retired","early_termination_detected":false,"is_expiring_soon":false}]}'
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+    --model opencode-go/space-bunny-free)
+  status=$?
+  expect_code 1 "$status" "OpenCode dispatch must refuse a non-active catalog entry"
+  assert_contains "$out" "status=retired" "inactive health entry refusal did not report its status"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "inactive health entry published metadata"
+  pass "OpenCode refuses dispatch when the health catalog status is not active"
+}
+
+test_opencode_dispatch_proceeds_on_untracked_health_catalog_model() {
+  local rec id out status
+  id=profile-opencode-health-untracked-z7l
+  rec=$(make_spawn_case profile-opencode-health-untracked opencode "$id")
+  read_case_record "$rec"
+  write_opencode_health_catalog "$HOME_DIR" \
+    '{"models":[{"id":"some-other-model","status":"retired","early_termination_detected":true}]}'
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+    --model opencode-go/space-bunny-free)
+  status=$?
+  expect_code 0 "$status" "OpenCode dispatch must proceed when the catalog does not track this model"
+  assert_contains "$out" "cannot verify 'opencode-go/space-bunny-free' against the opencode free-model health catalog" \
+    "untracked catalog model did not warn"
+  [ -e "$HOME_DIR/state/$id.meta" ] || fail "untracked catalog model blocked a valid spawn"
+  pass "OpenCode proceeds when the health catalog does not track the selected model"
+}
+
 test_opencode_catalog_probe_uses_no_provider_argument() {
   local rec id out status args_file
   id=profile-opencode-catalog-args-z7e
@@ -1720,6 +1814,11 @@ test_opencode_refuses_model_absent_from_live_catalog
 test_opencode_refuses_unreadable_live_catalog
 test_opencode_refuses_paid_catalog_model
 test_opencode_refuses_when_free_pricing_metadata_is_unavailable
+test_opencode_dispatch_proceeds_without_health_catalog
+test_opencode_dispatch_proceeds_on_active_health_entry
+test_opencode_refuses_early_terminated_health_entry
+test_opencode_refuses_inactive_health_entry
+test_opencode_dispatch_proceeds_on_untracked_health_catalog_model
 test_opencode_catalog_probe_uses_no_provider_argument
 test_opencode_secondmate_config_model_uses_live_catalog
 test_opencode_secondmate_config_refuses_model_absent_from_live_catalog

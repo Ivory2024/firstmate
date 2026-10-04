@@ -2217,6 +2217,35 @@ if [ "$HARNESS" = opencode ]; then
       echo "error: OpenCode model '$MODEL' is not classified as free by models.dev; choose a zero-cost model" >&2
       exit 1
     fi
+    OPENCODE_HEALTH_FILE=
+    for OPENCODE_HEALTH_CANDIDATE in \
+      "$HOME/Developer/IMAC/AutomationSync/knowledge/opencode-free-models.json" \
+      "$HOME/Developer/IMAC/data/opencode-free-models.json"; do
+      if [ -f "$OPENCODE_HEALTH_CANDIDATE" ]; then
+        OPENCODE_HEALTH_FILE="$OPENCODE_HEALTH_CANDIDATE"
+        break
+      fi
+    done
+    OPENCODE_HEALTH_ENTRY=
+    if [ -n "$OPENCODE_HEALTH_FILE" ]; then
+      OPENCODE_HEALTH_ENTRY=$(jq -e --arg id "$OPENCODE_MODEL_ID" '
+        [.models[]? | select(.id == $id)] | first
+      ' "$OPENCODE_HEALTH_FILE" 2>/dev/null) || OPENCODE_HEALTH_ENTRY=
+    fi
+    if [ -z "$OPENCODE_HEALTH_FILE" ] || [ -z "$OPENCODE_HEALTH_ENTRY" ] || [ "$OPENCODE_HEALTH_ENTRY" = null ]; then
+      echo "warning: cannot verify '$MODEL' against the opencode free-model health catalog (file missing or unreadable) - proceeding on the models.dev check alone" >&2
+    else
+      OPENCODE_HEALTH_STATUS=$(printf '%s' "$OPENCODE_HEALTH_ENTRY" | jq -r '.status // "unknown"')
+      OPENCODE_HEALTH_TERMINATED=$(printf '%s' "$OPENCODE_HEALTH_ENTRY" | jq -r '.early_termination_detected // false')
+      if [ "$OPENCODE_HEALTH_STATUS" != active ] || [ "$OPENCODE_HEALTH_TERMINATED" = true ]; then
+        echo "error: OpenCode model '$MODEL' is flagged unhealthy in the free-model health catalog (status=$OPENCODE_HEALTH_STATUS, early_termination_detected=$OPENCODE_HEALTH_TERMINATED); choose a different model or domain default" >&2
+        exit 1
+      fi
+      OPENCODE_HEALTH_EXPIRING=$(printf '%s' "$OPENCODE_HEALTH_ENTRY" | jq -r '.is_expiring_soon // false')
+      if [ "$OPENCODE_HEALTH_EXPIRING" = true ]; then
+        echo "warning: OpenCode model '$MODEL' is flagged is_expiring_soon in the free-model health catalog" >&2
+      fi
+    fi
   fi
 fi
 # Ultra is an explicit native capability, never a Pi thinking-level alias.
