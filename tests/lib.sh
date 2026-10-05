@@ -80,7 +80,6 @@ unset FM_DISCORD_BOT_TOKEN FM_DISCORD_CHANNEL_ID FM_DISCORD_ALLOWED_CHANNELS \
   FMX_BUDGET_URL FMX_PLATFORM
 # A leftover override would redirect even a suite's own temp home at a real
 # account, so remove it for the whole run rather than per case.
-FM_HOME_OVERRIDE=
 unset FM_HOME_OVERRIDE
 
 # Resolve the repo root from this library's own location. Consumed by sourcing
@@ -221,6 +220,7 @@ trap 'fm_test_cleanup; exit 131' QUIT
 # Relay credentials.  Suites remain free to replace FM_HOME with a case home.
 FM_TEST_DEFAULT_HOME=$(fm_test_tmproot fm-test-home) || return 1
 : > "$FM_TEST_DEFAULT_HOME/.env"
+mkdir -p "$FM_TEST_DEFAULT_HOME/state" "$FM_TEST_DEFAULT_HOME/config" "$FM_TEST_DEFAULT_HOME/data"
 export FM_TEST_DEFAULT_HOME
 export FM_HOME="$FM_TEST_DEFAULT_HOME"
 
