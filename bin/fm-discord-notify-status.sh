@@ -61,7 +61,7 @@ fm_discord_task_is_done() {
   line=$("$FM_CREW_STATE_BIN" "$task_id" 2>/dev/null) || return 1
   case "$line" in state:*) ;; *) return 1 ;; esac
   state=${line#state: }; state=${state%% *}
-  [ "$state" = done ] || return 1
+  [ "$state" = "done" ] || return 1
   rest="$line · "
   while [ -n "$rest" ]; do
     part=${rest%% · *}
