@@ -78,14 +78,9 @@ unset FM_DISCORD_BOT_TOKEN FM_DISCORD_CHANNEL_ID FM_DISCORD_ALLOWED_CHANNELS \
   FM_DISCORD_EXCLUDE_CHANNELS FM_DISCORD_ALLOW_DMS FM_DISCORD_AUTHORIZED_USER_IDS \
   FMX_PAIRING_TOKEN FMX_RELAY_URL FMX_DRY_RUN FMX_ENV_FILE FMX_REPORT_URL \
   FMX_BUDGET_URL FMX_PLATFORM
-# Define empty tokens so readers (e.g. fm_discord_load_config) see them defined
-# and never fall back to reading ambient .env files.
-FM_DISCORD_BOT_TOKEN=""
-FM_DISCORD_TOKEN=""
-FM_DISCORD_CHANNEL_ID=""
-FM_DISCORD_ALLOWED_CHANNELS=""
-export FM_DISCORD_BOT_TOKEN FM_DISCORD_TOKEN FM_DISCORD_CHANNEL_ID FM_DISCORD_ALLOWED_CHANNELS
-unset FM_HOME FM_HOME_OVERRIDE
+# A leftover override would redirect even a suite's own temp home at a real
+# account, so remove it for the whole run rather than per case.
+unset FM_HOME_OVERRIDE
 
 # Resolve the repo root from this library's own location. Consumed by sourcing
 # test files, not by this library, so it reads as "unused" here.
@@ -227,7 +222,7 @@ FM_TEST_DEFAULT_HOME=$(fm_test_tmproot fm-test-home) || return 1
 : > "$FM_TEST_DEFAULT_HOME/.env"
 mkdir -p "$FM_TEST_DEFAULT_HOME/state" "$FM_TEST_DEFAULT_HOME/config" "$FM_TEST_DEFAULT_HOME/data"
 export FM_TEST_DEFAULT_HOME
-unset FM_HOME
+export FM_HOME="$FM_TEST_DEFAULT_HOME"
 
 # fm_test_reap_orphans: best-effort sweep for fixture roots left behind by a
 # prior run that was killed hard enough to skip the traps above (e.g. a
