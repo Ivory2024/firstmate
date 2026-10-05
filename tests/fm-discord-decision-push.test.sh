@@ -608,6 +608,29 @@ test_failed_done_delivery_retries() {
   pass "a failed completion delivery remains retryable"
 }
 
+test_unconfigured_done_status_is_silent_and_retryable() {
+  local home log
+  home="$TMP_ROOT/done-unconfigured"
+  mkdir -p "$home/state/x-context"
+  chmod 700 "$home/state" "$home/state/x-context"
+  make_fake_node "$home"
+  log="$home/posts.jsonl"
+  PATH="$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN='' "$ROOT/bin/fm-discord-notify-status.sh" task-a \
+    'done: wired up the new endpoint' >/dev/null \
+    || fail "unconfigured completion returned failure"
+  [ ! -e "$home/state/x-context/discord-plain-$(printf '%s' task-a | shasum -a 256 | cut -d' ' -f1)$(printf '%s' 'wired up the new endpoint' | shasum -a 256 | cut -d' ' -f1).json" ] \
+    || fail "unconfigured completion was marked delivered"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify-status.sh" task-a \
+      'done: wired up the new endpoint' >/dev/null \
+    || fail "completion did not retry after Discord was configured"
+  assert_equals "1" "$(wc -l < "$log" | tr -d '[:space:]')" "unconfigured completion is retried when configured"
+  pass "an unconfigured completion is silent and remains retryable"
+}
+
 test_blocked_status_sends_no_report() {
   local home log
   home="$TMP_ROOT/blocked-status"
@@ -690,6 +713,7 @@ test_pr_push_names_gitlab_project
 test_done_status_sends_plain_report
 test_active_pr_monitoring_done_status_sends_no_report
 test_failed_done_delivery_retries
+test_unconfigured_done_status_is_silent_and_retryable
 test_blocked_status_sends_no_report
 test_failed_status_sends_no_report
 test_done_status_deduplicates_repeated_lines

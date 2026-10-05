@@ -20,11 +20,14 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 # no delivery could occur.
 fm_discord_send_plain_report() {
   local message=$1 channel_id
+  FM_DISCORD_REPORT_DELIVERED=0
   fm_discord_load_config
-  [ -n "${FM_DISCORD_TOKEN:-}" ] || return 2
+  [ -n "${FM_DISCORD_TOKEN:-}" ] || return 0
   channel_id=$(fm_discord_trim "${FM_DISCORD_CHANNELS%%,*}")
-  case "$channel_id" in ''|*[!0-9]*) return 2 ;; esac
-  "$SCRIPT_DIR/fm-discord-notify.sh" --report "$channel_id" "$message"
+  [ -n "$channel_id" ] || return 0
+  case "$channel_id" in *[!0-9]*) return 2 ;; esac
+  "$SCRIPT_DIR/fm-discord-notify.sh" --report "$channel_id" "$message" || return $?
+  FM_DISCORD_REPORT_DELIVERED=1
 }
 
 # Dedup marker for plain reports (done messages). Prevents duplicate Discord
@@ -101,6 +104,7 @@ case "$verb:$key" in
     marker_path=$(fm_discord_plain_report_marker "$task_id" "$note")
     [ -f "$marker_path" ] && exit 0
     fm_discord_send_plain_report "작업 완료 [$task_id]: ${note:-완료}" || exit $?
+    [ "$FM_DISCORD_REPORT_DELIVERED" -eq 1 ] || exit 0
     fm_discord_mark_plain_report_sent "$task_id" "$note"
     ;;
   *) exit 0 ;;
