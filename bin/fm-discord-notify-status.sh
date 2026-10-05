@@ -40,11 +40,20 @@ fm_discord_plain_report_marker() {
 }
 
 fm_discord_mark_plain_report_sent() {
-  local task_id=$1 note=$2 marker_path marker_dir
+  local task_id=$1 note=$2 marker_path marker_dir marker_base sent_at body
   marker_path=$(fm_discord_plain_report_marker "$task_id" "$note")
   marker_dir=${marker_path%/*}
-  mkdir -p "$marker_dir" || return $?
-  printf '{"task_id":"%s","note":"%s","sent_at":%s}\n' "$task_id" "$note" "$(date +%s)" > "$marker_path"
+  marker_base=${marker_path##*/}
+  sent_at=$(date +%s)
+  body=$(jq -cn --arg task_id "$task_id" --arg note "$note" --argjson sent_at "$sent_at" \
+    '{task_id: $task_id, note: $note, sent_at: $sent_at}') || {
+    printf 'fm-discord-notify-status: failed to encode completion marker\n' >&2
+    return 0
+  }
+  if ! printf '%s\n' "$body" | fmx_private_artifact_publish_stdin "$marker_dir" "$marker_base" 600; then
+    printf 'fm-discord-notify-status: failed to record completion marker\n' >&2
+  fi
+  return 0
 }
 
 fm_discord_task_is_done() {

@@ -47,6 +47,22 @@ printf '%s\n' "${FM_DISCORD_FAKE_CREW_STATE:-state: done · source: fake}"
 SH
   chmod +x "$home/fake-bin/fm-crew-state.sh"
 }
+
+discord_path_mode() {
+  if [ "$(uname)" = Darwin ]; then
+    stat -f %Lp "$1"
+  else
+    stat -c %a "$1"
+  fi
+}
+
+discord_path_links() {
+  if [ "$(uname)" = Darwin ]; then
+    stat -f %l "$1"
+  else
+    stat -c %h "$1"
+  fi
+}
 test_no_token_is_inert() {
   local home out rc
   home="$TMP_ROOT/no-token"
@@ -573,6 +589,31 @@ test_done_status_sends_plain_report() {
   pass "a done status line sends a plain Discord report with the worker's note"
 }
 
+test_done_marker_is_private_valid_json() {
+  local home log note expected_note marker
+  home="$TMP_ROOT/done-private-marker"
+  mkdir -p "$home/state"
+  make_fake_node "$home"
+  log="$home/posts.jsonl"
+  note='quote " slash \ line one'
+  note="$note"$'\n''line two'
+  expected_note='quote " slash \ line one line two'
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_CREW_STATE_BIN="$home/fake-bin/fm-crew-state.sh" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify-status.sh" task-a "done: $note" >/dev/null \
+    || fail "private done marker delivery failed"
+  marker=$(find "$home/state/x-context" -type f -name 'discord-plain-*.json' -print -quit)
+  [ -n "$marker" ] && [ -f "$marker" ] && [ ! -L "$marker" ] \
+    || fail "done marker is not a regular file"
+  assert_equals "700" "$(discord_path_mode "$home/state/x-context")" "done marker directory is private"
+  assert_equals "600" "$(discord_path_mode "$marker")" "done marker is private"
+  assert_equals "1" "$(discord_path_links "$marker")" "done marker has one link"
+  jq -e . "$marker" >/dev/null || fail "done marker is not valid JSON"
+  assert_equals "$expected_note" "$(jq -r .note "$marker")" "done marker preserves escaped note data"
+  pass "a done marker is private valid JSON"
+}
+
 test_nonterminal_done_status_sends_no_report() {
   local home log
   home="$TMP_ROOT/active-pr-monitoring-status"
@@ -742,6 +783,7 @@ test_ask_user_escalation_hold_carries_finding_text
 test_pr_push_requires_yolo_off
 test_pr_push_names_gitlab_project
 test_done_status_sends_plain_report
+test_done_marker_is_private_valid_json
 test_nonterminal_done_status_sends_no_report
 test_pr_awaiting_merge_done_status_sends_no_report
 test_failed_done_delivery_retries
