@@ -1,0 +1,12 @@
+ok - fm-discord-poll is a hard no-op without a token
+ok - self-hosted Discord ingestion writes x-inbox payload shape and fires x-mention wake
+ok - self-hosted Discord default polling discovers permitted DMs
+ok - fm-x-reply routes self-hosted Discord requests to self-hosted reply adapter
+ok - collision handling excludes gajae-way channel 1551134713727426570
+ok - explicit allowlist takes precedence over the default Discord collision exclusion with a warning
+ok - a reply to the bot's own message without a mention is captured
+ok - a reply to the bot's own message that also mentions the bot is captured
+ok - a reply to a non-bot message without a mention is still ignored
+ok - a DM command is polled and captured even when a channel allowlist is configured
+ok - an out-of-band Discord poll queues its mention durably, not only on stdout
+ok - fm-bootstrap handles FM_DISCORD_BOT_TOKEN activation and artifact generation
