@@ -26,15 +26,39 @@ ARM_FAIL_EXIT_POLLS=400
 TMP_ROOT=$(fm_test_tmproot fm-watcher-lock-tests)
 
 drain_and_ack() {  # <state>
-  local state=$1 err sequence generation
+  local state=$1 err ack_err sequence generation
   err="$state/.test-drain.err"
-  FM_STATE_OVERRIDE="$state" "$DRAIN" >/dev/null 2> "$err" || return 1
+  ack_err="$state/.test-ack.err"
+  if ! FM_STATE_OVERRIDE="$state" "$DRAIN" >/dev/null 2> "$err"; then
+    cat "$err" >&2
+    printf 'wake queue at failed drain: ' >&2
+    cat "$state/.wake-queue" >&2 2>/dev/null || true
+    return 1
+  fi
   sequence=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--ack-through \([0-9][0-9]*\) --recovery-generation [A-Za-z0-9._-][A-Za-z0-9._-]*$/\1/p' "$err")
   generation=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--ack-through [0-9][0-9]* --recovery-generation \([A-Za-z0-9._-][A-Za-z0-9._-]*\)$/\1/p' "$err")
-  rm -f "$err"
-  [ -n "$sequence" ] && [ -n "$generation" ] || return 1
-  FM_STATE_OVERRIDE="$state" "$DRAIN" --ack-through "$sequence" \
-    --recovery-generation "$generation"
+  if [ -z "$sequence" ] || [ -z "$generation" ]; then
+    if [ ! -s "$state/.wake-queue" ]; then
+      rm -f "$err" "$ack_err"
+      return 0
+    fi
+    cat "$err" >&2
+    echo "missing acknowledgement token with queued rows (sequence=${sequence:-empty}, generation=${generation:-empty})" >&2
+    printf 'wake queue: ' >&2
+    cat "$state/.wake-queue" >&2 2>/dev/null || true
+    return 1
+  fi
+  if ! FM_STATE_OVERRIDE="$state" "$DRAIN" --ack-through "$sequence" \
+    --recovery-generation "$generation" 2> "$ack_err"; then
+    cat "$ack_err" >&2
+    echo "failed ack token: sequence=$sequence generation=$generation" >&2
+    printf 'wake queue after failed ack: ' >&2
+    cat "$state/.wake-queue" >&2 2>/dev/null || true
+    printf 'recovery marker: ' >&2
+    cat "$state/.wake-recovery" >&2 2>/dev/null || true
+    return 1
+  fi
+  rm -f "$err" "$ack_err"
 }
 
 test_wait_deadline_reaps_a_stopped_child() {
