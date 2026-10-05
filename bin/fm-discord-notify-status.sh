@@ -97,6 +97,7 @@ case "$verb:$key" in
   done:*)
     note=$(status_line_note "$line")
     note=$(printf '%s' "$note" | tr '\n\r' '  ')
+    case "$note" in *'run still monitoring PR'*) exit 0 ;; esac
     marker_path=$(fm_discord_plain_report_marker "$task_id" "$note")
     [ -f "$marker_path" ] && exit 0
     fm_discord_send_plain_report "작업 완료 [$task_id]: ${note:-완료}" || exit $?

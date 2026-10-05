@@ -566,6 +566,48 @@ test_done_status_sends_plain_report() {
   pass "a done status line sends a plain Discord report with the worker's note"
 }
 
+test_active_pr_monitoring_done_status_sends_no_report() {
+  local home log
+  home="$TMP_ROOT/active-pr-monitoring-status"
+  mkdir -p "$home/state/x-context"
+  chmod 700 "$home/state" "$home/state/x-context"
+  make_fake_node "$home"
+  log="$home/posts.jsonl"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify-status.sh" task-a \
+      'done: checks green: PR held for review; run still monitoring PR' >/dev/null \
+    || fail "active PR monitoring status classification failed"
+  [ ! -s "$log" ] || fail "active PR monitoring status sent a Discord notification"
+  pass "a done status that still monitors a PR sends no notification"
+}
+
+test_failed_done_delivery_retries() {
+  local home log
+  home="$TMP_ROOT/done-delivery-retry"
+  mkdir -p "$home/state/x-context"
+  chmod 700 "$home/state" "$home/state/x-context"
+  make_fake_node "$home"
+  log="$home/posts.jsonl"
+  if FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
+    FM_DISCORD_FAKE_POST_STATUS=500 PATH="$home/fake-bin:$BASE_PATH" \
+    FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN=fake-token \
+    FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify-status.sh" task-a \
+      'done: wired up the new endpoint' >/dev/null 2>&1; then
+    fail "failed completion delivery returned success"
+  fi
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify-status.sh" task-a \
+      'done: wired up the new endpoint' >/dev/null \
+    || fail "completion did not retry after failed delivery"
+  assert_equals "2" "$(wc -l < "$log" | tr -d '[:space:]')" "failed completion delivery is retried"
+  pass "a failed completion delivery remains retryable"
+}
+
 test_blocked_status_sends_no_report() {
   local home log
   home="$TMP_ROOT/blocked-status"
@@ -646,6 +688,8 @@ test_ask_user_escalation_hold_carries_finding_text
 test_pr_push_requires_yolo_off
 test_pr_push_names_gitlab_project
 test_done_status_sends_plain_report
+test_active_pr_monitoring_done_status_sends_no_report
+test_failed_done_delivery_retries
 test_blocked_status_sends_no_report
 test_failed_status_sends_no_report
 test_done_status_deduplicates_repeated_lines
