@@ -732,6 +732,7 @@ nm_reclassify_failed_run_as_held_green() {
   local pr_url
   pr_url=$(strip_quotes "$(nm_field pr)")
   [ -n "$pr_url" ] && RUN_DETAIL="$RUN_DETAIL: $pr_url"
+  RUN_DETAIL="$RUN_DETAIL${SEP}$FM_PR_AWAITS_MERGE_DECISION"
   return 0
 }
 
@@ -1092,7 +1093,7 @@ if [ "$HAVE_RUN" = 1 ]; then
             CI_LOG_STATE=$(nm_ci_checks_state)
             if [ "$CI_LOG_STATE" = green ]; then
               RUN_STATE="done"
-              RUN_DETAIL="checks green: PR ready for review (still monitoring for merge/close)"
+              RUN_DETAIL="checks green: PR ready for review (still monitoring for merge/close)${SEP}$FM_PR_AWAITS_MERGE_DECISION"
             fi
             ;;
           fixing)
@@ -1105,7 +1106,7 @@ if [ "$HAVE_RUN" = 1 ]; then
 
   if [ "$RUN_STATE" = working ] && log_reports_ci_ready; then
     if [ "$RUN_SOURCE" = coarse ]; then
-      emit "done" status-log "$(status_line_note "$LOG_LINE")${SEP}run still monitoring PR"
+      emit "done" status-log "$(status_line_note "$LOG_LINE")${SEP}run still monitoring PR${SEP}$FM_PR_AWAITS_MERGE_DECISION"
     fi
     [ -n "$CI_STEP_STATUS" ] || CI_STEP_STATUS=$(nm_effective_ci_step_status)
     if [ "$RUN_STATUS" = fixing ]; then
@@ -1116,7 +1117,7 @@ if [ "$HAVE_RUN" = 1 ]; then
       CI_LOG_STATE=not-ready
     fi
     if [ "$CI_LOG_STATE" != not-ready ]; then
-      emit "done" status-log "$(status_line_note "$LOG_LINE")${SEP}run still monitoring PR"
+      emit "done" status-log "$(status_line_note "$LOG_LINE")${SEP}run still monitoring PR${SEP}$FM_PR_AWAITS_MERGE_DECISION"
     fi
   fi
 

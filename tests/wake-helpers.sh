@@ -58,6 +58,10 @@ make_case() {
   dir="$TMP_ROOT/$name"
   fakebin="$dir/fakebin"
   mkdir -p "$dir/state" "$fakebin"
+  # A case home with no credentials of its own, so a case that lets a script
+  # resolve FM_HOME cannot reach the operator's public bot token. A case that
+  # exercises a live surface sets its own against this home.
+  : > "$dir/.env"
   cat > "$fakebin/tmux" <<'SH'
 #!/usr/bin/env bash
 set -u
