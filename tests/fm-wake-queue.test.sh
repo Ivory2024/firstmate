@@ -1511,9 +1511,10 @@ SH
 }
 
 test_interruption_before_and_after_raw_commit() {
-  local dir state before_out after_out after_err replay_out empty_out replay_err precommit_ack_err pid rc count i sequence generation
+  local dir state before_out after_out after_err replay_out empty_out replay_err precommit_ack_err pid rc count i sequence generation marker
   dir=$(make_case interruption)
   state="$dir/state"
+  marker="$state/.watcher-down"
   before_out="$dir/before.out"
   after_out="$dir/after.out"
   after_err="$dir/after.err"
@@ -1527,12 +1528,17 @@ test_interruption_before_and_after_raw_commit() {
   FM_STATE_OVERRIDE="$state" FM_WAKE_DRAIN_TEST_DELAY_BEFORE_COMMIT=5 "$DRAIN" > "$before_out" &
   pid=$!
   i=0
-  while [ "$i" -lt 100 ] && [ "$(cat "$state/.wake-queue.lock/pid" 2>/dev/null || true)" != "$pid" ]; do
+  while [ "$i" -lt 100 ]; do
+    if [ "$(cat "$state/.wake-queue.lock/pid" 2>/dev/null || true)" = "$pid" ] \
+      && grep -Eq '^(pending|announced):handling:[A-Za-z0-9._-]+$' "$marker" 2>/dev/null; then
+      break
+    fi
     sleep 0.05
     i=$((i + 1))
   done
   [ "$(cat "$state/.wake-queue.lock/pid" 2>/dev/null || true)" = "$pid" ] \
-    || { kill "$pid" 2>/dev/null || true; fail "pre-commit drain never entered its serialized read boundary"; }
+    && grep -Eq '^(pending|announced):handling:[A-Za-z0-9._-]+$' "$marker" 2>/dev/null \
+    || { kill "$pid" 2>/dev/null || true; fail "pre-commit drain never entered its recoverable read boundary"; }
   kill -TERM "$pid" 2>/dev/null || fail "could not interrupt drain before raw commitment"
   set +e
   wait "$pid"
