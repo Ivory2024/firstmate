@@ -9,6 +9,7 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
+FM_CREW_STATE_BIN=${FM_CREW_STATE_BIN:-$SCRIPT_DIR/fm-crew-state.sh}
 # shellcheck source=bin/fm-classify-lib.sh
 . "$SCRIPT_DIR/fm-classify-lib.sh"
 # shellcheck source=bin/fm-discord-lib.sh
@@ -16,8 +17,7 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 
 # Push a plain one-line message to this home's configured Discord channel,
 # reusing fm-discord-notify.sh --report's send path. Silent no-op when Discord
-# is not configured. Return nonzero so completion markers are not written when
-# no delivery could occur.
+# is not configured.
 fm_discord_send_plain_report() {
   local message=$1 channel_id
   FM_DISCORD_REPORT_DELIVERED=0
@@ -25,7 +25,7 @@ fm_discord_send_plain_report() {
   [ -n "${FM_DISCORD_TOKEN:-}" ] || return 0
   channel_id=$(fm_discord_trim "${FM_DISCORD_CHANNELS%%,*}")
   [ -n "$channel_id" ] || return 0
-  case "$channel_id" in *[!0-9]*) return 2 ;; esac
+  case "$channel_id" in *[!0-9]*) return 0 ;; esac
   "$SCRIPT_DIR/fm-discord-notify.sh" --report "$channel_id" "$message" || return $?
   FM_DISCORD_REPORT_DELIVERED=1
 }
@@ -40,9 +40,17 @@ fm_discord_plain_report_marker() {
 }
 
 fm_discord_mark_plain_report_sent() {
-  local task_id=$1 note=$2 marker_path
+  local task_id=$1 note=$2 marker_path marker_dir
   marker_path=$(fm_discord_plain_report_marker "$task_id" "$note")
+  marker_dir=${marker_path%/*}
+  mkdir -p "$marker_dir" || return $?
   printf '{"task_id":"%s","note":"%s","sent_at":%s}\n' "$task_id" "$note" "$(date +%s)" > "$marker_path"
+}
+
+fm_discord_task_is_done() {
+  local task_id=$1 line
+  line=$("$FM_CREW_STATE_BIN" "$task_id" 2>/dev/null) || return 1
+  case "$line" in 'state: done ·'*) return 0 ;; *) return 1 ;; esac
 }
 
 [ "$#" -eq 2 ] || exit 2
@@ -98,9 +106,9 @@ case "$verb:$key" in
       "$summary" "병합|열어 두기" "열어 두기" "$task_id"
     ;;
   done:*)
+    fm_discord_task_is_done "$task_id" || exit 0
     note=$(status_line_note "$line")
     note=$(printf '%s' "$note" | tr '\n\r' '  ')
-    case "$note" in *'run still monitoring PR'*) exit 0 ;; esac
     marker_path=$(fm_discord_plain_report_marker "$task_id" "$note")
     [ -f "$marker_path" ] && exit 0
     fm_discord_send_plain_report "작업 완료 [$task_id]: ${note:-완료}" || exit $?
