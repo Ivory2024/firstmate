@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Map one newly received status record to the self-hosted Discord decision push.
+# Only send: (a) captain action/approval/choice requests and (b) completed task
+# outcomes. Do NOT send routine blocked/failed status, progress, stale requests,
+# internal diagnostics, or replayed/duplicate completion messages.
 # Usage: fm-discord-notify-status.sh <status-task-id> <status-line>
 set -u
 
@@ -23,6 +26,18 @@ fm_discord_send_plain_report() {
   channel_id=$(fm_discord_trim "${FM_DISCORD_CHANNELS%%,*}")
   case "$channel_id" in ''|*[!0-9]*) return 0 ;; esac
   "$SCRIPT_DIR/fm-discord-notify.sh" --report "$channel_id" "$message"
+}
+
+# Dedup marker for plain reports (done messages). Prevents duplicate Discord
+# posts when the same status line is re-read across polling cycles.
+fm_discord_plain_report_sent() {
+  local task_id=$1 note=$2 marker_path hash
+  hash=$(printf '%s' "$task_id" | shasum -a 256 | cut -d' ' -f1)
+  hash="${hash}$(printf '%s' "$note" | shasum -a 256 | cut -d' ' -f1)"
+  marker_path="${FM_STATE_OVERRIDE:-$FM_HOME/state}/x-context/discord-plain-${hash}.json"
+  [ -f "$marker_path" ] && return 0
+  printf '{"task_id":"%s","note":"%s","sent_at":%s}\n' "$task_id" "$note" "$(date +%s)" > "$marker_path"
+  return 1
 }
 
 [ "$#" -eq 2 ] || exit 2
@@ -80,17 +95,8 @@ case "$verb:$key" in
   done:*)
     note=$(status_line_note "$line")
     note=$(printf '%s' "$note" | tr '\n\r' '  ')
+    fm_discord_plain_report_sent "$task_id" "$note" && exit 0
     fm_discord_send_plain_report "작업 완료 [$task_id]: ${note:-완료}"
-    ;;
-  blocked:*)
-    note=$(status_line_note "$line")
-    note=$(printf '%s' "$note" | tr '\n\r' '  ')
-    fm_discord_send_plain_report "확인 필요(막힘) [$task_id]: ${note:-원인 미기재}"
-    ;;
-  failed:*)
-    note=$(status_line_note "$line")
-    note=$(printf '%s' "$note" | tr '\n\r' '  ')
-    fm_discord_send_plain_report "작업 실패 [$task_id]: ${note:-원인 미기재}"
     ;;
   *) exit 0 ;;
 esac

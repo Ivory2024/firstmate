@@ -566,8 +566,8 @@ test_done_status_sends_plain_report() {
   pass "a done status line sends a plain Discord report with the worker's note"
 }
 
-test_blocked_status_sends_plain_report() {
-  local home log body
+test_blocked_status_sends_no_report() {
+  local home log
   home="$TMP_ROOT/blocked-status"
   mkdir -p "$home/state/x-context"
   chmod 700 "$home/state" "$home/state/x-context"
@@ -579,16 +579,12 @@ test_blocked_status_sends_plain_report() {
     "$ROOT/bin/fm-discord-notify-status.sh" task-b \
       'blocked: waiting on API credentials' >/dev/null \
     || fail "blocked status classification failed"
-  assert_equals "1" "$(wc -l < "$log" | tr -d '[:space:]')" "blocked status sends exactly one report"
-  assert_contains "$(jq -r '.url' "$log")" "1000000000000000001" "blocked status sends to configured channel"
-  body=$(jq -r '.payload.content' "$log")
-  assert_contains "$body" "task-b" "blocked report includes task id"
-  assert_contains "$body" "waiting on API credentials" "blocked report includes the note text"
-  pass "a blocked status line sends a plain Discord report with the worker's note"
+  [ ! -s "$log" ] || fail "blocked status sent a Discord notification"
+  pass "a blocked status line sends no Discord notification"
 }
 
-test_failed_status_sends_plain_report() {
-  local home log body
+test_failed_status_sends_no_report() {
+  local home log
   home="$TMP_ROOT/failed-status"
   mkdir -p "$home/state/x-context"
   chmod 700 "$home/state" "$home/state/x-context"
@@ -600,12 +596,32 @@ test_failed_status_sends_plain_report() {
     "$ROOT/bin/fm-discord-notify-status.sh" task-c \
       'failed: build script exited 1' >/dev/null \
     || fail "failed status classification failed"
-  assert_equals "1" "$(wc -l < "$log" | tr -d '[:space:]')" "failed status sends exactly one report"
-  assert_contains "$(jq -r '.url' "$log")" "1000000000000000001" "failed status sends to configured channel"
-  body=$(jq -r '.payload.content' "$log")
-  assert_contains "$body" "task-c" "failed report includes task id"
-  assert_contains "$body" "build script exited 1" "failed report includes the note text"
-  pass "a failed status line sends a plain Discord report with the worker's note"
+  [ ! -s "$log" ] || fail "failed status sent a Discord notification"
+  pass "a failed status line sends no Discord notification"
+}
+
+test_done_status_deduplicates_repeated_lines() {
+  local home log
+  home="$TMP_ROOT/done-dedup"
+  mkdir -p "$home/state/x-context"
+  chmod 700 "$home/state" "$home/state/x-context"
+  make_fake_node "$home"
+  log="$home/posts.jsonl"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify-status.sh" task-a \
+      'done: wired up the new endpoint' >/dev/null \
+    || fail "done status classification failed"
+  assert_equals "1" "$(wc -l < "$log" | tr -d '[:space:]')" "first done status sends exactly one report"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify-status.sh" task-a \
+      'done: wired up the new endpoint' >/dev/null \
+    || fail "done status classification failed"
+  assert_equals "1" "$(wc -l < "$log" | tr -d '[:space:]')" "duplicate done status does not send again"
+  pass "a repeated done status line does not produce duplicate Discord posts"
 }
 
 test_no_token_is_inert
@@ -630,5 +646,6 @@ test_ask_user_escalation_hold_carries_finding_text
 test_pr_push_requires_yolo_off
 test_pr_push_names_gitlab_project
 test_done_status_sends_plain_report
-test_blocked_status_sends_plain_report
-test_failed_status_sends_plain_report
+test_blocked_status_sends_no_report
+test_failed_status_sends_no_report
+test_done_status_deduplicates_repeated_lines
