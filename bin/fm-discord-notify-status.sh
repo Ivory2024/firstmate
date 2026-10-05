@@ -15,45 +15,29 @@ FM_CREW_STATE_BIN=${FM_CREW_STATE_BIN:-$SCRIPT_DIR/fm-crew-state.sh}
 # shellcheck source=bin/fm-discord-lib.sh
 . "$SCRIPT_DIR/fm-discord-lib.sh"
 
-# Push a plain one-line message to this home's configured Discord channel,
-# reusing fm-discord-notify.sh --report's send path. Silent no-op when Discord
-# is not configured.
-fm_discord_send_plain_report() {
-  local message=$1 channel_id
-  FM_DISCORD_REPORT_DELIVERED=0
+# Push one completed-task outcome to this home's configured Discord channel,
+# reusing fm-discord-notify.sh --report's send path. The event id binds the
+# message to the durable exactly-once outbox, so a replayed status line, a
+# concurrent sender, a failed POST, or a crash before the receipt still yields
+# exactly one Discord message. Silent no-op when Discord is not configured.
+fm_discord_send_completion() {
+  local task_id=$1 event_id=$2 message=$3 channel_id
   fm_discord_load_config
   [ -n "${FM_DISCORD_TOKEN:-}" ] || return 0
   channel_id=$(fm_discord_trim "${FM_DISCORD_CHANNELS%%,*}")
   [ -n "$channel_id" ] || return 0
   case "$channel_id" in *[!0-9]*) return 0 ;; esac
-  "$SCRIPT_DIR/fm-discord-notify.sh" --report "$channel_id" "$message" || return $?
-  FM_DISCORD_REPORT_DELIVERED=1
+  "$SCRIPT_DIR/fm-discord-notify.sh" --report "$channel_id" "$message" "$event_id"
 }
 
-# Dedup marker for plain reports (done messages). Prevents duplicate Discord
-# posts when the same status line is re-read across polling cycles.
-fm_discord_plain_report_marker() {
-  local task_id=$1 note=$2 marker_path hash
-  hash=$(printf '%s' "$task_id" | shasum -a 256 | cut -d' ' -f1)
-  hash="${hash}$(printf '%s' "$note" | shasum -a 256 | cut -d' ' -f1)"
-  printf '%s/discord-plain-%s.json' "${FM_STATE_OVERRIDE:-$FM_HOME/state}/x-context" "$hash"
-}
-
-fm_discord_mark_plain_report_sent() {
-  local task_id=$1 note=$2 marker_path marker_dir marker_base sent_at body
-  marker_path=$(fm_discord_plain_report_marker "$task_id" "$note")
-  marker_dir=${marker_path%/*}
-  marker_base=${marker_path##*/}
-  sent_at=$(date +%s)
-  body=$(jq -cn --arg task_id "$task_id" --arg note "$note" --argjson sent_at "$sent_at" \
-    '{task_id: $task_id, note: $note, sent_at: $sent_at}') || {
-    printf 'fm-discord-notify-status: failed to encode completion marker\n' >&2
-    return 0
-  }
-  if ! printf '%s\n' "$body" | fmx_private_artifact_publish_stdin "$marker_dir" "$marker_base" 600; then
-    printf 'fm-discord-notify-status: failed to record completion marker\n' >&2
-  fi
-  return 0
+# A completion's stable identity: the task and the exact outcome text it
+# reported. Two different completions therefore never share a record, and the
+# same completion re-read on a later poll always resolves to the same one.
+fm_discord_completion_event_id() {
+  local task_id=$1 note=$2 task_hash note_hash
+  task_hash=$(printf '%s' "$task_id" | shasum -a 256 | cut -c1-16)
+  note_hash=$(printf '%s' "$note" | shasum -a 256 | cut -c1-16)
+  printf 'completion-%s-%s' "$task_hash" "$note_hash"
 }
 
 fm_discord_task_is_done() {
@@ -127,11 +111,9 @@ case "$verb:$key" in
     fm_discord_task_is_done "$task_id" || exit 0
     note=$(status_line_note "$line")
     note=$(printf '%s' "$note" | tr '\n\r' '  ')
-    marker_path=$(fm_discord_plain_report_marker "$task_id" "$note")
-    [ -f "$marker_path" ] && exit 0
-    fm_discord_send_plain_report "작업 완료 [$task_id]: ${note:-완료}" || exit $?
-    [ "$FM_DISCORD_REPORT_DELIVERED" -eq 1 ] || exit 0
-    fm_discord_mark_plain_report_sent "$task_id" "$note"
+    fm_discord_send_completion "$task_id" \
+      "$(fm_discord_completion_event_id "$task_id" "$note")" \
+      "작업 완료 [$task_id]: ${note:-완료}" || exit $?
     ;;
   *) exit 0 ;;
 esac
