@@ -1,0 +1,3 @@
+SOURCE                       ADAPTER      OWNER      PENDING
+bot-manager-issues           bot-manager  none       0
+fixture pid remained alive with unchanged identity after stale claim inspection
