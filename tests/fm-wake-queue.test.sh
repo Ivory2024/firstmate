@@ -1511,7 +1511,7 @@ SH
 }
 
 test_interruption_before_and_after_raw_commit() {
-  local dir state before_out after_out after_err replay_out empty_out pid rc count i sequence generation
+  local dir state before_out after_out after_err replay_out empty_out replay_err precommit_ack_err pid rc count i sequence generation
   dir=$(make_case interruption)
   state="$dir/state"
   before_out="$dir/before.out"
@@ -1519,30 +1519,50 @@ test_interruption_before_and_after_raw_commit() {
   after_err="$dir/after.err"
   replay_out="$dir/replay.out"
   empty_out="$dir/empty.out"
+  replay_err="$dir/replay.err"
+  precommit_ack_err="$dir/precommit-ack.err"
   printf 'done: interruption fixture\n' > "$state/task.status"
   append_wake "$state" signal task.status "signal: task" || fail "pre-commit interruption wake append failed"
 
   FM_STATE_OVERRIDE="$state" FM_WAKE_DRAIN_TEST_DELAY_BEFORE_COMMIT=5 "$DRAIN" > "$before_out" &
   pid=$!
   i=0
-  while [ "$i" -lt 100 ] && [ ! -e "$state/.wake-queue.lock" ]; do
+  while [ "$i" -lt 100 ] && [ "$(cat "$state/.wake-queue.lock/pid" 2>/dev/null || true)" != "$pid" ]; do
     sleep 0.05
     i=$((i + 1))
   done
-  [ -e "$state/.wake-queue.lock" ] || { kill "$pid" 2>/dev/null || true; fail "pre-commit drain never entered its serialized read boundary"; }
+  [ "$(cat "$state/.wake-queue.lock/pid" 2>/dev/null || true)" = "$pid" ] \
+    || { kill "$pid" 2>/dev/null || true; fail "pre-commit drain never entered its serialized read boundary"; }
   kill -TERM "$pid" 2>/dev/null || fail "could not interrupt drain before raw commitment"
   set +e
   wait "$pid"
   rc=$?
   set -e
   [ "$rc" -ne 0 ] || fail "pre-commit interruption unexpectedly succeeded"
-  FM_STATE_OVERRIDE="$state" "$DRAIN" > "$replay_out" 2> "$dir/replay.err" || fail "restored pre-commit wake did not drain"
+  FM_STATE_OVERRIDE="$state" "$DRAIN" > "$replay_out" 2> "$replay_err" || fail "restored pre-commit wake did not drain"
   count=$(awk -F '\t' 'NF == 5 { count++ } END { print count + 0 }' "$replay_out")
   [ "$count" -eq 1 ] || fail "pre-commit interruption lost or duplicated the durable row"
-  sequence=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--ack-through \([0-9][0-9]*\) --recovery-generation [A-Za-z0-9._-][A-Za-z0-9._-]*$/\1/p' "$dir/replay.err")
-  generation=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--ack-through [0-9][0-9]* --recovery-generation \([A-Za-z0-9._-][A-Za-z0-9._-]*\)$/\1/p' "$dir/replay.err")
-  FM_STATE_OVERRIDE="$state" "$DRAIN" --ack-through "$sequence" --recovery-generation "$generation" \
-    || fail "pre-commit replay acknowledgement failed"
+  sequence=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--ack-through \([0-9][0-9]*\) --recovery-generation [A-Za-z0-9._-][A-Za-z0-9._-]*$/\1/p' "$replay_err")
+  generation=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--ack-through [0-9][0-9]* --recovery-generation \([A-Za-z0-9._-][A-Za-z0-9._-]*\)$/\1/p' "$replay_err")
+  if [ -z "$sequence" ] || [ -z "$generation" ]; then
+    printf 'missing replay ack token: sequence=%s generation=%s\n' "${sequence:-empty}" "${generation:-empty}" >&2
+    cat "$replay_err" >&2
+    printf 'queue after replay: ' >&2
+    cat "$state/.wake-queue" >&2 2>/dev/null || true
+    printf 'recovery marker after replay: ' >&2
+    cat "$state/.wake-recovery" >&2 2>/dev/null || true
+    fail "pre-commit replay acknowledgement token missing"
+  fi
+  if ! FM_STATE_OVERRIDE="$state" "$DRAIN" --ack-through "$sequence" \
+    --recovery-generation "$generation" 2> "$precommit_ack_err"; then
+    printf 'pre-commit replay ack failed: sequence=%s generation=%s\n' "$sequence" "$generation" >&2
+    cat "$precommit_ack_err" >&2
+    printf 'queue after failed ack: ' >&2
+    cat "$state/.wake-queue" >&2 2>/dev/null || true
+    printf 'recovery marker after failed ack: ' >&2
+    cat "$state/.wake-recovery" >&2 2>/dev/null || true
+    fail "pre-commit replay acknowledgement failed"
+  fi
 
   append_wake "$state" signal task.status "signal: task after commit" || fail "post-commit interruption wake append failed"
   FM_STATE_OVERRIDE="$state" FM_WAKE_ENRICH_TEST_DELAY=5 "$DRAIN" > "$after_out" 2> "$after_err" &
@@ -1706,19 +1726,19 @@ test_stale_steal_chain_recovers_without_unbounded_suffixes() {
     . "$1"
     lock="$2/.fixture.lock"
     dead=999999
-    mkdir -p "$dir/primary" && echo "$dead" > "$dir/primary/pid"
-    ln -s "$dir/primary" "$lock"
+    mkdir -p "$3/primary" && echo "$dead" > "$3/primary/pid"
+    ln -s "$3/primary" "$lock"
     for suffix in ".steal" ".steal.steal"; do
-      mkdir -p "$lock$suffix-owner" && echo "$dead" > "$lock$suffix-owner/pid"
-      ln -s "$lock$suffix-owner" "$lock$suffix"
-      touch -t 202001010000 "$lock$suffix" "$lock$suffix-owner"
+      mkdir -p "$3/owner$suffix" && echo "$dead" > "$3/owner$suffix/pid"
+      ln -s "$3/owner$suffix" "$lock$suffix"
+      touch -t 202001010000 "$lock$suffix" "$3/owner$suffix"
     done
-    touch -t 202001010000 "$dir/primary" "$lock"
+    touch -t 202001010000 "$3/primary" "$lock"
     fm_lock_try_acquire "$lock" || exit 20
     [ -L "$lock" ] || exit 21
     [ ! -e "$lock.steal.steal.steal" ] && [ ! -L "$lock.steal.steal.steal" ] || exit 22
     fm_lock_release "$lock" || exit 23
-  ' _ "$ROOT/bin/fm-wake-lib.sh" "$state" || rc=$?
+  ' _ "$ROOT/bin/fm-wake-lib.sh" "$state" "$dir" || rc=$?
   [ "${rc:-0}" -eq 0 ] || fail "stale .steal chain was not recovered (rc=$rc)"
   pass "stale .steal chain recovers without growing .steal suffixes"
 }
