@@ -1702,7 +1702,7 @@ test_stale_steal_chain_recovers_without_unbounded_suffixes() {
   state="$dir/state"
   rc=0
   mkdir -p "$state"
-  dir="$dir" FM_STATE_OVERRIDE="$state" bash -c '
+  FM_STATE_OVERRIDE="$state" bash -c '
     . "$1"
     lock="$2/.fixture.lock"
     dead=999999
@@ -1732,7 +1732,7 @@ test_recheck_to_remove_swap_preserves_live_replacement() {
   dir=$(make_case recheck-swap)
   state="$dir/state"
   mkdir -p "$state"
-  dir="$dir" FM_STATE_OVERRIDE="$state" bash -c '
+  FM_STATE_OVERRIDE="$state" bash -c '
     . "$1"
     lock="$2/.fixture.lock"
     dead=999999
@@ -1759,7 +1759,7 @@ test_recheck_to_remove_swap_preserves_live_replacement() {
 # afterward, the loser reports contention, and no .steal chain or stray
 # replacement survives.
 test_concurrent_stale_lock_recovery_yields_one_owner() {
-  local dir state winner loser
+  local dir state
   dir=$(make_case concurrent-stale-recovery)
   state="$dir/state"
   mkdir -p "$state"
@@ -1774,7 +1774,7 @@ test_concurrent_stale_lock_recovery_yields_one_owner() {
   FM_STATE_OVERRIDE="$state" bash -c '. "$1"; fm_lock_try_acquire "$2/.fixture.lock"; echo "rcA=$?"' _ "$ROOT/bin/fm-wake-lib.sh" "$state" "$dir" > "$dir/outA" 2>&1 &
   FM_STATE_OVERRIDE="$state" bash -c '. "$1"; fm_lock_try_acquire "$2/.fixture.lock"; echo "rcB=$?"' _ "$ROOT/bin/fm-wake-lib.sh" "$state" "$dir" > "$dir/outB" 2>&1 &
   wait
-  grep -h '^rc[AB]=0' "$dir/outA" "$dir/outB" | wc -l | grep -q '^ *1$' \
+  grep -h '^rc[AB]=0' "$dir/outA" "$dir/outB" | grep -c . | grep -q '^1$' \
     || fail "expected exactly one concurrent winner, got: $(cat "$dir/outA" "$dir/outB")"
   [ ! -e "$state/.fixture.lock.steal.steal.steal" ] || fail "steal suffixes grew under concurrency"
   pass "concurrent stale-lock recovery yields exactly one owner and no suffix growth"
