@@ -1,0 +1,2 @@
+list exit: 124 (bounded contention timeout expected)
+recorded pid survived list: 0 (0 means alive)

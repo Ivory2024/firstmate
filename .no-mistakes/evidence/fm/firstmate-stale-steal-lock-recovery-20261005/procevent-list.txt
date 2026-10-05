@@ -1,0 +1,2 @@
+$ FM_HOME=<disposable> bin/fm-procevent.sh list
+no sources registered

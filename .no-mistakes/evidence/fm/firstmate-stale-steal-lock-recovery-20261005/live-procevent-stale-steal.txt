@@ -1,0 +1,5 @@
+registered: bot-manager-issues (bot-manager)
+SOURCE                       ADAPTER      OWNER      PENDING
+bot-manager-issues           bot-manager  none       0
+claim lock released after list
+no .steal.steal.steal
