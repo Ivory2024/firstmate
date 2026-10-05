@@ -2017,7 +2017,10 @@ test_live_presentation_holder_is_deadlined_without_weakening_ack() {
     || fail "drain after the interrupted acknowledgement failed"
   grep "$(printf '\tsignal\t')" "$replay_out" >/dev/null \
     || fail "the held acknowledgement lock allowed a partial consume"
-  ack_drain_err "$state" "$replay_err" \
+  # Replay confirms the row survived the interrupted acknowledgement. Reuse
+  # the acknowledgement token already presented by the preceding drain; a
+  # replay of an intact row does not necessarily emit a new token.
+  ack_drain_err "$state" "$second_err" \
     || fail "the intact wake could not be acknowledged after contention cleared"
   [ ! -s "$state/.wake-queue" ] || fail "acknowledged presentation fixture remained queued"
   pass "presentation lock waits are bounded and retriable without weakening acknowledgement atomicity"
