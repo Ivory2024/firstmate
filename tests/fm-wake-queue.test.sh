@@ -1511,11 +1511,12 @@ SH
 }
 
 test_interruption_before_and_after_raw_commit() {
-  local dir state before_out after_out replay_out empty_out pid rc count i sequence generation
+  local dir state before_out after_out after_err replay_out empty_out pid rc count i sequence generation
   dir=$(make_case interruption)
   state="$dir/state"
   before_out="$dir/before.out"
   after_out="$dir/after.out"
+  after_err="$dir/after.err"
   replay_out="$dir/replay.out"
   empty_out="$dir/empty.out"
   printf 'done: interruption fixture\n' > "$state/task.status"
@@ -1544,10 +1545,12 @@ test_interruption_before_and_after_raw_commit() {
     || fail "pre-commit replay acknowledgement failed"
 
   append_wake "$state" signal task.status "signal: task after commit" || fail "post-commit interruption wake append failed"
-  FM_STATE_OVERRIDE="$state" FM_WAKE_ENRICH_TEST_DELAY=5 "$DRAIN" > "$after_out" &
+  FM_STATE_OVERRIDE="$state" FM_WAKE_ENRICH_TEST_DELAY=5 "$DRAIN" > "$after_out" 2> "$after_err" &
   pid=$!
   wait_for_file_text "$after_out" "$(printf '\tsignal\ttask.status\t')" \
     || { kill "$pid" 2>/dev/null || true; fail "post-commit drain did not print its raw row"; }
+  wait_for_file_text "$after_err" 'WAKE_ACK_REQUIRED:' \
+    || { kill "$pid" 2>/dev/null || true; fail "post-commit drain did not publish its acknowledgement boundary"; }
   [ -s "$state/.wake-queue" ] \
     || { kill "$pid" 2>/dev/null || true; fail "post-commit drain consumed its raw row before handling acknowledgement"; }
   kill -TERM "$pid" 2>/dev/null || fail "could not interrupt drain after raw presentation"
