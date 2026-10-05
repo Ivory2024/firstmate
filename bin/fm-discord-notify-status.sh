@@ -16,28 +16,30 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 
 # Push a plain one-line message to this home's configured Discord channel,
 # reusing fm-discord-notify.sh --report's send path. Silent no-op when Discord
-# is not configured (fm-discord-notify.sh --report already fails loudly only
-# on a missing token, so the token check here keeps this path a quiet no-op
-# instead of an error on a Discord-less home).
+# is not configured. Return nonzero so completion markers are not written when
+# no delivery could occur.
 fm_discord_send_plain_report() {
   local message=$1 channel_id
   fm_discord_load_config
-  [ -n "${FM_DISCORD_TOKEN:-}" ] || return 0
+  [ -n "${FM_DISCORD_TOKEN:-}" ] || return 2
   channel_id=$(fm_discord_trim "${FM_DISCORD_CHANNELS%%,*}")
-  case "$channel_id" in ''|*[!0-9]*) return 0 ;; esac
+  case "$channel_id" in ''|*[!0-9]*) return 2 ;; esac
   "$SCRIPT_DIR/fm-discord-notify.sh" --report "$channel_id" "$message"
 }
 
 # Dedup marker for plain reports (done messages). Prevents duplicate Discord
 # posts when the same status line is re-read across polling cycles.
-fm_discord_plain_report_sent() {
+fm_discord_plain_report_marker() {
   local task_id=$1 note=$2 marker_path hash
   hash=$(printf '%s' "$task_id" | shasum -a 256 | cut -d' ' -f1)
   hash="${hash}$(printf '%s' "$note" | shasum -a 256 | cut -d' ' -f1)"
-  marker_path="${FM_STATE_OVERRIDE:-$FM_HOME/state}/x-context/discord-plain-${hash}.json"
-  [ -f "$marker_path" ] && return 0
+  printf '%s/discord-plain-%s.json' "${FM_STATE_OVERRIDE:-$FM_HOME/state}/x-context" "$hash"
+}
+
+fm_discord_mark_plain_report_sent() {
+  local task_id=$1 note=$2 marker_path
+  marker_path=$(fm_discord_plain_report_marker "$task_id" "$note")
   printf '{"task_id":"%s","note":"%s","sent_at":%s}\n' "$task_id" "$note" "$(date +%s)" > "$marker_path"
-  return 1
 }
 
 [ "$#" -eq 2 ] || exit 2
@@ -95,8 +97,10 @@ case "$verb:$key" in
   done:*)
     note=$(status_line_note "$line")
     note=$(printf '%s' "$note" | tr '\n\r' '  ')
-    fm_discord_plain_report_sent "$task_id" "$note" && exit 0
-    fm_discord_send_plain_report "작업 완료 [$task_id]: ${note:-완료}"
+    marker_path=$(fm_discord_plain_report_marker "$task_id" "$note")
+    [ -f "$marker_path" ] && exit 0
+    fm_discord_send_plain_report "작업 완료 [$task_id]: ${note:-완료}" || exit $?
+    fm_discord_mark_plain_report_sent "$task_id" "$note"
     ;;
   *) exit 0 ;;
 esac
