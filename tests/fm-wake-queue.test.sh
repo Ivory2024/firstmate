@@ -1720,6 +1720,63 @@ test_stale_steal_chain_recovers_without_unbounded_suffixes() {
   pass "stale .steal chain recovers without growing .steal suffixes"
 }
 
+# Two recoverers can both pass a stale recheck; the second must not remove the
+# first's live replacement. Simulated deterministically by swapping the lock's
+# owner to a live one inside a stubbed recheck: with the compare-and-remove
+# guard, the acquisition fails and the live lock survives untouched.
+test_recheck_to_remove_swap_preserves_live_replacement() {
+  local dir state
+  dir=$(make_case recheck-swap)
+  state="$dir/state"
+  mkdir -p "$state"
+  dir="$dir" FM_STATE_OVERRIDE="$state" bash -c '
+    . "$1"
+    lock="$2/.fixture.lock"
+    dead=999999
+    mkdir -p "$3/stale-owner" && echo "$dead" > "$3/stale-owner/pid"
+    ln -s "$3/stale-owner" "$lock"
+    touch -t 202001010000 "$lock" "$3/stale-owner"
+    fm_lock_recheck_stale_owner() {
+      liveparent=$(dirname "$1")
+      mkdir -p "$liveparent/live-owner"; echo "$PPID" > "$liveparent/live-owner/pid"
+      ln -sfn "$liveparent/live-owner" "$1"
+      return 0
+    }
+    fm_lock_try_acquire "$lock" no
+    rc=$?
+    [ "$rc" -ne 0 ] || exit 30
+    liveparent=$(dirname "$lock")
+    [ "$(readlink "$lock")" = "$liveparent/live-owner" ] || exit 31
+    [ -f "$liveparent/live-owner/pid" ] && [ "$(cat "$liveparent/live-owner/pid")" = "$PPID" ] || exit 32
+  ' _ "$ROOT/bin/fm-wake-lib.sh" "$state" "$dir" || fail "a live replacement lock was removed during recheck-to-remove (rc=$?)"
+  pass "compare-and-remove preserves a live replacement swapped in during recheck"
+}
+
+# Concurrent recoverers of the same stale lock: exactly one owns the lock
+# afterward, the loser reports contention, and no .steal chain or stray
+# replacement survives.
+test_concurrent_stale_lock_recovery_yields_one_owner() {
+  local dir state winner loser
+  dir=$(make_case concurrent-stale-recovery)
+  state="$dir/state"
+  mkdir -p "$state"
+  FM_STATE_OVERRIDE="$state" bash -c '
+    . "$1"
+    lock="$2/.fixture.lock"
+    dead=999999
+    mkdir -p "$3/stale-owner" && echo "$dead" > "$3/stale-owner/pid"
+    ln -s "$3/stale-owner" "$lock"
+    touch -t 202001010000 "$lock" "$3/stale-owner"
+  ' _ "$ROOT/bin/fm-wake-lib.sh" "$state" "$dir" || fail "could not seed stale lock"
+  FM_STATE_OVERRIDE="$state" bash -c '. "$1"; fm_lock_try_acquire "$2/.fixture.lock"; echo "rcA=$?"' _ "$ROOT/bin/fm-wake-lib.sh" "$state" "$dir" > "$dir/outA" 2>&1 &
+  FM_STATE_OVERRIDE="$state" bash -c '. "$1"; fm_lock_try_acquire "$2/.fixture.lock"; echo "rcB=$?"' _ "$ROOT/bin/fm-wake-lib.sh" "$state" "$dir" > "$dir/outB" 2>&1 &
+  wait
+  grep -h '^rc[AB]=0' "$dir/outA" "$dir/outB" | wc -l | grep -q '^ *1$' \
+    || fail "expected exactly one concurrent winner, got: $(cat "$dir/outA" "$dir/outB")"
+  [ ! -e "$state/.fixture.lock.steal.steal.steal" ] || fail "steal suffixes grew under concurrency"
+  pass "concurrent stale-lock recovery yields exactly one owner and no suffix growth"
+}
+
 test_subshell_lock_ownership_without_bashpid() {
   local dir state rc
   dir=$(make_case subshell-lock-ownership)
@@ -2042,6 +2099,8 @@ test_historical_annotation_skips_announced_status() {
 
 test_self_held_lock_reclaims_instead_of_deadlocking
 test_stale_steal_chain_recovers_without_unbounded_suffixes
+test_recheck_to_remove_swap_preserves_live_replacement
+test_concurrent_stale_lock_recovery_yields_one_owner
 test_subshell_lock_ownership_without_bashpid
 test_bounded_lock_handoff_after_contention
 test_live_presentation_holder_is_deadlined_without_weakening_ack
