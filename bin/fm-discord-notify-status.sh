@@ -48,9 +48,18 @@ fm_discord_mark_plain_report_sent() {
 }
 
 fm_discord_task_is_done() {
-  local task_id=$1 line
+  local task_id=$1 line state rest part
   line=$("$FM_CREW_STATE_BIN" "$task_id" 2>/dev/null) || return 1
-  case "$line" in 'state: done ·'*) return 0 ;; *) return 1 ;; esac
+  case "$line" in state:*) ;; *) return 1 ;; esac
+  state=${line#state: }; state=${state%% *}
+  [ "$state" = done ] || return 1
+  rest="$line · "
+  while [ -n "$rest" ]; do
+    part=${rest%% · *}
+    rest=${rest#* · }
+    [ "$part" = "$FM_PR_AWAITS_MERGE_DECISION" ] && return 1
+  done
+  return 0
 }
 
 [ "$#" -eq 2 ] || exit 2

@@ -591,6 +591,24 @@ test_nonterminal_done_status_sends_no_report() {
   pass "a nonterminal done status sends no notification"
 }
 
+test_pr_awaiting_merge_done_status_sends_no_report() {
+  local home log
+  home="$TMP_ROOT/pr-awaiting-merge-status"
+  mkdir -p "$home/state/x-context"
+  chmod 700 "$home/state" "$home/state/x-context"
+  make_fake_node "$home"
+  log="$home/posts.jsonl"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_CREW_STATE_BIN="$home/fake-bin/fm-crew-state.sh" \
+    FM_DISCORD_FAKE_CREW_STATE='state: done · source: run-step · checks green · pr: awaiting merge decision' FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify-status.sh" task-a \
+      'done: background verification continues' >/dev/null \
+    || fail "PR-awaiting-merge done status classification failed"
+  [ ! -s "$log" ] || fail "PR-awaiting-merge done status sent a Discord notification"
+  pass "a PR-awaiting-merge done status sends no notification"
+}
+
 test_failed_done_delivery_retries() {
   local home log
   home="$TMP_ROOT/done-delivery-retry"
@@ -725,6 +743,7 @@ test_pr_push_requires_yolo_off
 test_pr_push_names_gitlab_project
 test_done_status_sends_plain_report
 test_nonterminal_done_status_sends_no_report
+test_pr_awaiting_merge_done_status_sends_no_report
 test_failed_done_delivery_retries
 test_unconfigured_done_status_is_silent_and_retryable
 test_blocked_status_sends_no_report
