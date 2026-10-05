@@ -1536,9 +1536,11 @@ test_interruption_before_and_after_raw_commit() {
     sleep 0.05
     i=$((i + 1))
   done
-  [ "$(cat "$state/.wake-queue.lock/pid" 2>/dev/null || true)" = "$pid" ] \
-    && grep -Eq '^(pending|announced):handling:[A-Za-z0-9._-]+$' "$marker" 2>/dev/null \
-    || { kill "$pid" 2>/dev/null || true; fail "pre-commit drain never entered its recoverable read boundary"; }
+  if [ "$(cat "$state/.wake-queue.lock/pid" 2>/dev/null || true)" != "$pid" ] \
+    || ! grep -Eq '^(pending|announced):handling:[A-Za-z0-9._-]+$' "$marker" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    fail "pre-commit drain never entered its recoverable read boundary"
+  fi
   kill -TERM "$pid" 2>/dev/null || fail "could not interrupt drain before raw commitment"
   set +e
   wait "$pid"
