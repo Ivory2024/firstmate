@@ -623,16 +623,16 @@ _fm_lock_reclaim_guard() { # <entry> <slot 8|9>
     return 0
   fi
   case "$slot" in
-    8) exec 8>&- 2>/dev/null || true ;;
-    9) exec 9>&- 2>/dev/null || true ;;
+    8) { exec 8>&-; } 2>/dev/null || true ;;
+    9) { exec 9>&-; } 2>/dev/null || true ;;
   esac
   return 1
 }
 
 _fm_lock_reclaim_guard_release() { # <slot 8|9>
   case "$1" in
-    8) exec 8>&- 2>/dev/null || true; _fm_lock_reclaim_guard_fd8=; _fm_lock_reclaim_guard_path8= ;;
-    9) exec 9>&- 2>/dev/null || true; _fm_lock_reclaim_guard_fd9=; _fm_lock_reclaim_guard_path9= ;;
+    8) { exec 8>&-; } 2>/dev/null || true; _fm_lock_reclaim_guard_fd8=; _fm_lock_reclaim_guard_path8= ;;
+    9) { exec 9>&-; } 2>/dev/null || true; _fm_lock_reclaim_guard_fd9=; _fm_lock_reclaim_guard_path9= ;;
   esac
   return 0
 }
