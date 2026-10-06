@@ -69,11 +69,11 @@ fm_control_harnesses() {
 }
 
 fm_control_harness_supported() {  # <harness>
-  local harness
+  local harness found=0
   while read -r harness; do
-    [ "$harness" = "${1-}" ] && return 0
+    [ "$harness" = "${1-}" ] && found=1
   done < <(fm_control_harnesses)
-  return 1
+  [ "$found" = 1 ]
 }
 
 # The verified adapter a RECORDED harness value belongs to. Every table below
