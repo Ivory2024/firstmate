@@ -1,0 +1,4 @@
+ok - stale .steal chain recovers without growing .steal suffixes
+ok - direct and nested stale recovery preserve caller descriptors on success and contention
+ok - concurrent stale-lock recovery yields exactly one owner and no suffix growth
+ok - an abandoned same-process lock hold is reclaimed; a parent's live hold is not

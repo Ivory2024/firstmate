@@ -1,0 +1,10 @@
+registered: bot-manager-issues (bot-manager)
+
+Public list with stale primary and two stale suffixes:
+SOURCE                       ADAPTER      OWNER      PENDING
+bot-manager-issues           bot-manager  none       0
+No third steal suffix; public list returned.
+Caller FD 8 bytes: yes no 
+Caller FD 9 bytes: yes no 
+Caller FD 10 bytes: yes no 
+Unrelated live PID 23919 survived; lock owner unchanged.

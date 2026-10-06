@@ -1,0 +1,2 @@
+ok - the shared test library scrubs every public-surface credential
+ok - the shared library replaces a hostile ambient home before notification code runs
