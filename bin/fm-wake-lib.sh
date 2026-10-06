@@ -596,7 +596,7 @@ _fm_lock_reclaim_guard_fd9=
 _fm_lock_reclaim_guard_path8=
 _fm_lock_reclaim_guard_path9=
 _fm_lock_reclaim_guard() { # <entry> <slot 8|9>
-  local entry=$1 slot=$2 held=
+  local entry=$1 slot=$2 held= guard_fd=10
   case "$slot" in
     8) held=$_fm_lock_reclaim_guard_fd8 ;;
     9) held=$_fm_lock_reclaim_guard_fd9 ;;
@@ -611,29 +611,29 @@ _fm_lock_reclaim_guard() { # <entry> <slot 8|9>
     esac
     return 1
   fi
-  case "$slot" in
-    8) exec 8>>"${entry}.reclaim-guard" || return 1 ;;
-    9) exec 9>>"${entry}.reclaim-guard" || return 1 ;;
-  esac
-  if perl -e 'use Fcntl qw(LOCK_EX LOCK_NB); flock(STDIN, LOCK_EX | LOCK_NB) or exit 3;' <&"${slot}"; then
+  while ( : >&"$guard_fd" ) 2>/dev/null; do
+    guard_fd=$((guard_fd + 1))
+    [ "$guard_fd" -le 255 ] || return 1
+  done
+  eval 'exec '"$guard_fd"'>>"${entry}.reclaim-guard"' || return 1
+  if perl -e 'use Fcntl qw(LOCK_EX LOCK_NB); flock(STDIN, LOCK_EX | LOCK_NB) or exit 3;' <&"$guard_fd"; then
     case "$slot" in
-      8) _fm_lock_reclaim_guard_fd8=8; _fm_lock_reclaim_guard_path8=${entry}.reclaim-guard ;;
-      9) _fm_lock_reclaim_guard_fd9=9; _fm_lock_reclaim_guard_path9=${entry}.reclaim-guard ;;
+      8) _fm_lock_reclaim_guard_fd8=$guard_fd; _fm_lock_reclaim_guard_path8=${entry}.reclaim-guard ;;
+      9) _fm_lock_reclaim_guard_fd9=$guard_fd; _fm_lock_reclaim_guard_path9=${entry}.reclaim-guard ;;
     esac
     return 0
   fi
-  case "$slot" in
-    8) { exec 8>&-; } 2>/dev/null || true ;;
-    9) { exec 9>&-; } 2>/dev/null || true ;;
-  esac
+  eval 'exec '"$guard_fd"'>&-'
   return 1
 }
 
 _fm_lock_reclaim_guard_release() { # <slot 8|9>
+  local guard_fd=
   case "$1" in
-    8) { exec 8>&-; } 2>/dev/null || true; _fm_lock_reclaim_guard_fd8=; _fm_lock_reclaim_guard_path8= ;;
-    9) { exec 9>&-; } 2>/dev/null || true; _fm_lock_reclaim_guard_fd9=; _fm_lock_reclaim_guard_path9= ;;
+    8) guard_fd=$_fm_lock_reclaim_guard_fd8; _fm_lock_reclaim_guard_fd8=; _fm_lock_reclaim_guard_path8= ;;
+    9) guard_fd=$_fm_lock_reclaim_guard_fd9; _fm_lock_reclaim_guard_fd9=; _fm_lock_reclaim_guard_path9= ;;
   esac
+  [ -z "$guard_fd" ] || eval 'exec '"$guard_fd"'>&-'
   return 0
 }
 

@@ -1783,6 +1783,46 @@ test_recheck_to_remove_swap_preserves_live_replacement() {
   pass "compare-and-remove preserves a live replacement swapped in during recheck"
 }
 
+test_stale_recovery_preserves_caller_descriptors() {
+  local dir state
+  dir=$(make_case reclaim-descriptors)
+  state="$dir/state"
+  FM_STATE_OVERRIDE="$state" bash -c '
+    . "$1"
+    exec 8>"$3/caller8" 9>"$3/caller9" 10>"$3/caller10"
+    for mode in yes no; do
+      lock="$2/$mode.lock"
+      mkdir -p "$lock" "$lock.steal" "$lock.steal.steal"
+      for suffix in "" .steal .steal.steal; do
+        echo 999999 > "$lock$suffix/pid"
+      done
+      fm_lock_try_acquire "$lock" "$mode" || exit 20
+      printf "%s\n" "$mode" >&8
+      printf "%s\n" "$mode" >&9
+      printf "%s\n" "$mode" >&10
+      fm_lock_release "$lock" || exit 21
+    done
+    _fm_lock_reclaim_guard "$2/contention" 8 || exit 22
+    (
+      _fm_lock_reclaim_guard_fd8=
+      _fm_lock_reclaim_guard "$2/contention" 8 && exit 23
+      printf "contention\n" >&8
+      printf "contention\n" >&9
+      printf "contention\n" >&10
+    ) || exit 24
+    _fm_lock_reclaim_guard_release 8
+    _fm_lock_reclaim_guard_release 9
+    printf "released\n" >&8
+    printf "released\n" >&9
+    printf "released\n" >&10
+  ' _ "$ROOT/bin/fm-wake-lib.sh" "$state" "$dir" || fail "reclaim clobbered caller descriptors"
+  local fd
+  for fd in 8 9 10; do
+    assert_equals "$(printf "yes\nno\ncontention\nreleased")" "$(cat "$dir/caller$fd")" "caller FD $fd survives reclaim and contention"
+  done
+  pass "direct and nested stale recovery preserve caller descriptors on success and contention"
+}
+
 # Concurrent recoverers of the same stale lock: exactly one owns the lock
 # afterward, the loser reports contention, and no .steal chain or stray
 # replacement survives.
@@ -1799,9 +1839,29 @@ test_concurrent_stale_lock_recovery_yields_one_owner() {
     ln -s "$3/stale-owner" "$lock"
     touch -t 202001010000 "$lock" "$3/stale-owner"
   ' _ "$ROOT/bin/fm-wake-lib.sh" "$state" "$dir" || fail "could not seed stale lock"
-  FM_STATE_OVERRIDE="$state" bash -c '. "$1"; fm_lock_try_acquire "$2/.fixture.lock"; echo "rcA=$?"' _ "$ROOT/bin/fm-wake-lib.sh" "$state" "$dir" > "$dir/outA" 2>&1 &
-  FM_STATE_OVERRIDE="$state" bash -c '. "$1"; fm_lock_try_acquire "$2/.fixture.lock"; echo "rcB=$?"' _ "$ROOT/bin/fm-wake-lib.sh" "$state" "$dir" > "$dir/outB" 2>&1 &
-  wait
+  local worker pid_a pid_b i ready=no
+  worker='
+    . "$1"
+    fm_lock_try_acquire "$2/.fixture.lock"
+    rc=$?
+    printf "rc%s=%s\n" "$4" "$rc" > "$3/out$4"
+    if [ "$rc" -eq 0 ]; then
+      while [ ! -e "$3/release" ]; do sleep 0.05; done
+      fm_lock_release "$2/.fixture.lock" || exit 10
+    fi
+  '
+  FM_STATE_OVERRIDE="$state" bash -c "$worker" _ "$ROOT/bin/fm-wake-lib.sh" "$state" "$dir" A &
+  pid_a=$!
+  FM_STATE_OVERRIDE="$state" bash -c "$worker" _ "$ROOT/bin/fm-wake-lib.sh" "$state" "$dir" B &
+  pid_b=$!
+  for i in {1..200}; do
+    if [ -s "$dir/outA" ] && [ -s "$dir/outB" ]; then ready=yes; break; fi
+    sleep 0.05
+  done
+  touch "$dir/release"
+  wait "$pid_a" || fail "worker A failed to release its lock"
+  wait "$pid_b" || fail "worker B failed to release its lock"
+  [ "$ready" = yes ] || fail "concurrent acquisition attempts did not finish before release"
   grep -h '^rc[AB]=0' "$dir/outA" "$dir/outB" | grep -c . | grep -q '^1$' \
     || fail "expected exactly one concurrent winner, got: $(cat "$dir/outA" "$dir/outB")"
   [ ! -e "$state/.fixture.lock.steal.steal.steal" ] || fail "steal suffixes grew under concurrency"
@@ -2134,6 +2194,7 @@ test_historical_annotation_skips_announced_status() {
 test_self_held_lock_reclaims_instead_of_deadlocking
 test_stale_steal_chain_recovers_without_unbounded_suffixes
 test_recheck_to_remove_swap_preserves_live_replacement
+test_stale_recovery_preserves_caller_descriptors
 test_concurrent_stale_lock_recovery_yields_one_owner
 test_subshell_lock_ownership_without_bashpid
 test_bounded_lock_handoff_after_contention
