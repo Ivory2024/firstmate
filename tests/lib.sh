@@ -74,7 +74,7 @@ unset TASKS_AXI_FILE TASKS_AXI_BACKEND
 # is then a real public post. That happened - fixture strings from
 # tests/fm-watch-triage.test.sh reached the captain's live Discord channel.
 # Every suite that wants a credential sets its own, against its own temp home.
-unset FM_DISCORD_BOT_TOKEN FM_DISCORD_CHANNEL_ID FM_DISCORD_ALLOWED_CHANNELS \
+unset FM_DISCORD_BOT_TOKEN FM_DISCORD_TOKEN FM_DISCORD_CHANNEL_ID FM_DISCORD_ALLOWED_CHANNELS \
   FM_DISCORD_EXCLUDE_CHANNELS FM_DISCORD_ALLOW_DMS FM_DISCORD_AUTHORIZED_USER_IDS \
   FMX_PAIRING_TOKEN FMX_RELAY_URL FMX_DRY_RUN FMX_ENV_FILE FMX_REPORT_URL \
   FMX_BUDGET_URL FMX_PLATFORM
