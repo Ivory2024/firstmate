@@ -596,7 +596,7 @@ _fm_lock_reclaim_guard_fd9=
 _fm_lock_reclaim_guard_path8=
 _fm_lock_reclaim_guard_path9=
 _fm_lock_reclaim_guard() { # <entry> <slot 8|9>
-  local entry=$1 slot=$2 held= guard_fd=10
+  local entry=$1 slot=$2 held='' guard_fd=10
   case "$slot" in
     8) held=$_fm_lock_reclaim_guard_fd8 ;;
     9) held=$_fm_lock_reclaim_guard_fd9 ;;

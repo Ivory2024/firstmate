@@ -1840,6 +1840,7 @@ test_concurrent_stale_lock_recovery_yields_one_owner() {
     touch -t 202001010000 "$lock" "$3/stale-owner"
   ' _ "$ROOT/bin/fm-wake-lib.sh" "$state" "$dir" || fail "could not seed stale lock"
   local worker pid_a pid_b i ready=no
+  # shellcheck disable=SC2016 # Expand worker variables in the bash -c subprocess.
   worker='
     . "$1"
     fm_lock_try_acquire "$2/.fixture.lock"
