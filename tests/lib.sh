@@ -63,16 +63,10 @@ unset FM_TASK_ID
 # against an ambient override sets TASKS_AXI_FILE itself.
 unset TASKS_AXI_FILE TASKS_AXI_BACKEND
 
-# Neutralize the public-surface credentials for every test. The captain's
-# question "what is this actually" and any "still working" note are the two
-# shapes that must never appear in a public thread, and both arrive by exactly
-# this route: a script that resolves its home and then posts. So does every other
-# live public surface (Discord, the Relay pairing token, an explicit env-file
-# redirect). None of it may be inherited from the operator's shell: a suite that
-# sets only FM_STATE_OVERRIDE leaves FM_HOME resolving to the primary checkout,
-# whose .env carries the real bot token, and a status fixture written by a test
-# is then a real public post. That happened - fixture strings from
-# tests/fm-watch-triage.test.sh reached the captain's live Discord channel.
+# Neutralize public-surface credentials, including the Discord token alias,
+# before a fixture can post through Discord or Relay. A state override alone
+# does not isolate credentials loaded from an operator home; the default
+# credential-free FM_HOME below closes that separate route.
 # Every suite that wants a credential sets its own, against its own temp home.
 unset FM_DISCORD_BOT_TOKEN FM_DISCORD_TOKEN FM_DISCORD_CHANNEL_ID FM_DISCORD_ALLOWED_CHANNELS \
   FM_DISCORD_EXCLUDE_CHANNELS FM_DISCORD_ALLOW_DMS FM_DISCORD_AUTHORIZED_USER_IDS \

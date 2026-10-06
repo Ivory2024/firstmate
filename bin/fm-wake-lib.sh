@@ -1055,10 +1055,9 @@ fm_lock_try_acquire() {
     return 1
   fi
   if [ "$allow_steal" = no ]; then
-    # Nothing to clear indirectly: nested steal-mutex cleanup is serialized by
-    # the allow_steal=yes path that wraps every no-mode entry, and fd slots
-    # are bounded to two levels (9 for the primary reclaim, 8 for the steal
-    # reclaim), so a stale .steal.steal chain can no longer grow.
+    # No further steal-mutex acquisition: no-mode reclaim uses its own kernel
+    # guard below, including when called directly. Slots 8 and 9 identify the
+    # two guard roles, not fixed descriptors; no-mode never recurses.
     steal_owner=
   fi
   slot=8
