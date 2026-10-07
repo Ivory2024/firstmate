@@ -103,6 +103,13 @@ lock_snapshot() {
 
 WATCH_DELIVERY_LOG="$STATE/.watch-deliveries.log"
 WATCH_DELIVERY_LOCK="$STATE/.watch-deliveries.lock"
+restart_guard=
+
+release_restart_guard() {
+  [ -n "$restart_guard" ] && fm_lock_release "$restart_guard"
+}
+
+trap release_restart_guard EXIT
 
 cycle_active=0
 cycle_watcher_pid=none
@@ -449,13 +456,13 @@ if [ "$mode" = restart ]; then
       fi
     else
       if ! clear_stale_recorded_watcher_lock; then
-        fm_lock_release "$restart_guard"
         echo "watcher: FAILED - stale watcher recovery state could not be persisted" >&2
         exit 1
       fi
     fi
   fi
   fm_lock_release "$restart_guard"
+  restart_guard=
 fi
 
 # If a genuinely live+fresh watcher already holds the lock, do not start a second
