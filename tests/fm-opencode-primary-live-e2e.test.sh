@@ -116,7 +116,7 @@ run_ahoy_case() {
     cd "$AHOY_PROJECT" &&
       OPENCODE_DB="$db" OPENCODE_DISABLE_AUTOUPDATE=1 OPENCODE_DISABLE_LSP_DOWNLOAD=1 \
         OPENCODE_CONFIG_CONTENT='{"permission":{"*":"allow"}}' \
-        opencode run --pure --format json "$preceding"
+        opencode run --standalone --format json "$preceding"
   ) || status=$?
   [ "$status" -eq 0 ] || fail "OpenCode Ahoy $label setup exited $status: $first_out"
   session_id=$(printf '%s\n' "$first_out" | jq -r 'select(.sessionID != null) | .sessionID' | head -1)
@@ -127,7 +127,7 @@ run_ahoy_case() {
     cd "$AHOY_PROJECT" &&
       OPENCODE_DB="$db" OPENCODE_DISABLE_AUTOUPDATE=1 OPENCODE_DISABLE_LSP_DOWNLOAD=1 \
         OPENCODE_CONFIG_CONTENT='{"permission":{"*":"allow"}}' \
-        opencode run --pure --format json --session "$session_id" "/ahoy"
+        opencode run --standalone --format json --session "$session_id" "/ahoy"
   ) || status=$?
   [ "$status" -eq 0 ] || fail "OpenCode Ahoy $label case exited $status: $second_out"
   assistant_text=$(printf '%s\n' "$second_out" | jq -r 'select(.type == "text") | .part.text' | tail -1)
@@ -293,6 +293,7 @@ run_native_ahoy_regressions
 git clone -q "$ROOT" "$PROJECT"
 mkdir -p "$PROJECT/.opencode/plugins/lib"
 cp "$ROOT/.opencode/plugins/fm-primary-watch-arm.js" "$PROJECT/.opencode/plugins/fm-primary-watch-arm.js"
+cp "$ROOT/.opencode/plugins/lib/fm-event-stream.js" "$PROJECT/.opencode/plugins/lib/fm-event-stream.js"
 cp "$ROOT/.opencode/plugins/lib/fm-operational-input.js" "$PROJECT/.opencode/plugins/lib/fm-operational-input.js"
 cp "$ROOT/bin/fm-watch-arm.sh" "$PROJECT/bin/fm-watch-arm.sh"
 cp "$ROOT/bin/fm-operational-input.sh" "$PROJECT/bin/fm-operational-input.sh"
@@ -301,7 +302,7 @@ mkdir -p "$HOME_DIR/state" "$HOME_DIR/config"
 printf 'project=fixture\n' > "$HOME_DIR/state/opencode-e2e.meta"
 
 # shellcheck disable=SC2016 # The model, not this test shell, expands FM_HOME.
-PROMPT='Use the terminal to run `printf ready > "$FM_HOME/state/opencode-model-initial"`, then respond briefly. If a later watcher wake arrives, run bin/fm-wake-drain.sh, then run `printf handled > "$FM_HOME/state/opencode-model-handled"`. Never run or request any watcher arm command.'
+PROMPT='Use the terminal to run `printf ready > "$FM_HOME/state/opencode-model-initial"`, then respond with OPENCODE_E2E_TURN_COMPLETE. If a later watcher wake arrives, run bin/fm-wake-drain.sh, then run `printf handled > "$FM_HOME/state/opencode-model-handled"` and respond with OPENCODE_E2E_WAKE_HANDLED. Never run or request any watcher arm command.'
 "$TMUX" -L "$SOCKET" new-session -d -s "$SESSION" -c "$PROJECT" \
   "env OPENCODE_CONFIG_CONTENT='{\"permission\":{\"*\":\"allow\"}}' FM_HOME='$HOME_DIR' FM_ROOT_OVERRIDE='$PROJECT' FM_POLL=1 FM_SIGNAL_GRACE=0 FM_HEARTBEAT=600 bash -lc 'printf \"%s\\n\" \"\$\$\" > \"\$FM_HOME/state/.lock\"; opencode --auto; rc=\$?; printf \"OPENCODE_EXIT=%s\\n\" \"\$rc\"; sleep 300'"
 
@@ -309,6 +310,21 @@ PROMPT='Use the terminal to run `printf ready > "$FM_HOME/state/opencode-model-i
 # persistent TUI path as a primary session.
 wait_for_text "$OPENCODE_VERSION" 120 || fail "OpenCode did not reach its TUI"
 dismiss_update_offer || fail "OpenCode update offer did not dismiss"
+watcher_pid=
+i=0
+while [ "$i" -lt 120 ]; do
+  watcher_pid=$(cat "$HOME_DIR/state/.watch.lock/pid" 2>/dev/null || true)
+  [ -n "$watcher_pid" ] && kill -0 "$watcher_pid" 2>/dev/null && break
+  sleep 0.5
+  i=$((i + 1))
+done
+if [ -z "$watcher_pid" ] || ! kill -0 "$watcher_pid" 2>/dev/null; then
+  fail "OpenCode plugin load did not arm from durable supervision state before the first prompt"
+fi
+beat_before=$(stat -f %m "$HOME_DIR/state/.last-watcher-beat" 2>/dev/null || stat -c %Y "$HOME_DIR/state/.last-watcher-beat")
+sleep 2
+beat_after=$(stat -f %m "$HOME_DIR/state/.last-watcher-beat" 2>/dev/null || stat -c %Y "$HOME_DIR/state/.last-watcher-beat")
+[ "$beat_after" -gt "$beat_before" ] || fail "OpenCode watcher heartbeat did not advance while the TUI session stayed open"
 sleep 1
 "$TMUX" -L "$SOCKET" send-keys -t "$SESSION" -l "$PROMPT"
 "$TMUX" -L "$SOCKET" send-keys -t "$SESSION" Enter
@@ -320,17 +336,7 @@ while [ "$i" -lt 240 ]; do
   i=$((i + 1))
 done
 [ -f "$HOME_DIR/state/opencode-model-initial" ] || fail "OpenCode credentialed initial turn did not complete"
-
-i=0
-while [ "$i" -lt 120 ]; do
-  watcher_pid=$(cat "$HOME_DIR/state/.watch.lock/pid" 2>/dev/null || true)
-  [ -n "$watcher_pid" ] && kill -0 "$watcher_pid" 2>/dev/null && break
-  sleep 0.5
-  i=$((i + 1))
-done
-if [ -z "${watcher_pid:-}" ] || ! kill -0 "$watcher_pid" 2>/dev/null; then
-  fail "OpenCode idle event did not start the initial watcher"
-fi
+wait_for_text "OPENCODE_E2E_TURN_COMPLETE" 60 || fail "OpenCode initial turn did not complete its assistant response"
 
 printf 'done: opencode live e2e watcher fire\n' > "$HOME_DIR/state/opencode-e2e.status"
 i=0
@@ -342,6 +348,15 @@ done
 grep -Eq 'reason=actionable-signal.*successor=started:[0-9]+' "$HOME_DIR/state/.watch-cycle-exits.log" 2>/dev/null \
   || fail "OpenCode plugin did not start and ledger-link a successor after the actionable close"
 wait_for_handled || fail "OpenCode did not drain and settle after plugin-owned re-arm"
+wait_for_text "OPENCODE_E2E_WAKE_HANDLED" 60 || fail "OpenCode follow-up turn did not complete after plugin-owned re-arm"
+watcher_pid=$(cat "$HOME_DIR/state/.watch.lock/pid" 2>/dev/null || true)
+if [ -z "$watcher_pid" ] || ! kill -0 "$watcher_pid" 2>/dev/null; then
+  fail "OpenCode watcher was not alive after the wake-handling turn ended"
+fi
+beat_before=$(stat -f %m "$HOME_DIR/state/.last-watcher-beat" 2>/dev/null || stat -c %Y "$HOME_DIR/state/.last-watcher-beat")
+sleep 2
+beat_after=$(stat -f %m "$HOME_DIR/state/.last-watcher-beat" 2>/dev/null || stat -c %Y "$HOME_DIR/state/.last-watcher-beat")
+[ "$beat_after" -gt "$beat_before" ] || fail "OpenCode watcher heartbeat did not advance after the wake-handling turn ended"
 
 pane=$(capture)
 guard_count=$(printf '%s\n' "$pane" | grep -Fc "TURN WOULD END BLIND - supervision is off." || true)

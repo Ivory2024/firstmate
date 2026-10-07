@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
+import { consumeEventStream } from "./lib/fm-event-stream.js";
 
 const COORDINATOR_KEY = "__firstmateOpenCodeWatchArm";
 
@@ -113,11 +114,14 @@ export default {
       worktree: ctx.location?.worktree,
     });
     const controller = new AbortController();
-    const eventTask = (async () => {
-      for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
-        await hooks.event({ event: { ...event, properties: event.data } });
-      }
-    })().catch(() => {});
+    const eventTask = consumeEventStream({
+      subscribe: (options) => ctx.event.subscribe(options),
+      signal: controller.signal,
+      onEvent: (event) => hooks.event({ event: { ...event, properties: event.data } }),
+      onFailure: (error, retry) => console.error(
+        `[fm-primary-turnend-guard] event stream stopped; reconnecting in ${retry.delay}ms (attempt ${retry.attempt}): ${String(error?.message ?? error)}`,
+      ),
+    });
     return async () => {
       controller.abort();
       await eventTask;
