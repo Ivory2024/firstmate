@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
+import { OpenCodeLifecycleAdapter, QUIESCENT } from "./lib/fm-opencode-lifecycle-adapter.js";
 
 // Supervision host: a home opted in with config/supervision-host
 // (docs/configuration.md "Supervision host" owns the gate, which
@@ -551,11 +552,45 @@ export const FmPrimaryWatchArm = async ({ client, directory, worktree }) => {
   };
 
   return {
-    event: async ({ event }) => {
-      if (event.type !== "session.idle") return;
-      const sessionID = event.properties?.sessionID;
-      if (!sessionID) return;
+    quiescent: async (signal) => {
+      if (signal?.type !== QUIESCENT || !signal.sessionID) return;
+      const sessionID = signal.sessionID;
       void ensureArm(paths, sessionID, client);
     },
   };
+};
+export default {
+  id: "fm-primary-watch-arm",
+  async setup(ctx) {
+    const client = {
+      session: {
+        promptAsync: ({ path, body }) => ctx.session.prompt({
+          sessionID: path.id,
+          text: body.parts.map((part) => part.text ?? "").join(""),
+        }),
+      },
+    };
+    const hooks = await FmPrimaryWatchArm({
+      client,
+      directory: ctx.location?.directory,
+      worktree: ctx.location?.worktree,
+    });
+    const controller = new AbortController();
+    const lifecycle = new OpenCodeLifecycleAdapter();
+    let eventError = null;
+    const eventTask = (async () => {
+      for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+        const signal = lifecycle.normalize(event);
+        if (signal) await hooks.quiescent(signal);
+      }
+    })().catch((error) => {
+      eventError = error;
+      console.error("OpenCode watch-arm lifecycle event stream failed:", error);
+    });
+    return async () => {
+      controller.abort();
+      await eventTask;
+      if (eventError) throw eventError;
+    };
+  },
 };
