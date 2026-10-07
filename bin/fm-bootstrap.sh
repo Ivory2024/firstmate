@@ -1153,6 +1153,8 @@ discord_mode_setup() {
   }
 
   if [ -z "$token" ]; then
+    FM_ROOT_OVERRIDE="$FM_ROOT" FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      "$SCRIPT_DIR/fm-watcher-liveness-alert.sh" remove >/dev/null 2>&1 || true
     if discord_mode_artifact_present "$shim" || discord_mode_artifact_present "$cadence"; then
       if discord_mode_remove_artifacts; then
         echo "FM_DISCORD: self-hosted Discord mode off - removed poll shim and 30s cadence"
@@ -1164,9 +1166,15 @@ discord_mode_setup() {
   fi
 
   command -v node >/dev/null 2>&1 || {
+    FM_ROOT_OVERRIDE="$FM_ROOT" FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      "$SCRIPT_DIR/fm-watcher-liveness-alert.sh" remove >/dev/null 2>&1 || true
     echo "FM_DISCORD: self-hosted Discord mode on - missing node"
     return 0
   }
+
+  FM_ROOT_OVERRIDE="$FM_ROOT" FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+    "$SCRIPT_DIR/fm-watcher-liveness-alert.sh" install \
+    || echo "FM_DISCORD: watcher liveness alert LaunchAgent could not be installed"
 
   shim_home="$FM_HOME"
   case "$FM_HOME" in

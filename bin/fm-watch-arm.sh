@@ -58,10 +58,6 @@
 # watcher. NEVER `pkill -f
 # bin/fm-watch.sh`: that pattern matches every firstmate home's watcher
 # (secondmate homes run the same script) and would kill siblings.
-# A normal arm also promotes itself to this exact-home restart when an
-# unacknowledged durable wake is pending and the identity-matched watcher has
-# exceeded the shared liveness grace. The recovered watcher's downtime resurface
-# replays that wake through the existing harness notification path.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -409,30 +405,6 @@ if [ "$mode" = handling-delivered ]; then
     && fm_watcher_lock_matches_pid "$STATE" "$WATCH" "$handling_watcher_pid" "$FM_HOME" \
     && fm_recovery_marker_begin_handling "$STATE/.watcher-down" "$handling_generation"
   exit $?
-fi
-
-# A pending queue row is durable, but it still needs a live consumer to notify
-# the harness. Recover only a live, identity-matched watcher whose own heartbeat
-# is beyond the same grace used by the guard. Dead or foreign/mismatched locks
-# continue through ordinary singleton acquisition without signaling an unrelated
-# process.
-if [ "$mode" = arm ] && [ -s "$FM_WAKE_QUEUE" ]; then
-  stale_pid=$(cat "$WATCH_LOCK/pid" 2>/dev/null || true)
-  if fm_pid_alive "$stale_pid" \
-    && fm_watcher_lock_matches_pid "$STATE" "$WATCH" "$stale_pid" "$FM_HOME"; then
-    stale_age=
-    if [ -e "$BEAT" ]; then
-      stale_age=$(fm_path_age "$BEAT")
-    else
-      stale_age=$(fm_path_age "$WATCH_LOCK")
-    fi
-    case "$stale_age" in ''|*[!0-9]*) stale_age=0 ;; esac
-    if [ "$stale_age" -ge "$GRACE" ]; then
-      printf 'watcher: pending durable wake and stale heartbeat (%ss); restarting verified watcher pid=%s\n' \
-        "$stale_age" "$stale_pid"
-      mode=restart
-    fi
-  fi
 fi
 
 if [ "$mode" = restart ]; then

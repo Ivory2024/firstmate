@@ -5,6 +5,8 @@ Must-work continuity now lives above that process boundary instead of depending 
 
 ## Ownership
 
+On macOS, bootstrap installs an alert-only 60-second LaunchAgent when Discord reporting is configured; it classifies consumer liveness without a session, posts pending-wake HIGH alerts through the durable Discord report outbox, and reports recovery when an identity-matched consumer returns.
+
 Pi's `.pi/extensions/fm-primary-pi-watch.ts`, omp's `.omp/extensions/fm-primary-omp-watch.ts`, and OpenCode's `.opencode/plugins/fm-primary-watch-arm.js` own continuous re-arm after an actionable child close.
 Each adapter starts the next arm before delivering the wake prompt, checks current session-lock ownership at launch, preserves one child or scheduled retry at a time, and applies bounded exponential retry after an unexpected or failed close.
 A failed follow-up never cancels continuity restoration.
@@ -99,7 +101,6 @@ The same suite pins the counted-equals-presentable invariant against `bin/fm-gua
 `bin/fm-watch-arm.sh` never returns a clean empty success.
 An actionable child output returns that reason normally.
 A zero/empty child return rechecks the home lock and beacon, attaches to a verified healthy successor when one exists, or resolves the close against the watcher's bounded terminal-delivery ledger.
-When an ordinary arm finds an unacknowledged durable wake behind a live, identity-matched watcher whose beacon exceeds the shared grace, it restarts only that verified home-local watcher; the replacement's existing downtime resurface wakes the harness, and the drain presents the original rows until post-handling acknowledgement.
 An attached arm follows verified identity-matched successors and resolves the same way when that chain ends without one, because it holds no handle on the watcher's stdout and cannot read the reason line itself.
 Before releasing its singleton lock after printing an actionable reason, the watcher records that reason with its PID and process identity in `state/.watch-deliveries.log`.
 A matching PID and identity lets an attached arm report the delivered reason and exit zero even after its durable wake was handled and acknowledged, while an unrelated queue producer or a recycled PID cannot satisfy the match.

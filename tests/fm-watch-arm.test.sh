@@ -364,84 +364,6 @@ test_rearm_resurfaces_durable_queue_and_remote_open_decision() {
   pass "watch-arm: re-arm surfaces every queued wake and an open remote decision after downtime"
 }
 
-test_pending_wake_restarts_a_live_stale_consumer_and_replays() {
-  local dir home state fakebin armout drainout watcher_pid queue_before
-  dir=$(make_case stale-consumer-pending-wake)
-  home="$dir/home"
-  state="$dir/state"
-  fakebin="$dir/fakebin"
-  armout="$dir/arm.out"
-  drainout="$dir/drain.out"
-  mkdir -p "$home/data"
-
-  FM_HOME="$home" start_seed_watcher "$state" "$fakebin" "$dir/seed.out"
-  watcher_pid=$SEED_PID
-  append_wake "$state" check durable-replay 'check: durable-replay' \
-    || fail "could not publish the pending durable wake"
-  touch -t 201901010000 "$state/.last-watcher-beat"
-
-  PATH="$fakebin:$PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$state" \
-    FM_GUARD_GRACE=1 FM_ARM_CONFIRM_TIMEOUT=5 FM_ARM_ATTACH_POLL=0.1 \
-    FM_POLL=5 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
-    "$WATCH_ARM" > "$armout" 2>&1 &
-  ARM_PID=$!
-  wait_for_exit "$ARM_PID" 120 \
-    || fail "stale-consumer recovery did not close with a replay wake: $(cat "$armout")"
-  grep -F 'pending durable wake and stale heartbeat' "$armout" >/dev/null \
-    || fail "arm did not detect the stale consumer with queued work: $(cat "$armout")"
-  grep -F 'check: rearm-resurface' "$armout" >/dev/null \
-    || fail "recovered watcher did not replay the pending wake: $(cat "$armout")"
-  ! kill -0 "$watcher_pid" 2>/dev/null \
-    || fail "stale watcher pid $watcher_pid survived recovery"
-
-  FM_HOME="$home" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$drainout" \
-    || fail "drain after stale-consumer recovery failed"
-  grep "$(printf '\tcheck\tdurable-replay\t')" "$drainout" >/dev/null \
-    || fail "the original pending wake was not replayed by the drain"
-  [ -s "$state/.wake-queue" ] \
-    || fail "presentation consumed the wake before post-handling acknowledgement"
-  ack_wakes "$state" || fail "replayed pending wake could not be acknowledged after handling"
-  [ ! -s "$state/.wake-queue" ] || fail "post-handling acknowledgement left replayed wakes behind"
-  pass "watch-arm: pending durable wake restarts a stale live consumer and replays"
-}
-
-test_failed_stale_consumer_recovery_preserves_pending_wake() {
-  local dir home state fakebin armout watcher_pid status queue_before
-  dir=$(make_case stale-consumer-recovery-fails)
-  home="$dir/home"
-  state="$dir/state"
-  fakebin="$dir/fakebin"
-  armout="$dir/arm.out"
-  mkdir -p "$home/data"
-
-  FM_HOME="$home" start_seed_watcher "$state" "$fakebin" "$dir/seed.out"
-  watcher_pid=$SEED_PID
-  append_wake "$state" check durable-replay 'check: durable-replay' \
-    || fail "could not publish the pending durable wake"
-  queue_before=$(cat "$state/.wake-queue")
-  kill -STOP "$watcher_pid" 2>/dev/null || fail "could not freeze stale watcher fixture"
-  touch -t 201901010000 "$state/.last-watcher-beat"
-
-  PATH="$fakebin:$PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$state" \
-    FM_GUARD_GRACE=1 FM_ARM_CONFIRM_TIMEOUT=2 FM_ARM_ATTACH_POLL=0.1 \
-    FM_POLL=5 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
-    "$WATCH_ARM" > "$armout" 2>&1 &
-  ARM_PID=$!
-  wait_for_exit "$ARM_PID" 100
-  status=$?
-  [ "$status" -ne 124 ] || fail "failed recovery fixture did not reach its bounded failure"
-  [ "$status" -ne 0 ] || fail "arm reported success while the stale lock holder could not stop"
-  [ "$(cat "$state/.wake-queue")" = "$queue_before" ] \
-    || fail "failed recovery changed or dropped the pending durable wake"
-  grep -F 'watcher: FAILED' "$armout" >/dev/null \
-    || fail "failed recovery did not report its typed failure: $(cat "$armout")"
-
-  kill -CONT "$watcher_pid" 2>/dev/null || true
-  kill -TERM "$watcher_pid" 2>/dev/null || true
-  wait "$SEED_PID" 2>/dev/null || true
-  pass "watch-arm: failed stale-consumer recovery preserves the pending wake"
-}
-
 test_marker_publish_failure_retains_recovery_evidence() {
   local dir home state fakebin first_arm watcher_pid armout
   dir=$(make_case downtime-marker-publish-failure)
@@ -924,8 +846,6 @@ test_attached_arm_reports_the_delivered_wake_after_drain
 test_arm_refuses_an_unusable_launch_confirm_window
 test_attached_arm_still_fails_on_a_wake_it_did_not_deliver
 test_rearm_resurfaces_durable_queue_and_remote_open_decision
-test_pending_wake_restarts_a_live_stale_consumer_and_replays
-test_failed_stale_consumer_recovery_preserves_pending_wake
 test_marker_publish_failure_retains_recovery_evidence
 test_delivery_gap_wake_is_recovered_once
 test_interrupted_handling_is_redrained_on_rearm
