@@ -12,7 +12,9 @@ POLL=${FM_POLL:-15}
 COOLDOWN=${FM_WATCHER_ALERT_COOLDOWN:-3600}
 LAUNCH_PATH=${PATH:-/usr/bin:/bin}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
+# shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
+# shellcheck source=bin/fm-discord-lib.sh
 . "$SCRIPT_DIR/fm-discord-lib.sh"
 GRACE=${FM_WATCHER_STALE_GRACE:-${FM_GUARD_GRACE:-$(fm_poll_derived_grace "$POLL")}}
 
@@ -140,7 +142,7 @@ classify_consumer() {
 
 check_liveness() {
   local state_file="$STATE/.watcher-liveness-alert-state" lock="$STATE/.watcher-liveness-alert.lock"
-  local consumer class pending now prior prior_class last_alert high_since slot event message high=false
+  local consumer class pending now prior prior_class last_alert high_since event message high=false
   fm_lock_try_acquire "$lock" || return 0
   trap 'fm_lock_release "$STATE/.watcher-liveness-alert.lock" 2>/dev/null || true' EXIT HUP INT TERM
   fm_discord_load_config
