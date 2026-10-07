@@ -1706,6 +1706,13 @@ shell_quote() {
   printf "'"
 }
 
+opencode_health_catalog_identity() { # <dispatch-identity> -> canonical free-model catalog identity
+  case "$1" in
+  */*) printf 'opencode-free/%s\n' "${1#*/}" ;;
+  *) return 1 ;;
+  esac
+}
+
 resolve_pi_executable() {
   local candidate dir
   candidate=$(type -P -- "$1" 2>/dev/null) || return 1
@@ -2234,13 +2241,21 @@ if [ "$HARNESS" = opencode ]; then
       fi
     done
     OPENCODE_HEALTH_ENTRY=
+    OPENCODE_HEALTH_IDENTITY=$(opencode_health_catalog_identity "$MODEL") || OPENCODE_HEALTH_IDENTITY=
     if [ -n "$OPENCODE_HEALTH_FILE" ]; then
-      OPENCODE_HEALTH_ENTRY=$(jq -e --arg provider "$OPENCODE_MODEL_PROVIDER" --arg id "$OPENCODE_MODEL_ID" '
-        [.models[]? | select((.id == $id) and ((.provider // $provider) == $provider))] | first
+      OPENCODE_HEALTH_ENTRY=$(jq -e --arg canonical "$OPENCODE_HEALTH_IDENTITY" --arg dispatch "$MODEL" '
+        [.models[]? | select(.id == $canonical)] as $direct
+        | if ($direct | length) == 1 then $direct[0]
+          elif ($direct | length) > 1 then empty
+          else
+            [.models[]? | select(((.aliases // []) | type == "array") and any(.aliases[]; . == $dispatch))] as $aliases
+            | if ($aliases | length) == 1 then $aliases[0] else empty end
+          end
       ' "$OPENCODE_HEALTH_FILE" 2>/dev/null) || OPENCODE_HEALTH_ENTRY=
     fi
-    if [ -z "$OPENCODE_HEALTH_FILE" ] || [ -z "$OPENCODE_HEALTH_ENTRY" ] || [ "$OPENCODE_HEALTH_ENTRY" = null ]; then
-      echo "warning: cannot verify '$MODEL' against the opencode free-model health catalog (file missing/unreadable or model not tracked) - proceeding on the models.dev check alone" >&2
+    if [ -z "$OPENCODE_HEALTH_IDENTITY" ] || [ -z "$OPENCODE_HEALTH_FILE" ] || [ -z "$OPENCODE_HEALTH_ENTRY" ] || [ "$OPENCODE_HEALTH_ENTRY" = null ]; then
+      echo "error: cannot verify '$MODEL' against the opencode free-model health catalog (expected '$OPENCODE_HEALTH_IDENTITY'; file missing/unreadable or model not tracked); refusing dispatch" >&2
+      exit 1
     else
       OPENCODE_HEALTH_SCANNED_AT=$(jq -r '.scanned_at // empty' "$OPENCODE_HEALTH_FILE" 2>/dev/null) || OPENCODE_HEALTH_SCANNED_AT=
       if [ -n "$OPENCODE_HEALTH_SCANNED_AT" ]; then
@@ -2262,7 +2277,8 @@ if [ "$HARNESS" = opencode ]; then
       fi
       OPENCODE_HEALTH_EXPIRING=$(printf '%s' "$OPENCODE_HEALTH_ENTRY" | jq -r '.is_expiring_soon // false')
       if [ "$OPENCODE_HEALTH_EXPIRING" = true ]; then
-        echo "warning: OpenCode model '$MODEL' is flagged is_expiring_soon in the free-model health catalog" >&2
+        echo "error: OpenCode model '$MODEL' is flagged is_expiring_soon in the free-model health catalog; refusing dispatch" >&2
+        exit 1
       fi
     fi
   fi
