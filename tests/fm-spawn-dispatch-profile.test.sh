@@ -948,7 +948,7 @@ test_opencode_dispatch_resolves_dispatch_identity_to_canonical_catalog_identity(
   pass "OpenCode dispatch identity resolves to its canonical free-model health identity"
 }
 
-test_opencode_dispatch_allows_expiring_health_entry() {
+test_opencode_dispatch_warns_on_expiring_health_entry() {
   local rec id out status
   id=profile-opencode-health-expiring-z7lc
   rec=$(make_spawn_case profile-opencode-health-expiring opencode "$id")
@@ -959,10 +959,11 @@ test_opencode_dispatch_allows_expiring_health_entry() {
   out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
     --model opencode-go/space-bunny-free)
   status=$?
-  expect_code 0 "$status" "is_expiring_soon should guide model choice without refusing dispatch: $out"
-  [ -e "$HOME_DIR/state/$id.meta" ] || fail "expiring health entry blocked a valid spawn"
+  expect_code 0 "$status" "expiring free-model catalog entry should remain dispatchable: $out"
+  assert_contains "$out" "flagged is_expiring_soon" "expiring model warning did not name the catalog flag"
+  [ -e "$HOME_DIR/state/$id.meta" ] || fail "expiring health entry blocked spawn"
   [ -s "$LAUNCH_LOG" ] || fail "expiring health entry did not launch an agent"
-  pass "OpenCode allows active models marked is_expiring_soon"
+  pass "OpenCode warns but dispatches when a free-model catalog entry is expiring"
 }
 
 test_non_opencode_model_dispatch_does_not_require_health_catalog() {
@@ -1923,7 +1924,7 @@ test_opencode_refuses_early_terminated_health_entry
 test_opencode_refuses_inactive_health_entry
 test_opencode_dispatch_refuses_untracked_health_catalog_model
 test_opencode_dispatch_resolves_dispatch_identity_to_canonical_catalog_identity
-test_opencode_dispatch_allows_expiring_health_entry
+test_opencode_dispatch_warns_on_expiring_health_entry
 test_non_opencode_model_dispatch_does_not_require_health_catalog
 test_opencode_dispatch_warns_on_stale_health_catalog_scan
 test_opencode_dispatch_silent_on_fresh_health_catalog_scan
