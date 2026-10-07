@@ -570,38 +570,38 @@ export const FmPrimaryWatchArm = async ({ client, directory, worktree }) => {
     },
   };
 };
-export default {
-  id: "fm-primary-watch-arm",
-  async setup(ctx) {
-    const client = {
-      session: {
-        promptAsync: ({ path, body }) => ctx.session.prompt({
-          sessionID: path.id,
-          text: body.parts.map((part) => part.text ?? "").join(""),
-        }),
-      },
-    };
-    const hooks = await FmPrimaryWatchArm({
-      client,
-      directory: ctx.location?.directory,
-      worktree: ctx.location?.worktree,
-    });
-    const controller = new AbortController();
-    const lifecycle = new OpenCodeLifecycleAdapter();
-    let eventError = null;
-    const eventTask = (async () => {
-      for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
-        const signal = lifecycle.normalize(event);
-        if (signal) await hooks.quiescent(signal);
-      }
-    })().catch((error) => {
-      eventError = error;
-      console.error("OpenCode watch-arm lifecycle event stream failed:", error);
-    });
-    return async () => {
-      controller.abort();
-      await eventTask;
-      if (eventError) throw eventError;
-    };
-  },
+FmPrimaryWatchArm.id = "fm-primary-watch-arm";
+FmPrimaryWatchArm.setup = async function setup(ctx) {
+  const client = {
+    session: {
+      promptAsync: ({ path, body }) => ctx.session.prompt({
+        sessionID: path.id,
+        text: body.parts.map((part) => part.text ?? "").join(""),
+      }),
+    },
+  };
+  const hooks = await FmPrimaryWatchArm({
+    client,
+    directory: ctx.location?.directory,
+    worktree: ctx.location?.worktree,
+  });
+  const controller = new AbortController();
+  const lifecycle = new OpenCodeLifecycleAdapter();
+  let eventError = null;
+  const eventTask = (async () => {
+    for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+      const signal = lifecycle.normalize(event);
+      if (signal) await hooks.quiescent(signal);
+    }
+  })().catch((error) => {
+    eventError = error;
+    console.error("OpenCode watch-arm lifecycle event stream failed:", error);
+  });
+  return async () => {
+    controller.abort();
+    await eventTask;
+    if (eventError) throw eventError;
+  };
 };
+
+export default FmPrimaryWatchArm;

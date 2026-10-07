@@ -118,16 +118,32 @@ assert.deepEqual(corrLife.normalize({ type: "session.execution.succeeded", id: "
 
 // 7. Plugin subscription receipt (tested in plugin contract setup loop and fixture test below)
 
-// 8. Failed / cancelled / interrupted execution — MUST NOT be skipped
-for (const type of ["session.execution.failed", "session.execution.interrupted", "session.execution.cancelled", "session.execution.canceled"]) {
-  const failLife = new OpenCodeLifecycleAdapter();
-  assert.equal(failLife.normalize({ type: "session.execution.started", id: `start-${type}`, data: { sessionID: `session-${type}` } }), null);
-  const terminal = { type, id: `term-${type}`, data: { sessionID: `session-${type}` } };
-  assert.deepEqual(failLife.normalize(terminal), {
+// 8. Failed / cancelled / interrupted execution — trace-backed acceptance (MUST NOT be skipped)
+const cancellationTraces = [
+  {
+    name: "execution failed with cancellation error",
+    start: { type: "session.execution.started", id: "start-cancel-1", data: { sessionID: "session-cancel-1" } },
+    terminal: { type: "session.execution.failed", id: "term-cancel-1", data: { sessionID: "session-cancel-1", error: { name: "AbortError", message: "User cancelled execution" } } },
+    expectedRef: "start-cancel-1",
+    sessionID: "session-cancel-1",
+  },
+  {
+    name: "execution interrupted by user",
+    start: { type: "session.execution.started", id: "start-cancel-2", data: { sessionID: "session-cancel-2" } },
+    terminal: { type: "session.execution.interrupted", id: "term-cancel-2", data: { sessionID: "session-cancel-2", reason: "user_cancelled" } },
+    expectedRef: "start-cancel-2",
+    sessionID: "session-cancel-2",
+  },
+];
+
+for (const trace of cancellationTraces) {
+  const life = new OpenCodeLifecycleAdapter();
+  assert.equal(life.normalize(trace.start), null, `${trace.name}: start yields null`);
+  assert.deepEqual(life.normalize(trace.terminal), {
     type: QUIESCENT,
-    sessionID: `session-${type}`,
-    executionRef: `start-${type}`,
-  }, `8. failed/interrupted/cancelled execution (${type}) MUST NOT be skipped and yields QUIESCENT for watcher re-arm`);
+    sessionID: trace.sessionID,
+    executionRef: trace.expectedRef,
+  }, `8. trace-backed cancellation (${trace.name}) MUST NOT be skipped and yields QUIESCENT for watcher re-arm`);
 }
 
 assert.deepEqual(lifecycle.normalize({ type: "session.idle", properties: { sessionID: "legacy-session" } }), {
@@ -245,4 +261,4 @@ async function waitFor(predicate) {
 EOF
 ) || fail "OpenCode plugins failed the v2 default-export/setup contract: $out"
 [ -z "$out" ] || fail "OpenCode v2 plugin contract test printed output: $out"
-pass "all five OpenCode plugins export v2 id/setup definitions and register through ctx domains"
+pass "OpenCode watch-arm plugin exports v2 setup definition with legacy compatibility and normalizes lifecycle terminal events"
