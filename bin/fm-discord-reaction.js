@@ -55,6 +55,7 @@ function sourceForRequest(stateDir, requestId) {
 }
 
 export async function reactToCapturedRequest(stateDir, requestId, phase, token = process.env.FM_DISCORD_BOT_TOKEN || process.env.FM_DISCORD_TOKEN) {
+	if (["1", "true", "yes"].includes((process.env.FMX_DRY_RUN || "").toLowerCase())) return false;
 	const emoji = reactions[phase];
 	if (!emoji) return false;
 	const source = sourceForRequest(stateDir, requestId);

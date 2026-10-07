@@ -118,6 +118,29 @@ test_ingestion_payload_shape_and_wake() {
   pass "self-hosted Discord ingestion writes x-inbox payload shape and fires x-mention wake"
 }
 
+test_dry_run_poll_does_not_react_or_persist_lifecycle() {
+  local home log request_id
+  home="$TMP_ROOT/poll-dry-run"
+  request_id=discord-sh-1352000000000000088
+  mkdir -p "$home/state"
+  make_fake_discord_node "$home"
+  log="$home/reactions.jsonl"
+
+  FM_TEST_REAL_NODE=$(command -v node) \
+    FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000000088","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"username":"captain"},"mentions":[{"id":"9000000000000000001"}],"content":"<@9000000000000000001> dry-run poll","attachments":[]}]' \
+    FM_DISCORD_FAKE_REACTION_LOG="$log" FMX_DRY_RUN=1 \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-poll.sh" >/dev/null
+
+  assert_absent "$log" "dry-run polling must not call Discord reactions"
+  assert_absent "$home/state/x-context/discord-lifecycle-$request_id-accepted.json" \
+    "dry-run polling must not persist an accepted lifecycle marker"
+  assert_absent "$home/state/x-context/discord-lifecycle-$request_id-accepted.json.applied" \
+    "dry-run polling must not persist an accepted reaction receipt"
+  pass "dry-run Discord polling captures the request without sending or recording a reaction"
+}
+
 test_reaction_failure_does_not_fail_ingress() {
   local home wake_out rc
   home="$TMP_ROOT/reaction-failure"
@@ -231,6 +254,41 @@ test_reply_dry_run_routing() {
   assert_equals "discord-selfhosted" "$source" "outbox source"
 
   pass "fm-x-reply routes self-hosted Discord requests to self-hosted reply adapter"
+}
+
+test_final_followup_dry_run_does_not_react_or_persist_success() {
+  local home log request_id task_id out rc
+  home="$TMP_ROOT/followup-dry-run-final"
+  request_id=discord-sh-1352000000000000188
+  task_id=task-dry-run-final
+  mkdir -p "$home/state/x-inbox" "$home/state/x-context"
+  chmod 700 "$home/state" "$home/state/x-inbox" "$home/state/x-context"
+  make_fake_discord_node "$home"
+  log="$home/reactions.jsonl"
+
+  printf 'kind=ship\nx_request=%s\nx_request_ts=1700000000\nx_followups=0\nx_platform=discord\nx_reply_max_chars=1900\n' \
+    "$request_id" > "$home/state/$task_id.meta"
+  printf '{"request_id":"%s","platform":"discord","source":"discord-selfhosted","channel_id":"1000000000000000001","message_id":"1352000000000000188"}' \
+    "$request_id" > "$home/state/x-context/$request_id.json"
+  printf '{"request_id":"%s","source":"discord-selfhosted","channel_id":"1000000000000000001","message_id":"1352000000000000188"}' \
+    "$request_id" > "$home/state/x-inbox/$request_id.json"
+  printf '{"phase":"claimed"}' > "$home/state/x-context/discord-lifecycle-$request_id-claimed.json"
+  chmod 600 "$home/state/$task_id.meta" "$home/state/x-context/$request_id.json" \
+    "$home/state/x-inbox/$request_id.json" "$home/state/x-context/discord-lifecycle-$request_id-claimed.json"
+
+  out=$(FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_REACTION_LOG="$log" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FMX_DRY_RUN=1 FMX_NOW_OVERRIDE=1700003600 \
+    "$ROOT/bin/fm-x-followup.sh" "$task_id" --final - <<<"Completed in dry run." 2>/dev/null); rc=$?
+  expect_code 0 "$rc" "dry-run final follow-up exit"
+  assert_equals "$request_id" "$out" "dry-run final follow-up echoes its request id"
+  assert_present "$home/state/x-outbox/$request_id.json" "dry-run final follow-up is recorded in the outbox"
+  assert_absent "$log" "dry-run final follow-up must not call Discord reactions"
+  assert_absent "$home/state/x-context/discord-lifecycle-$request_id-success.json" \
+    "dry-run final follow-up must not persist a success lifecycle marker"
+  assert_absent "$home/state/x-context/discord-lifecycle-$request_id-success.json.applied" \
+    "dry-run final follow-up must not persist a success reaction receipt"
+  pass "dry-run final follow-up records its preview without sending or recording success"
 }
 
 test_collision_exclusion_filter() {
@@ -489,11 +547,13 @@ test_command_channel_conflict_with_exclusion_is_reported() {
 
 test_poll_no_token_is_hard_noop
 test_ingestion_payload_shape_and_wake
+test_dry_run_poll_does_not_react_or_persist_lifecycle
 test_reaction_failure_does_not_fail_ingress
 test_consumer_and_terminal_reactions_follow_durable_transitions
 test_claim_without_token_then_success_after_token_restore
 test_default_dm_discovery
 test_reply_dry_run_routing
+test_final_followup_dry_run_does_not_react_or_persist_success
 test_collision_exclusion_filter
 test_allowlist_overrides_default_exclusion
 test_reply_to_bot_message_without_mention
