@@ -51,10 +51,9 @@ classified into `coding_large` / `deep_debug` / `scout_tool`, each carrying
 `is_preview`, `is_expiring_soon`, and `early_termination_detected`.
 
 `bin/fm-spawn.sh` mechanically enforces the catalog check below at dispatch time.
-It canonicalizes an OpenCode dispatch identity such as `opencode/<model>` to the
-catalog identity `opencode-free/<model>`, then resolves a unique catalog alias
-when one is present.
-Missing, unreadable, ambiguous, or untracked health entries fail closed.
+It canonicalizes OpenCode dispatch identities `opencode/<model>` and
+`opencode-go/<model>` to the catalog identity `opencode-free/<model>`.
+Missing, unreadable, duplicate, or untracked health entries fail closed.
 An inactive status or `early_termination_detected: true` also refuses
 dispatch. Treat `is_expiring_soon: true` as a signal to narrow the brief or
 prefer the domain's recommended default.

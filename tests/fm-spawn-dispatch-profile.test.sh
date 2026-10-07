@@ -948,45 +948,6 @@ test_opencode_dispatch_resolves_dispatch_identity_to_canonical_catalog_identity(
   pass "OpenCode dispatch identity resolves to its canonical free-model health identity"
 }
 
-test_opencode_dispatch_resolves_catalog_alias_deterministically() {
-  local rec id out status
-  id=profile-opencode-health-alias-z7lb
-  rec=$(make_spawn_case profile-opencode-health-alias opencode "$id")
-  read_case_record "$rec"
-  write_opencode_health_catalog "$HOME_DIR" \
-    '{"models":[{"id":"opencode-free/canonical-model","aliases":["opencode/alias-model"],"status":"active","early_termination_detected":false,"is_expiring_soon":false}]}'
-
-  out=$(FM_TEST_OPENCODE_MODELS='opencode/alias-model' \
-    FM_TEST_MODELS_DEV_JSON='{"opencode":{"models":{"alias-model":{"cost":{"input":0,"output":0}}}}}' \
-    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
-      --model opencode/alias-model)
-  status=$?
-  expect_code 0 "$status" "a unique catalog alias should resolve to its canonical entry: $out"
-  assert_meta_profile "$HOME_DIR/state/$id.meta" opencode opencode/alias-model default
-  pass "OpenCode catalog aliases resolve only through a unique matching entry"
-}
-
-test_opencode_dispatch_refuses_ambiguous_catalog_alias() {
-  local rec id out status
-  id=profile-opencode-health-ambiguous-alias-z7le
-  rec=$(make_spawn_case profile-opencode-health-ambiguous-alias opencode "$id")
-  read_case_record "$rec"
-  write_opencode_health_catalog "$HOME_DIR" \
-    '{"models":[{"id":"opencode-free/first-model","aliases":["opencode/alias-model"],"status":"active"},{"id":"opencode-free/second-model","aliases":["opencode/alias-model"],"status":"active"}]}'
-
-  out=$(FM_TEST_OPENCODE_MODELS='opencode/alias-model' \
-    FM_TEST_MODELS_DEV_JSON='{"opencode":{"models":{"alias-model":{"cost":{"input":0,"output":0}}}}}' \
-    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
-      --model opencode/alias-model)
-  status=$?
-  expect_code 1 "$status" "an ambiguous catalog alias must not select an arbitrary entry"
-  assert_contains "$out" "cannot verify 'opencode/alias-model'" \
-    "ambiguous alias refusal did not identify the unresolved dispatch identity"
-  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "ambiguous catalog alias published spawn metadata"
-  [ ! -s "$LAUNCH_LOG" ] || fail "ambiguous catalog alias launched an agent"
-  pass "OpenCode refuses ambiguous health-catalog aliases"
-}
-
 test_opencode_dispatch_allows_expiring_health_entry() {
   local rec id out status
   id=profile-opencode-health-expiring-z7lc
@@ -1962,8 +1923,6 @@ test_opencode_refuses_early_terminated_health_entry
 test_opencode_refuses_inactive_health_entry
 test_opencode_dispatch_refuses_untracked_health_catalog_model
 test_opencode_dispatch_resolves_dispatch_identity_to_canonical_catalog_identity
-test_opencode_dispatch_resolves_catalog_alias_deterministically
-test_opencode_dispatch_refuses_ambiguous_catalog_alias
 test_opencode_dispatch_allows_expiring_health_entry
 test_non_opencode_model_dispatch_does_not_require_health_catalog
 test_opencode_dispatch_warns_on_stale_health_catalog_scan
