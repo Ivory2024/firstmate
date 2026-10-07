@@ -49,8 +49,8 @@ scope_match() { # <path> <pattern>
 }
 
 publish_check() { #
-  local scope_file git_dir changed path pattern limit extra total_limit='' total_bytes=0 pattern_count=0 i
-  local bytes found unexpected total_commits first_parent_commits current_branch base_reachable_commits
+  local scope_file git_dir path pattern limit extra total_limit='' total_bytes=0 pattern_count=0 i path_count=0
+  local bytes found unexpected total_commits first_parent_commits current_branch current_base inherited_commits expected_repository verification_ref
   local pr_list pr_numbers reported_pr_count listed_pr_count
   local -a patterns=() limits=()
 
@@ -81,12 +81,34 @@ publish_check() { #
   unexpected=$((total_commits - first_parent_commits))
   [ "$unexpected" -eq 0 ] \
     || die "unexpected inherited commits invariant failed: total=$total_commits first_parent=$first_parent_commits unexpected=$unexpected"
-  if git show-ref --verify --quiet "$FM_GIT_BASE_REF"; then
-    base_reachable_commits=$(git rev-list --count "$FM_GIT_BASE_SHA..HEAD" --not "$FM_GIT_BASE_REF" 2>/dev/null) \
-      || die "could not distinguish task commits from commits already present on '$FM_GIT_BASE_REF'"
-    [ "$base_reachable_commits" -eq "$total_commits" ] \
-      || die "unexpected inherited commits invariant failed: $((total_commits - base_reachable_commits)) task-branch commits are already reachable from '$FM_GIT_BASE_REF'"
-  fi
+  case "$FM_GIT_BASE_MODE" in
+    local)
+      current_base=$(git rev-parse --verify --quiet "$FM_GIT_BASE_REF^{commit}" 2>/dev/null) \
+        || die "could not verify current local base '$FM_GIT_BASE_REF'"
+      ;;
+    remote)
+      [ "$FM_GIT_BASE_REF" = refs/heads/main ] \
+        || die "pinned remote base ref is not refs/heads/main: '$FM_GIT_BASE_REF'"
+      expected_repository=$(fm_git_base_expected_repository "$PWD") \
+        || die "could not verify expected repository identity for current fork base"
+      [ "$(printf '%s' "$expected_repository" | tr '[:upper:]' '[:lower:]')" = \
+        "$(printf '%s' "$FM_GIT_BASE_REPOSITORY" | tr '[:upper:]' '[:lower:]')" ] \
+        || die "pinned repository '$FM_GIT_BASE_REPOSITORY' differs from configured expected repository '$expected_repository'"
+      verification_ref=refs/remotes/fm-publish-verification/main
+      fm_git_base_fetch_remote_ref "$PWD" "$expected_repository" refs/heads/main "$verification_ref" \
+        || die "could not revalidate current refs/heads/main from verified repository '$expected_repository'"
+      current_base=$(git rev-parse --verify --quiet "$verification_ref^{commit}" 2>/dev/null) \
+        || die "verified fork main did not resolve to a commit"
+      ;;
+    *) die "verified-base pin has unsupported mode '$FM_GIT_BASE_MODE'" ;;
+  esac
+  found=$(git merge-base "$FM_GIT_BASE_SHA" "$current_base" 2>/dev/null || true)
+  [ "$found" = "$FM_GIT_BASE_SHA" ] \
+    || die "current-base ancestry invariant failed: pinned=$FM_GIT_BASE_SHA current=$current_base merge-base=${found:-none}"
+  inherited_commits=$(git rev-list --count "$FM_GIT_BASE_SHA..HEAD" --not "$current_base" 2>/dev/null) \
+    || die "could not distinguish task commits from commits already present on verified current base '$current_base'"
+  [ "$inherited_commits" -eq "$total_commits" ] \
+    || die "unexpected inherited commits invariant failed: total=$total_commits task_owned=$inherited_commits inherited=$((total_commits - inherited_commits)) verified_current_base=$current_base"
 
   while IFS=$'\t' read -r pattern limit extra || [ -n "${pattern:-}${limit:-}${extra:-}" ]; do
     [ -n "${pattern:-}" ] || continue
@@ -106,11 +128,8 @@ publish_check() { #
   [ -n "$total_limit" ] || die "scope allowlist must include @total<TAB><max-diff-bytes>"
   [ "$pattern_count" -gt 0 ] || die "scope allowlist contains no path patterns"
 
-  changed=$(git diff --name-only --no-renames "$FM_GIT_BASE_SHA...HEAD" --) \
-    || die "could not inspect changed paths against pinned base"
-  [ -n "$changed" ] || die "scope invariant failed: no committed paths differ from pinned base"
-  while IFS= read -r path; do
-    [ -n "$path" ] || continue
+  while IFS= read -r -d '' path; do
+    path_count=$((path_count + 1))
     found=0
     limit=
     for ((i = 0; i < pattern_count; i++)); do
@@ -128,9 +147,9 @@ publish_check() { #
     [ "$bytes" -le "$limit" ] \
       || die "oversized diff invariant failed: path='$path' bytes=$bytes limit=$limit"
     total_bytes=$((total_bytes + bytes))
-  done <<EOF
-$changed
-EOF
+  done < <(git diff --name-only --no-renames -z "$FM_GIT_BASE_SHA...HEAD" --) \
+    || die "could not inspect changed paths against pinned base"
+  [ "$path_count" -gt 0 ] || die "scope invariant failed: no committed paths differ from pinned base"
   [ "$total_bytes" -le "$total_limit" ] \
     || die "oversized diff invariant failed: total_bytes=$total_bytes limit=$total_limit"
 
@@ -149,7 +168,7 @@ EOF
     || die "conflicting open PR invariant failed: matching open PR count=$reported_pr_count numbers=$(printf '%s' "$pr_numbers" | tr '\n' ',') repository=$FM_GIT_BASE_REPOSITORY branch=$FM_GIT_BASE_BRANCH"
   printf 'PUBLISH_GUARD: PASS: base=%s commits=%s unexpected=%s paths=%s diff_bytes=%s scope=%s open_prs=%s\n' \
     "$FM_GIT_BASE_SHA" "$total_commits" "$unexpected" \
-    "$(printf '%s\n' "$changed" | awk 'NF { count++ } END { print count+0 }')" \
+    "$path_count" \
     "$total_bytes" "$scope_file" "$reported_pr_count"
 }
 

@@ -82,9 +82,54 @@ fm_git_base_write_pin() { # <worktree> <mode> <repository> <ref> <sha>
   mv -f "$tmp" "$path" || { rm -f "$tmp"; return 1; }
 }
 
+fm_git_base_verified_source_url() { # <worktree> <expected-repository>
+  local worktree=$1 expected_repository=$2 expected_normalized remote urls url identity source_url effective_url effective_identity
+  expected_normalized=$(printf '%s' "$expected_repository" | tr '[:upper:]' '[:lower:]')
+  source_url=
+  while IFS= read -r remote; do
+    [ -n "$remote" ] || continue
+    urls=$(git -C "$worktree" config --get-all "remote.$remote.url" 2>/dev/null || true)
+    while IFS= read -r url; do
+      [ -n "$url" ] || continue
+      identity=$(fm_git_base_repo_identity_from_url "$url" 2>/dev/null || true)
+      if [ "$identity" = "$expected_normalized" ]; then
+        source_url=$url
+        break
+      fi
+    done <<EOF
+$urls
+EOF
+    [ -n "$source_url" ] && break
+  done <<EOF
+$(git -C "$worktree" remote 2>/dev/null || true)
+EOF
+  if [ -z "$source_url" ]; then
+    echo "error: no configured remote URL resolves to expected repository '$expected_repository'; refusing to trust a remote name such as origin" >&2
+    return 1
+  fi
+  effective_url=$(git -C "$worktree" ls-remote --get-url "$source_url" 2>/dev/null) || {
+    echo "error: could not resolve the effective fetch URL for verified repository '$expected_repository'; refusing to fetch an unverified source" >&2
+    return 1
+  }
+  if [ "$effective_url" != "$source_url" ]; then
+    effective_identity=$(fm_git_base_repo_identity_from_url "$effective_url" 2>/dev/null || true)
+    if [ "$effective_identity" != "$expected_normalized" ]; then
+      echo "error: Git URL rewrite changes verified repository '$expected_repository' to an unverified fetch destination '$effective_url'; refusing to fetch" >&2
+      return 1
+    fi
+  fi
+  printf '%s\n' "$source_url"
+}
+
+fm_git_base_fetch_remote_ref() { # <worktree> <expected-repository> <source-ref> <target-ref>
+  local worktree=$1 repository=$2 source_ref=$3 target_ref=$4 source_url
+  source_url=$(fm_git_base_verified_source_url "$worktree" "$repository") || return 1
+  git -C "$worktree" fetch --quiet --no-tags "$source_url" "+$source_ref:$target_ref"
+}
+
 fm_git_base_refresh_worktree() { # <worktree> <source-repository>
-  local worktree=$1 source_repo=$2 mode expected_repository expected_repository_normalized expected_ref source_url remote urls url identity
-  local target_ref expected actual source_common worktree_common effective_url effective_identity
+  local worktree=$1 source_repo=$2 mode expected_repository expected_ref
+  local target_ref expected actual source_common worktree_common
   mode=$(git -C "$source_repo" config --get firstmate.baseMode 2>/dev/null || true)
   [ -n "$mode" ] || mode=remote
   expected_ref=$(fm_git_base_ref "$source_repo") || return 1
@@ -121,42 +166,8 @@ fm_git_base_refresh_worktree() { # <worktree> <source-repository>
     remote)
       expected_repository=$(fm_git_base_expected_repository "$source_repo") || return 1
       expected_ref=$(fm_git_base_ref "$source_repo") || return 1
-      expected_repository_normalized=$(printf '%s' "$expected_repository" | tr '[:upper:]' '[:lower:]')
-      source_url=
-      while IFS= read -r remote; do
-        [ -n "$remote" ] || continue
-        urls=$(git -C "$worktree" config --get-all "remote.$remote.url" 2>/dev/null || true)
-        while IFS= read -r url; do
-          [ -n "$url" ] || continue
-          identity=$(fm_git_base_repo_identity_from_url "$url" 2>/dev/null || true)
-          if [ "$identity" = "$expected_repository_normalized" ]; then
-            source_url=$url
-            break
-          fi
-        done <<EOF
-$urls
-EOF
-        [ -n "$source_url" ] && break
-      done <<EOF
-$(git -C "$worktree" remote 2>/dev/null || true)
-EOF
-      if [ -z "$source_url" ]; then
-        echo "error: no configured remote URL resolves to expected repository '$expected_repository'; refusing to trust a remote name such as origin" >&2
-        return 1
-      fi
-      effective_url=$(git -C "$worktree" ls-remote --get-url "$source_url" 2>/dev/null) || {
-        echo "error: could not resolve the effective fetch URL for verified repository '$expected_repository'; refusing to fetch an unverified source" >&2
-        return 1
-      }
-      if [ "$effective_url" != "$source_url" ]; then
-        effective_identity=$(fm_git_base_repo_identity_from_url "$effective_url" 2>/dev/null || true)
-        if [ "$effective_identity" != "$expected_repository_normalized" ]; then
-          echo "error: Git URL rewrite changes verified repository '$expected_repository' to an unverified fetch destination '$effective_url'; refusing to fetch" >&2
-          return 1
-        fi
-      fi
       target_ref="refs/remotes/fm-verified-fork/${expected_ref#refs/heads/}"
-      if ! git -C "$worktree" fetch --quiet --no-tags "$source_url" "+$expected_ref:$target_ref"; then
+      if ! fm_git_base_fetch_remote_ref "$worktree" "$expected_repository" "$expected_ref" "$target_ref"; then
         echo "error: could not fetch '$expected_ref' from verified repository '$expected_repository'; refusing to launch from an unverified base" >&2
         return 1
       fi

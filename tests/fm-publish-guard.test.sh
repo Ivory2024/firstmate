@@ -7,6 +7,7 @@ set -u
 
 TMP_ROOT=$(fm_test_tmproot fm-publish-guard)
 FAKEBIN="$TMP_ROOT/fakebin"
+REAL_GIT=$(command -v git)
 mkdir -p "$FAKEBIN"
 
 cat > "$FAKEBIN/gh-axi" <<'SH'
@@ -29,8 +30,27 @@ esac
 SH
 chmod +x "$FAKEBIN/gh-axi"
 
-new_case() { # <name>
-  local name=$1
+cat > "$FAKEBIN/git" <<'SH'
+#!/usr/bin/env bash
+set -eu
+args=("$@")
+fetch=0
+for arg in "${args[@]}"; do
+  [ "$arg" = fetch ] && fetch=1
+done
+if [ "$fetch" = 1 ] && [ -n "${FM_TEST_GIT_FETCH_URL:-}" ]; then
+  for i in "${!args[@]}"; do
+    if [ "${args[$i]}" = https://github.com/Ivory2024/firstmate.git ]; then
+      args[$i]="file://$FM_TEST_GIT_FETCH_URL"
+    fi
+  done
+fi
+exec "$FM_TEST_REAL_GIT" "${args[@]}"
+SH
+chmod +x "$FAKEBIN/git"
+
+new_case() { # <name> [source-base-ref]
+  local name=$1 source_ref=${2:-refs/heads/main}
   TEST_REPO="$TMP_ROOT/$name"
   mkdir -p "$TEST_REPO"
   git init --quiet -b main "$TEST_REPO"
@@ -41,7 +61,10 @@ new_case() { # <name>
   git -C "$TEST_REPO" commit --quiet -m base
   git -C "$TEST_REPO" config firstmate.baseMode local
   git -C "$TEST_REPO" config firstmate.expectedRepository Ivory2024/firstmate
-  git -C "$TEST_REPO" config firstmate.baseRef refs/heads/main
+  git -C "$TEST_REPO" config firstmate.baseRef "$source_ref"
+  if [ "$source_ref" != refs/heads/main ]; then
+    git -C "$TEST_REPO" update-ref "$source_ref" HEAD
+  fi
   git -C "$TEST_REPO" checkout --quiet --detach refs/heads/main
   (
     # shellcheck source=bin/fm-git-base-lib.sh
@@ -71,7 +94,8 @@ commit_all() { # <message>
 }
 
 run_guard() {
-  (cd "$TEST_REPO" && PATH="$FAKEBIN:$PATH" "$ROOT/bin/fm-publish-guard.sh" check 2>&1)
+  (cd "$TEST_REPO" && FM_TEST_REAL_GIT="$REAL_GIT" PATH="$FAKEBIN:$PATH" \
+    "$ROOT/bin/fm-publish-guard.sh" check 2>&1)
 }
 
 test_correct_base_scoped_delta_passes() {
@@ -164,18 +188,72 @@ test_unexpected_merged_commits_are_rejected() {
 
 test_fast_forwarded_base_commits_are_rejected() {
   local out status
-  new_case fast-forwarded-base
+  new_case fast-forwarded-base refs/heads/fm-test-source-base
   write_scope 'recovery/*.txt' 1000 10000
   mkdir -p "$TEST_REPO/recovery"
   printf 'upstream change\n' > "$TEST_REPO/recovery/upstream.txt"
   commit_all upstream-change
-  git -C "$TEST_REPO" branch -f main HEAD
-  git -C "$TEST_REPO" reset --hard main >/dev/null
+  git -C "$TEST_REPO" update-ref refs/heads/fm-test-source-base HEAD
+  git -C "$TEST_REPO" branch -D main >/dev/null
   out=$(run_guard); status=$?
   [ "$status" -ne 0 ] || fail "a task branch fast-forwarded to newer base passed the ownership guard"
-  assert_contains "$out" "already reachable from 'refs/heads/main'" \
-    "fast-forward refusal did not identify commits inherited from the moving base"
-  pass "a fast-forwarded newer base commit is rejected despite scoped paths"
+  assert_contains "$out" 'inherited=1 verified_current_base=' \
+    "fast-forward refusal did not identify commits inherited from the verified source base"
+  pass "a fast-forwarded newer source base is rejected without local main"
+}
+
+test_remote_fast_forward_rejected_without_local_main() {
+  local out status remote publisher current_ref
+  new_case remote-fast-forward
+  write_scope 'recovery/*.txt' 1000 10000
+  remote="$TMP_ROOT/remote-fast-forward.git"
+  publisher="$TMP_ROOT/remote-fast-forward-publisher"
+  git clone --quiet --bare "$TEST_REPO" "$remote"
+  git clone --quiet "file://$remote" "$publisher"
+  git -C "$publisher" checkout --quiet -B main refs/remotes/origin/main
+  mkdir -p "$publisher/recovery"
+  printf 'upstream change\n' > "$publisher/recovery/upstream.txt"
+  git -C "$publisher" add recovery/upstream.txt
+  git -C "$publisher" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit -qm upstream-change
+  git -C "$publisher" push --quiet origin main
+  git -C "$publisher" fetch --quiet origin main
+  current_ref=$(git -C "$publisher" rev-parse origin/main)
+  git -C "$TEST_REPO" fetch --quiet "file://$remote" refs/heads/main:refs/remotes/test-current/main
+  git -C "$TEST_REPO" checkout --quiet fm/task
+  git -C "$TEST_REPO" merge --quiet --ff-only refs/remotes/test-current/main
+  git -C "$TEST_REPO" branch -D main >/dev/null
+  git -C "$TEST_REPO" remote add origin https://github.com/Ivory2024/firstmate.git
+  (
+    . "$ROOT/bin/fm-git-base-lib.sh"
+    FM_GIT_BASE_MODE=remote
+    FM_GIT_BASE_REPOSITORY=Ivory2024/firstmate
+    FM_GIT_BASE_REF=refs/heads/main
+    FM_GIT_BASE_SHA=$TEST_BASE
+    fm_git_base_write_branch_pin "$TEST_REPO" fm/task "$TEST_BASE"
+  ) || fail "could not record remote-mode branch identity in the fixture"
+  FM_TEST_GIT_FETCH_URL=$remote
+  export FM_TEST_GIT_FETCH_URL
+  out=$(run_guard); status=$?
+  [ "$status" -ne 0 ] || fail "a remote fast-forward passed without a local main ref"
+  assert_contains "$out" "inherited=1 verified_current_base=$current_ref" \
+    "remote fast-forward refusal did not use the independently fetched current fork main"
+  pass "remote ownership check rejects fast-forward with local main absent"
+}
+
+test_newline_filename_stays_one_scope_path() {
+  local out status path
+  new_case newline-filename
+  mkdir -p "$TEST_REPO/recovery"
+  path=$'recovery/allowed\nsecret.txt'
+  printf 'disallowed filename\n' > "$TEST_REPO/$path"
+  commit_all newline-filename
+  printf 'recovery/allowed\t2000\nsecret.txt\t2000\n@total\t5000\n' > "$TEST_SCOPE"
+  out=$(run_guard); status=$?
+  [ "$status" -ne 0 ] || fail "a newline filename split across allowed path fragments passed scope validation"
+  assert_contains "$out" 'scope allowlist invariant failed' \
+    "newline filename refusal did not name the violated scope invariant"
+  pass "a newline filename remains one path through scope validation"
 }
 
 test_existing_open_pr_for_task_branch_is_rejected() {
@@ -219,6 +297,8 @@ test_hundreds_of_inherited_paths_are_rejected_by_scope
 test_oversized_scoped_file_is_rejected
 test_unexpected_merged_commits_are_rejected
 test_fast_forwarded_base_commits_are_rejected
+test_remote_fast_forward_rejected_without_local_main
+test_newline_filename_stays_one_scope_path
 test_existing_open_pr_for_task_branch_is_rejected
 test_legitimate_large_scoped_recovery_change_passes
 
