@@ -3,6 +3,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { reactToCapturedRequest } from "./fm-discord-reaction.js";
 
 const retryPending = process.argv[2] === "--retry-pending";
 const reportMode = process.argv[2] === "--report";
@@ -81,11 +82,34 @@ function localize(value) {
 	})[value] || value;
 }
 
+function findRequestIdForTask(stateDir, taskId) {
+	if (!taskId || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(taskId)) return null;
+	try {
+		const meta = readFileSync(join(stateDir, `${taskId}.meta`), "utf8");
+		for (const line of meta.split("\n")) {
+			if (line.startsWith("x_request=")) return line.slice("x_request=".length).trim();
+		}
+	} catch {}
+	return null;
+}
+
+async function markTaskBlocked(stateDir, record) {
+	let requestId = null;
+	if (record.trigger === "perm-ask" && typeof record.key === "string" && record.key.startsWith("perm-")) {
+		requestId = record.key.slice("perm-".length);
+	}
+	if (!requestId) {
+		requestId = findRequestIdForTask(stateDir, record.task_id) || findRequestIdForTask(stateDir, record.status_task_id);
+	}
+	if (requestId) await reactToCapturedRequest(stateDir, requestId, "blocked").catch(() => false);
+}
+
 async function sendRecord(path, record, botId, recover) {
 	if (recover) {
 		const message = await priorMessage(record, botId);
 		if (message) {
 			saveRecord(path, { ...record, state: "sent", message_id: message.id });
+			await markTaskBlocked(stateDir, record).catch(() => false);
 			return;
 		}
 	}
@@ -123,6 +147,7 @@ async function sendRecord(path, record, botId, recover) {
 			throw new Error("Discord API returned an invalid notification receipt");
 		}
 		saveRecord(path, { ...sending, state: "sent", message_id: message.id });
+		await markTaskBlocked(stateDir, record).catch(() => false);
 	} catch (error) {
 		saveRecord(path, { ...sending, state: "failed" });
 		throw error;

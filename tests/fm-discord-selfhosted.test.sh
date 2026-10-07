@@ -53,6 +53,9 @@ exec "$FM_TEST_REAL_NODE" --input-type=module -e '
     }
     if (url === "https://discord.com/api/v10/users/@me") return Response.json({ id: "9000000000000000001" });
     if (url === "https://discord.com/api/v10/users/@me/channels") return Response.json(channels);
+    if (url.includes("/channels/") && options.method === "POST") {
+      return Response.json({ id: "1352000000000000999", channel_id: url.match(/\/channels\/([^/]+)/)?.[1] });
+    }
     if (url.includes("/channels/")) return Response.json(messages);
     return new Response("not found", { status: 404 });
   };
@@ -523,12 +526,32 @@ test_task_link_triggers_claimed_reaction() {
   FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_REACTION_LOG="$log" PATH="$home/fake-bin:$BASE_PATH" \
     FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN=fake-token \
     "$ROOT/bin/fm-x-link.sh" "$task_id" "$request_id" >/dev/null
-  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_REACTION_LOG="$log" PATH="$home/fake-bin:$BASE_PATH" \
-    FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN=fake-token \
-    "$ROOT/bin/fm-discord-reaction.sh" "$request_id" claimed
   assert_present "$home/state/x-context/discord-lifecycle-$request_id-claimed.json" "claim transition is durable"
   assert_contains "$(cat "$log")" "%F0%9F%9B%A0" "fires claimed reaction"
   pass "claimed reaction fires on consumer claim"
+}
+
+test_decision_notification_marks_captured_request_blocked() {
+  local home request_id task_id log record
+  home="$TMP_ROOT/reaction-decision-blocked"
+  mkdir -p "$home/state"
+  make_fake_discord_node "$home"
+  log="$home/reactions.jsonl"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_REACTION_LOG="$log" \
+    FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000000699","channel_id":"1000000000000000001","author":{"username":"captain"},"mentions":[{"id":"9000000000000000001"}],"content":"<@9000000000000000001> needs a decision","attachments":[]}]' \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN=fake-token \
+    FM_DISCORD_CHANNEL_ID=1000000000000000001 "$ROOT/bin/fm-discord-poll.sh" >/dev/null
+  request_id=discord-sh-1352000000000000699
+  task_id=task-decision-blocked
+  printf 'x_request=%s\n' "$request_id" > "$home/state/$task_id.meta"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_REACTION_LOG="$log" PATH="$home/fake-bin:$BASE_PATH" \
+    FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify.sh" captain-hold "$task_id" "captain-hold-$task_id-1" "Needs a decision" "Continue|Pause" "Pause" >/dev/null
+  record=$(find "$home/state/x-context" -maxdepth 1 -name 'discord-notify-*.json' -print -quit)
+  assert_equals "sent" "$(jq -r '.state' "$record")" "decision notification reaches durable sent state"
+  assert_equals "blocked" "$(jq -r '.phase' "$home/state/x-context/discord-lifecycle-$request_id-blocked.json")" "captain decision request records blocked state"
+  assert_contains "$(cat "$log")" "%E2%9A%A0" "needs-intervention transition sends warning reaction"
+  pass "a sent captain decision notification marks its linked Discord request blocked"
 }
 
 test_dry_run_reaction_suppression() {
@@ -584,4 +607,5 @@ test_command_channel_plain_message_ignored_in_ordinary_channel
 test_command_channel_duplicate_poll_is_idempotent
 test_command_channel_conflict_with_exclusion_is_reported
 test_task_link_triggers_claimed_reaction
+test_decision_notification_marks_captured_request_blocked
 test_dry_run_reaction_suppression
