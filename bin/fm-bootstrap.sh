@@ -1173,6 +1173,8 @@ discord_mode_setup() {
   }
 
   FM_ROOT_OVERRIDE="$FM_ROOT" FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+    FM_POLL="${FM_POLL:-}" FM_GUARD_GRACE="${FM_GUARD_GRACE:-}" \
+    FM_WATCHER_STALE_GRACE="${FM_WATCHER_STALE_GRACE:-}" \
     "$SCRIPT_DIR/fm-watcher-liveness-alert.sh" install \
     || echo "FM_DISCORD: watcher liveness alert LaunchAgent could not be installed"
 

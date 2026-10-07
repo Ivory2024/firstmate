@@ -8,12 +8,13 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 LABEL=dev.firstmate.watcher-liveness-alert
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG="$HOME/Library/Logs/$LABEL.log"
-GRACE=${FM_GUARD_GRACE:-300}
+POLL=${FM_POLL:-15}
 COOLDOWN=${FM_WATCHER_ALERT_COOLDOWN:-3600}
 LAUNCH_PATH=${PATH:-/usr/bin:/bin}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 . "$SCRIPT_DIR/fm-discord-lib.sh"
+GRACE=${FM_WATCHER_STALE_GRACE:-${FM_GUARD_GRACE:-$(fm_poll_derived_grace "$POLL")}}
 
 usage() {
   printf 'usage: fm-watcher-liveness-alert.sh check|install|remove|render\n' >&2
@@ -26,7 +27,8 @@ plist_safe() {
 
 render_agent() {
   plist_safe "$SCRIPT_DIR/fm-watcher-liveness-alert.sh" && plist_safe "$FM_HOME" \
-    && plist_safe "$FM_ROOT" && plist_safe "$LOG" && plist_safe "$LAUNCH_PATH" || return 1
+    && plist_safe "$FM_ROOT" && plist_safe "$STATE" && plist_safe "$GRACE" \
+    && plist_safe "$LOG" && plist_safe "$LAUNCH_PATH" || return 1
   cat <<XML
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -36,6 +38,8 @@ render_agent() {
 <key>EnvironmentVariables</key><dict>
 <key>FM_HOME</key><string>$FM_HOME</string>
 <key>FM_ROOT_OVERRIDE</key><string>$FM_ROOT</string>
+<key>FM_STATE_OVERRIDE</key><string>$STATE</string>
+<key>FM_WATCHER_STALE_GRACE</key><string>$GRACE</string>
 <key>PATH</key><string>$LAUNCH_PATH</string>
 </dict>
 <key>StartInterval</key><integer>60</integer>
@@ -147,8 +151,9 @@ check_liveness() {
     class="pending-wake-$consumer-high"
     high=true
     case "$prior_class" in pending-wake-*-high)
-      [ "$prior_class" = "$class" ] || last_alert=0
+      if [ "$prior_class" != "$class" ]; then last_alert=0; high_since=$now; fi
       ;;
+      *) last_alert=0; high_since=$now ;;
     esac
   fi
   printf '%s\t%s\t%s\n' "$class" "$last_alert" "$high_since" > "$state_file.tmp.$$" \
@@ -156,16 +161,14 @@ check_liveness() {
 
   if [ "$high" = true ]; then
     if [ $((now - last_alert)) -ge "$COOLDOWN" ]; then
-      slot=$((now / COOLDOWN))
-      event="watcher-liveness-$class-$slot"
+      event="watcher-liveness-$class-$high_since-$last_alert"
       message="HIGH reliability alert: durable wake queue is pending while watcher consumer is $consumer (beacon grace ${GRACE}s)."
       "$SCRIPT_DIR/fm-discord-notify.sh" --retry-pending >/dev/null 2>&1 || true
       if report "$event" "$message" >/dev/null && report_sent "$event"; then
         last_alert=$now
-        [ "$high_since" -gt 0 ] || high_since=$now
       fi
     fi
-  elif [ "$high_since" -gt 0 ] && [ "$consumer" = healthy ]; then
+  elif [ "$high_since" -gt 0 ] && [ "$last_alert" -gt 0 ] && [ "$consumer" = healthy ]; then
     event="watcher-liveness-recovered-$high_since"
     message="Recovered: watcher consumer is healthy again after a pending-wake liveness alert."
     "$SCRIPT_DIR/fm-discord-notify.sh" --retry-pending >/dev/null 2>&1 || true
