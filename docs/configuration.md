@@ -709,8 +709,11 @@ Keep the configured channel private to the captain and trusted operators; only I
 Reply directly to a decision message.
 The watcher captures that reply into the existing `state/x-inbox/` flow and `fmx-respond` applies it through `fm-captain-hold.sh answer-one` for a held task, or `fm-send.sh --resolve-key` for other keyed decisions.
 A reply to any of the bot's own messages is captured as a mention even without an explicit `@` mention, so replying to a bot post is enough to reach firstmate; a reply to another member's message still needs an explicit mention.
+A message asking the captain for a decision must leave through that keyed decision path: it is the only path that registers a durable correlation identity, and the generic send paths (a `--report` post and an ordinary reply) refuse a message carrying the decision marker rather than delivering an ask the captain's answer could never be correlated to.
+The marker itself is defined once in [`bin/fm-discord-lib.sh`](../bin/fm-discord-lib.sh) and exported to the send clients as `FM_DISCORD_DECISION_MARKER`; a send client that finds it unset refuses to send.
 When `FM_DISCORD_ALLOW_DMS` is on, the bot's DM channels are polled even when `FM_DISCORD_CHANNEL_ID` names a guild channel allowlist.
 Replies to ordinary messages do not resolve decisions.
+A reply that lands after its decision was already answered is still captured, flagged `decision.superseded` with the message id it supersedes, so the captain's words reach firstmate without rebinding a settled decision; the keyed appliers refuse that superseded key.
 Failed sends remain in private state for watcher retries, including recovery of interrupted sends without reposting a notification already accepted by Discord.
 
 ## Relay (.env)

@@ -85,6 +85,14 @@ function readDecisionNotifications() {
 	return byMessageId;
 }
 
+// Capture one reply against its registered decision notification.
+//
+// A second reply to a decision that already carries `replied_to` is captured as a
+// superseded answer rather than dropped: the captain's words still reach
+// firstmate, which reports them, while the notification keeps its first binding
+// so nothing is rebound to a decision that is already answered. The keyed
+// appliers (answer-one --expect-occurrence, fm-send --resolve-key) refuse a
+// superseded key, so the capture cannot silently re-answer a settled decision.
 function persistDecisionReply(notification, msg, reqId) {
 	if (!existsSync(inboxDir)) mkdirSync(inboxDir, { recursive: true, mode: 0o700 });
 	if (!existsSync(contextDir)) mkdirSync(contextDir, { recursive: true, mode: 0o700 });
@@ -92,6 +100,7 @@ function persistDecisionReply(notification, msg, reqId) {
 	const contextFile = join(contextDir, `${reqId}.json`);
 	const offeredFile = join(contextDir, `${reqId}.offered.json`);
 	if (existsSync(offeredFile)) return false;
+	const superseded = Boolean(notification.record.replied_to);
 	const payload = {
 		request_id: reqId,
 		text: msg.content.trim(),
@@ -109,6 +118,8 @@ function persistDecisionReply(notification, msg, reqId) {
 			key: notification.record.key,
 			trigger: notification.record.trigger,
 			options: notification.record.options,
+			superseded,
+			superseded_by: superseded ? notification.record.replied_to.message_id : null,
 		},
 		replied_to: {
 			channel_id: notification.record.channel_id,
@@ -155,7 +166,7 @@ function persistDecisionReply(notification, msg, reqId) {
 		if (error.code === "EEXIST") return false;
 		throw error;
 	}
-	const updated = {
+	const updated = superseded ? notification.record : {
 		...notification.record,
 		replied_to: { message_id: msg.id, author_id: msg.author?.id || "", recorded_at: Math.floor(Date.now() / 1000) },
 	};
@@ -244,7 +255,10 @@ async function main() {
 				const referencedMessageId = msg.message_reference?.message_id;
 				const notification = referencedMessageId ? decisionNotifications.get(referencedMessageId) : undefined;
 				if (notification) {
-					if (!authorizedUserIds.has(msg.author?.id) || notification.record.channel_id !== msg.channel_id || notification.record.replied_to) continue;
+					// A late reply to an already-answered decision is still captured,
+					// flagged superseded by persistDecisionReply, so the captain's
+					// words are never silently dropped.
+					if (!authorizedUserIds.has(msg.author?.id) || notification.record.channel_id !== msg.channel_id) continue;
 					if (typeof msg.content !== "string" || !msg.content.trim()) continue;
 					const reqId = `discord-sh-${msg.id}`;
 					if (persistDecisionReply(notification, msg, reqId)) console.log(`x-mention ${reqId}`);

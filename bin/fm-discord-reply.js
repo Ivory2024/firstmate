@@ -60,6 +60,22 @@ async function main() {
 	const text = reqPayload.text || (Array.isArray(reqPayload.texts) ? reqPayload.texts.join("\n\n") : "");
 	const chunks = Array.isArray(reqPayload.texts) && reqPayload.texts.length > 0 ? reqPayload.texts : [text];
 
+	// A captain decision ask must carry a durable correlation identity, which only
+	// the keyed decision notification path registers (bin/fm-discord-notify.sh
+	// <trigger> ...). This reply path posts ordinary answers to an inbound
+	// request, so a decision ask sent here would arrive back as generic work with
+	// nothing to correlate it against. The marker itself is defined once in
+	// bin/fm-discord-lib.sh and exported by the wrapper.
+	const decisionMarker = process.env.FM_DISCORD_DECISION_MARKER;
+	if (!decisionMarker) {
+		console.error("fm-discord-reply: FM_DISCORD_DECISION_MARKER is unset; refusing to send an unregistered reply");
+		process.exit(2);
+	}
+	if (chunks.some((chunk) => typeof chunk === "string" && chunk.includes(decisionMarker))) {
+		console.error("fm-discord-reply: a captain decision ask cannot be sent as an ordinary reply; use bin/fm-discord-notify.sh <trigger> <task-id> <key> <summary> <option|option...> <recommendation>");
+		process.exit(2);
+	}
+
 	if (dryRun) {
 		if (!existsSync(outboxDir)) mkdirSync(outboxDir, { recursive: true, mode: 0o700 });
 		const outboxRecord = {

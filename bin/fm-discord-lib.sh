@@ -36,6 +36,15 @@ fm_discord_trim() {
   printf '%s' "$value"
 }
 
+# The one marker that identifies an outbound message as a captain decision ask.
+# The canonical notification path (fm-discord-notify.sh <trigger> ...) renders it
+# and registers the durable correlation record; every generic send path refuses a
+# message carrying it, so a decision ask cannot leave without that identity. The
+# node clients read it from FM_DISCORD_DECISION_MARKER so this stays the only
+# definition of the marker text.
+FM_DISCORD_DECISION_MARKER='결정 필요'
+export FM_DISCORD_DECISION_MARKER
+
 # Resolve self-hosted Discord settings.
 # FM_DISCORD_BOT_TOKEN (required for active self-hosted Discord connection)
 # FM_DISCORD_CHANNEL_ID or FM_DISCORD_ALLOWED_CHANNELS (optional target channel IDs)
