@@ -60,33 +60,83 @@ for (const [filename, id, domain] of plugins) {
   await cleanup?.();
 }
 
+// 8-item trace acceptance verification before adapter implementation
 const lifecycle = new OpenCodeLifecycleAdapter();
+
+// 1. Text-only normal turn
 assert.equal(lifecycle.normalize({ type: "session.execution.started", id: "start-1", data: { sessionID: "session-1" } }), null,
-  "execution start is identity state, not quiescence");
-assert.equal(lifecycle.normalize({ type: "session.tool.called", data: { sessionID: "session-1" } }), null,
-  "intermediate tool activity is not quiescence");
+  "1. text-only normal turn: execution start is identity state, not quiescence");
 const succeeded = { type: "session.execution.succeeded", id: "terminal-1", durable: { aggregateID: "session-1", seq: 4 }, data: { sessionID: "session-1" } };
 assert.deepEqual(lifecycle.normalize(succeeded), {
   type: QUIESCENT,
   sessionID: "session-1",
   executionRef: "start-1",
-}, "terminal follows its started execution identity");
-assert.equal(lifecycle.normalize(succeeded), null, "duplicate terminal delivery is suppressed");
-for (const type of ["session.execution.failed", "session.execution.interrupted"]) {
-  const terminal = { type, id: type, data: { sessionID: "session-failure" } };
-  assert.equal(lifecycle.normalize(terminal)?.type, QUIESCENT, `${type} remains a terminal quiescence edge`);
-}
-assert.deepEqual(lifecycle.normalize({ type: "session.idle", properties: { sessionID: "legacy-session" } }), {
+}, "1. text-only normal turn: terminal follows its started execution identity");
+
+// 2. Single tool turn
+const toolLife = new OpenCodeLifecycleAdapter();
+assert.equal(toolLife.normalize({ type: "session.execution.started", id: "start-tool", data: { sessionID: "session-tool" } }), null);
+assert.equal(toolLife.normalize({ type: "session.tool.called", data: { sessionID: "session-tool" } }), null,
+  "2. tool turn: intermediate tool activity is not quiescence");
+assert.deepEqual(toolLife.normalize({ type: "session.execution.succeeded", id: "term-tool", data: { sessionID: "session-tool" } }), {
   type: QUIESCENT,
-  sessionID: "legacy-session",
-  executionRef: undefined,
-}, "legacy idle remains normalized at the boundary");
+  sessionID: "session-tool",
+  executionRef: "start-tool",
+}, "2. tool turn: terminal yields QUIESCENT");
+
+// 3. Multi-tool turn
+const multiToolLife = new OpenCodeLifecycleAdapter();
+assert.equal(multiToolLife.normalize({ type: "session.execution.started", id: "start-multi", data: { sessionID: "session-multi" } }), null);
+assert.equal(multiToolLife.normalize({ type: "session.tool.called", data: { sessionID: "session-multi" } }), null);
+assert.equal(multiToolLife.normalize({ type: "session.tool.result", data: { sessionID: "session-multi" } }), null);
+assert.equal(multiToolLife.normalize({ type: "session.tool.called", data: { sessionID: "session-multi" } }), null,
+  "3. multi-tool turn: repeated intermediate tool activity is not quiescence");
+assert.deepEqual(multiToolLife.normalize({ type: "session.execution.succeeded", id: "term-multi", data: { sessionID: "session-multi" } }), {
+  type: QUIESCENT,
+  sessionID: "session-multi",
+  executionRef: "start-multi",
+}, "3. multi-tool turn: terminal yields QUIESCENT");
+
+// 4. Duplicate terminal delivery
+assert.equal(lifecycle.normalize(succeeded), null, "4. duplicate terminal delivery is suppressed");
+
+// 5. Same semantics after restart
 assert.deepEqual(new OpenCodeLifecycleAdapter().normalize({
   type: "session.execution.interrupted",
   id: "interrupted-after-restart",
   data: { sessionID: "session-after-restart" },
 }), { type: QUIESCENT, sessionID: "session-after-restart", executionRef: "interrupted-after-restart" },
-"a terminal after adapter restart still reaches quiescence without prior in-memory start state");
+"5. same semantics after restart: terminal after adapter restart still reaches quiescence without prior in-memory start state");
+
+// 6. Execution identity correlation
+const corrLife = new OpenCodeLifecycleAdapter();
+assert.equal(corrLife.normalize({ type: "session.execution.started", id: "corr-start-99", data: { sessionID: "session-corr" } }), null);
+assert.equal(corrLife.normalize({ type: "session.step.ended", data: { sessionID: "session-corr" } }), null);
+assert.deepEqual(corrLife.normalize({ type: "session.execution.succeeded", id: "corr-term-99", data: { sessionID: "session-corr" } }), {
+  type: QUIESCENT,
+  sessionID: "session-corr",
+  executionRef: "corr-start-99",
+}, "6. execution identity correlation: started -> identity -> intermediate -> terminal");
+
+// 7. Plugin subscription receipt (tested in plugin contract setup loop and fixture test below)
+
+// 8. Failed / cancelled / interrupted execution — MUST NOT be skipped
+for (const type of ["session.execution.failed", "session.execution.interrupted"]) {
+  const failLife = new OpenCodeLifecycleAdapter();
+  assert.equal(failLife.normalize({ type: "session.execution.started", id: `start-${type}`, data: { sessionID: `session-${type}` } }), null);
+  const terminal = { type, id: `term-${type}`, data: { sessionID: `session-${type}` } };
+  assert.deepEqual(failLife.normalize(terminal), {
+    type: QUIESCENT,
+    sessionID: `session-${type}`,
+    executionRef: `start-${type}`,
+  }, `8. failed/interrupted execution (${type}) MUST NOT be skipped and yields QUIESCENT for watcher re-arm`);
+}
+
+assert.deepEqual(lifecycle.normalize({ type: "session.idle", properties: { sessionID: "legacy-session" } }), {
+  type: QUIESCENT,
+  sessionID: "legacy-session",
+  executionRef: undefined,
+}, "legacy idle remains normalized at the boundary");
 
 const fixture = mkdtempSync(join(root, ".opencode-event-contract-"));
 const savedFmEnv = Object.fromEntries(["FM_HOME", "FM_ROOT_OVERRIDE", "FM_CONFIG_OVERRIDE", "FM_STATE_OVERRIDE"].map((key) => [key, process.env[key]]));
