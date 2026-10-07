@@ -50,10 +50,14 @@ how much to narrow for it — the weekly scanner already answers this.
 classified into `coding_large` / `deep_debug` / `scout_tool`, each carrying
 `is_preview`, `is_expiring_soon`, and `early_termination_detected`.
 
-`bin/fm-spawn.sh` mechanically enforces the `status` / `early_termination_detected`
-check below at dispatch time — it refuses to spawn opencode on a catalog entry
-flagged dead, so a dispatcher no longer has to remember to check that part by
-hand. It checks the same two candidate paths `opencode_model_router.py`'s
+`bin/fm-spawn.sh` mechanically enforces the catalog check below at dispatch time.
+It canonicalizes OpenCode dispatch identities `opencode/<model>` and
+`opencode-go/<model>` to the catalog identity `opencode-free/<model>`.
+Missing, unreadable, duplicate, or untracked health entries fail closed.
+An inactive status or `early_termination_detected: true` also refuses
+dispatch. Treat `is_expiring_soon: true` as a signal to narrow the brief or
+prefer the domain's recommended default.
+It checks the same two candidate paths `opencode_model_router.py`'s
 `load_catalog()` uses, in the same order (with `FM_OPENCODE_HEALTH_CATALOG`
 environment override taking precedence when set): `AutomationSync/knowledge/opencode-free-models.json`
 first, then `data/opencode-free-models.json` as fallback.
@@ -62,11 +66,9 @@ Before dispatching an opencode free-model candidate:
 
 1. Read that knowledge file. Match the candidate's domain classification to
    the task shape — don't hand `scout_tool` a coding_large-sized change.
-2. `early_termination_detected: true` or `is_expiring_soon: true` on the
-   candidate demotes it: narrow the brief further than the rotating-tier
-   default, or prefer the domain's `recommended_defaults` entry instead.
-   (The gate above only blocks dispatch on confirmed termination/inactive
-   status; `is_expiring_soon` narrowing is still your call.)
+2. `early_termination_detected: true` means the gate refuses dispatch.
+   `is_expiring_soon: true` is a signal to narrow the brief or prefer the
+   domain's `recommended_defaults` entry.
 3. If `scanned_at` is older than ~10 days (past the weekly cadence plus
    slack), treat the data as stale — fall back to the most conservative
    narrowing for that domain rather than trusting a classification that may
