@@ -1,0 +1,39 @@
+ok - proactive Discord notification is inert without the self-hosted token
+ok - Discord report sends a bounded plain message without creating a decision record
+ok - Discord report fails clearly without the self-hosted token
+ok - Discord report helper refuses outside quiet mode
+ok - quiet report helper passes the current Bearings snapshot to Discord notify
+ok - proactive Discord post stores the task and reply binding
+ok - recommendation must match an offered decision option
+ok - failed decision notifications retry after their source cursor advances
+ok - profile lookup failure preserves and retries the notification intent
+ok - stale sending records recover from Discord history without reposting
+ok - a durable captain hold triggers a Discord decision push with the real reason text
+ok - a captain hold with a reason near Discord's message limit gets truncated before sending
+ok - reply to a pushed decision enters x-inbox with keyed answer context
+ok - a permission reply reaches the inbox with the exact identity the applier needs
+ok - a captured decision reply recovers its missing wake once
+ok - Discord decision replies require an authorized user ID
+ok - ordinary Discord replies do not enter the decision inbox
+ok - a captain decision ask cannot leave through the generic report path
+ok - a captain decision ask cannot leave through the ordinary reply path
+ok - a registered decision correlates its reply across a process restart
+ok - a decision reply needs no @mention to stay correlated
+ok - an ordinary Discord command stays a generic command while a decision is open
+ok - a duplicate poll of one decision reply is idempotent
+ok - a late reply to an already-answered decision is captured as superseded
+ok - a raw ask-user gate never pushes on its own - firstmate may still decide it in-scope
+ok - a genuinely escalated ask-user gate pushes a Discord decision with the real finding text
+ok - PR-ready notifications require yolo=off
+ok - PR-ready notifications name the project for an accepted GitLab merge-request URL too
+ok - a done status line sends a plain Discord report with the worker's note
+ok - a done record is private valid JSON and marked sent only after delivery
+ok - a completion lands exactly once even when senders race
+ok - a completion that crashed before its receipt is adopted, not reposted
+ok - a nonterminal done status sends no notification
+ok - a PR-awaiting-merge done status sends no notification
+ok - a failed completion delivery is retried by the sweep, not by a re-read
+ok - an unconfigured completion is silent and remains retryable
+ok - a blocked status line sends no Discord notification
+ok - a failed status line sends no Discord notification
+ok - a repeated done status line does not produce duplicate Discord posts
