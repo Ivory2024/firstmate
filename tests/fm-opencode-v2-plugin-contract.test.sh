@@ -70,7 +70,7 @@ try {
   writeFileSync(join(fixture, "bin", "fm-sessionstart-nudge.sh"), "#!/bin/sh\nprintf 'fixture nudge'\n");
   chmodSync(join(fixture, "bin", "fm-sessionstart-nudge.sh"), 0o755);
   const createdPrompts = [];
-  const createdEvents = [{ type: "session.created", data: { info: { id: "created-v2" } } }];
+  const createdEvents = [{ type: "session.created", data: { info: { id: "created-v2", directory: fixture } } }];
   const createdCtx = eventContext(fixture, createdEvents, createdPrompts);
   const stopCreated = await (await import(pathToFileURL(`${root}/.opencode/plugins/fm-primary-sessionstart-nudge.js`).href + `?contract=${Date.now()}`)).default.setup(createdCtx);
   await waitFor(() => createdPrompts.length === 1);
@@ -79,8 +79,8 @@ try {
 
   // The turn-end handler must pass v2 idle IDs into the shared arm coordinator.
   const armedSessions = [];
-  globalThis.__firstmateOpenCodeWatchArm = { ensureArmed: async (sessionID) => { armedSessions.push(sessionID); return "armed"; } };
-  const idleEvents = [{ type: "session.idle", data: { sessionID: "idle-turn-v2" } }];
+  globalThis[`__firstmateOpenCodeWatchArm:${fixture}`] = { ensureArmed: async (sessionID) => { armedSessions.push(sessionID); return "armed"; } };
+  const idleEvents = [{ type: "session.idle", location: { directory: fixture }, data: { sessionID: "idle-turn-v2" } }];
   const turnCtx = eventContext(fixture, idleEvents, []);
   const stopTurn = await (await import(pathToFileURL(`${root}/.opencode/plugins/fm-primary-turnend-guard.js`).href + `?contract=${Date.now()}`)).default.setup(turnCtx);
   await waitFor(() => armedSessions.length === 1);
@@ -110,7 +110,7 @@ try {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
-  delete globalThis.__firstmateOpenCodeWatchArm;
+  delete globalThis[`__firstmateOpenCodeWatchArm:${fixture}`];
   rmSync(fixture, { recursive: true, force: true });
 }
 
