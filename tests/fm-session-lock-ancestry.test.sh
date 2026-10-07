@@ -1142,9 +1142,11 @@ expect_phase_owned() {  # <dir> <n> <expected-arms> <expected-lock-pid> <label>
       || fail "$label: refreshed sidecar lost the session id"
     [ "$(sed -n '2p' "$dir/state/phase-$n/session-after")" = claude ] \
       || fail "$label: refreshed sidecar lost the harness id"
-    # LC_ALL=C pins the same format the library writes the token under, so this
-    # comparison cannot fail on a non-English host locale alone.
-    birth=$(LC_ALL=C ps -p "$lock_pid" -o lstart= 2>/dev/null | sed 's/^ *//;s/ *$//')
+    # Use the production token reader: Linux procfs ticks and the ps fallback
+    # are distinct representations of the same birth-token contract.
+    # shellcheck source=bin/fm-session-lock-lib.sh
+    . "$ROOT/bin/fm-session-lock-lib.sh"
+    birth=$(fm_session_lock_birth_token "$lock_pid" 2>/dev/null || true)
     if [ -n "$birth" ]; then
       [ "$(sed -n '3p' "$dir/state/phase-$n/session-after")" = "$birth" ] \
         || fail "$label: refreshed sidecar birth token [$birth] vs recorded [$(sed -n '3p' "$dir/state/phase-$n/session-after")] does not match lock pid $lock_pid"
