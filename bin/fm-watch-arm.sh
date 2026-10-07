@@ -408,32 +408,60 @@ if [ "$mode" = handling-delivered ]; then
 fi
 
 if [ "$mode" = restart ]; then
-  # Home-scoped stop: only the watcher pid recorded in THIS home's lock.
+  # Serialize the final liveness/identity check and TERM against a successor
+  # claiming the singleton. A stale observation alone must never authorize
+  # killing whichever process happens to hold the lock later.
+  restart_guard="$WATCH_LOCK.steal"
+  if ! fm_lock_try_acquire "$restart_guard" no; then
+    echo "watcher: FAILED - could not serialize stale watcher recovery" >&2
+    exit 1
+  fi
   lock_pid=$(cat "$WATCH_LOCK/pid" 2>/dev/null || true)
+  lock_identity=$(cat "$WATCH_LOCK/pid-identity" 2>/dev/null || true)
   if fm_pid_alive "$lock_pid"; then
-    if fm_watcher_lock_matches_pid "$STATE" "$WATCH" "$lock_pid" "$FM_HOME"; then
-      kill -TERM "$lock_pid" 2>/dev/null || true
-      # Wait for it to actually exit before relaunching, so the fresh watcher
-      # either takes a released lock or reclaims a now-dead-pid stale lock instead
-      # of seeing the dying one as a live holder and no-opping.
-      i=0
-      while [ "$i" -lt 50 ] && fm_pid_alive "$lock_pid"; do
-        sleep 0.1
-        i=$((i + 1))
-      done
+    if fm_watcher_lock_matches_pid "$STATE" "$WATCH" "$lock_pid" "$FM_HOME" \
+      && [ "$FM_WATCHER_MATCHED_IDENTITY" = "$lock_identity" ]; then
+      if healthy_watcher; then
+        # Another arm may have replaced the stale consumer while this recovery
+        # was starting. Keep that healthy generation and attach to it below.
+        mode=arm
+      else
+        # Re-read ownership immediately before the destructive action while
+        # the steal guard still excludes a concurrent singleton claimant.
+        current_pid=$(cat "$WATCH_LOCK/pid" 2>/dev/null || true)
+        current_identity=$(cat "$WATCH_LOCK/pid-identity" 2>/dev/null || true)
+        if [ "$current_pid" = "$lock_pid" ] && [ "$current_identity" = "$lock_identity" ] \
+          && fm_watcher_lock_matches_pid "$STATE" "$WATCH" "$lock_pid" "$FM_HOME" \
+          && [ "$FM_WATCHER_MATCHED_IDENTITY" = "$lock_identity" ] \
+          && ! healthy_watcher; then
+          kill -TERM "$lock_pid" 2>/dev/null || true
+          # Wait for it to actually exit before relaunching, so the fresh
+          # watcher either takes the released lock or reclaims its dead-pid
+          # stale lock instead of seeing the dying holder and no-opping.
+          i=0
+          while [ "$i" -lt 50 ] && fm_pid_alive "$lock_pid"; do
+            sleep 0.1
+            i=$((i + 1))
+          done
+        else
+          mode=arm
+        fi
+      fi
     else
       if ! clear_stale_recorded_watcher_lock; then
+        fm_lock_release "$restart_guard"
         echo "watcher: FAILED - stale watcher recovery state could not be persisted" >&2
         exit 1
       fi
     fi
   fi
+  fm_lock_release "$restart_guard"
 fi
 
 # If a genuinely live+fresh watcher already holds the lock, do not start a second
 # one - attach to that cycle and wait until it ends so the harness notify fires
-# then, not as an immediate empty wake. (--restart skips this: it just stopped
-# this home's watcher and wants a fresh one.)
+# then, not as an immediate empty wake. A restart that discovers a fresh
+# successor during its final recheck follows this same attach path.
 if [ "$mode" = arm ] && healthy_watcher; then
   cycle_mark_predecessor_successor "attached:$HEALTHY_PID"
   cycle_begin "$HEALTHY_PID" attached "$HEALTHY_IDENTITY"

@@ -162,6 +162,28 @@ assert len(rows) == 4 and all(row["state"] == "sent" and row.get("message_id") f
 assert sum("HIGH reliability alert" in message for message in messages) == 3
 assert sum("Recovered:" in message for message in messages) == 1
 PY
+
+# Couple stale-beacon detection to the existing restart/drain recovery path:
+# the alert reports the pending wake, then the normal watcher arm replays it
+# while retaining the durable queue row until the handling drain acknowledges it.
+printf '2\t2\tcheck\tstale-recovery-fixture\tcheck: stale recovery fixture\n' > "$STATE/.wake-queue"
+touch -t 201901010000 "$STATE/.last-watcher-beat"
+run_agent || fail "stale pending-wake detection failed before watcher recovery"
+[ "$(cut -f1 "$STATE/.watcher-liveness-alert-state")" = pending-wake-stale-heartbeat-high ] \
+  || fail "stale beacon with pending wake did not trigger detection before recovery"
+FM_HOME="$HOME_CASE" FM_STATE_OVERRIDE="$STATE" FM_GUARD_GRACE=30 FM_POLL=1 \
+  FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+  "$ROOT/bin/fm-watch-arm.sh" --restart > "$DIR/recovery.out" \
+  || fail "watcher restart/replay path failed"
+grep -F 'check: rearm-resurface' "$DIR/recovery.out" >/dev/null \
+  || fail "watcher recovery did not replay the pending durable wake: $(cat "$DIR/recovery.out")"
+grep -F 'stale-recovery-fixture' "$STATE/.wake-queue" >/dev/null \
+  || fail "recovery dropped the pending wake before handling acknowledged it"
+FM_HOME="$HOME_CASE" FM_STATE_OVERRIDE="$STATE" "$ROOT/bin/fm-wake-drain.sh" > "$DIR/recovery-drain.out" \
+  || fail "replayed durable wake could not be drained"
+grep -F 'stale-recovery-fixture' "$DIR/recovery-drain.out" >/dev/null \
+  || fail "normal handling drain did not receive the replayed wake"
+
 kill "$consumer" 2>/dev/null || true
 wait "$consumer" 2>/dev/null || true
 consumer=
