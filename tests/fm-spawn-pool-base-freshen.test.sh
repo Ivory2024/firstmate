@@ -235,6 +235,25 @@ test_current_fork_main_passes() {
   pass "origin pointing to the expected fork and current fork main passes identity verification"
 }
 
+test_github_url_rewrite_to_different_repository_fails_closed() {
+  local rec id out status before
+  id='pool-rewritten-repository-r1'
+  rec=$(make_case rewritten-repository "$id")
+  read_case_record "$rec"
+  git -C "$POOL_DIR" config --unset-all "url.file://$CASE_DIR/origin.git.insteadOf"
+  git -C "$POOL_DIR" config 'url.https://github.com/kunchenguid/firstmate.git.insteadOf' \
+    https://github.com/Ivory2024/firstmate.git
+  before=$(git -C "$POOL_DIR" rev-parse HEAD)
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn fetched through a rewrite to a different repository identity"
+  assert_contains "$out" "Git URL rewrite changes verified repository 'Ivory2024/firstmate'" \
+    "rewrite refusal did not identify the changed repository identity"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
+    || fail "rewritten repository refusal moved the pooled worktree"
+  pass "a GitHub URL rewrite to another repository fails before fetch"
+}
+
 test_fork_identity_does_not_depend_on_remote_name() {
   local rec id out status current
   id='pool-named-fork-source-r1'
@@ -926,6 +945,7 @@ test_pool_slot_claim_follows_the_spawn_outcome
 test_linked_spawning_home_rejects_primary_before_refresh
 test_stale_pool_base_refreshes_before_branching
 test_current_fork_main_passes
+test_github_url_rewrite_to_different_repository_fails_closed
 test_fork_identity_does_not_depend_on_remote_name
 test_remote_base_other_than_fork_main_fails_closed
 test_direct_pr_and_scout_refresh_before_launch

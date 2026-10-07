@@ -162,6 +162,22 @@ test_unexpected_merged_commits_are_rejected() {
   pass "a side-parent inherited commit is rejected with observed commit counts"
 }
 
+test_fast_forwarded_base_commits_are_rejected() {
+  local out status
+  new_case fast-forwarded-base
+  write_scope 'recovery/*.txt' 1000 10000
+  mkdir -p "$TEST_REPO/recovery"
+  printf 'upstream change\n' > "$TEST_REPO/recovery/upstream.txt"
+  commit_all upstream-change
+  git -C "$TEST_REPO" branch -f main HEAD
+  git -C "$TEST_REPO" reset --hard main >/dev/null
+  out=$(run_guard); status=$?
+  [ "$status" -ne 0 ] || fail "a task branch fast-forwarded to newer base passed the ownership guard"
+  assert_contains "$out" "already reachable from 'refs/heads/main'" \
+    "fast-forward refusal did not identify commits inherited from the moving base"
+  pass "a fast-forwarded newer base commit is rejected despite scoped paths"
+}
+
 test_existing_open_pr_for_task_branch_is_rejected() {
   local out status
   new_case conflicting-pr
@@ -202,6 +218,7 @@ test_linked_worktrees_keep_private_base_pins
 test_hundreds_of_inherited_paths_are_rejected_by_scope
 test_oversized_scoped_file_is_rejected
 test_unexpected_merged_commits_are_rejected
+test_fast_forwarded_base_commits_are_rejected
 test_existing_open_pr_for_task_branch_is_rejected
 test_legitimate_large_scoped_recovery_change_passes
 

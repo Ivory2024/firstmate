@@ -50,7 +50,7 @@ scope_match() { # <path> <pattern>
 
 publish_check() { #
   local scope_file git_dir changed path pattern limit extra total_limit='' total_bytes=0 pattern_count=0 i
-  local bytes found unexpected total_commits first_parent_commits current_branch
+  local bytes found unexpected total_commits first_parent_commits current_branch base_reachable_commits
   local pr_list pr_numbers reported_pr_count listed_pr_count
   local -a patterns=() limits=()
 
@@ -81,6 +81,12 @@ publish_check() { #
   unexpected=$((total_commits - first_parent_commits))
   [ "$unexpected" -eq 0 ] \
     || die "unexpected inherited commits invariant failed: total=$total_commits first_parent=$first_parent_commits unexpected=$unexpected"
+  if git show-ref --verify --quiet "$FM_GIT_BASE_REF"; then
+    base_reachable_commits=$(git rev-list --count "$FM_GIT_BASE_SHA..HEAD" --not "$FM_GIT_BASE_REF" 2>/dev/null) \
+      || die "could not distinguish task commits from commits already present on '$FM_GIT_BASE_REF'"
+    [ "$base_reachable_commits" -eq "$total_commits" ] \
+      || die "unexpected inherited commits invariant failed: $((total_commits - base_reachable_commits)) task-branch commits are already reachable from '$FM_GIT_BASE_REF'"
+  fi
 
   while IFS=$'\t' read -r pattern limit extra || [ -n "${pattern:-}${limit:-}${extra:-}" ]; do
     [ -n "${pattern:-}" ] || continue
