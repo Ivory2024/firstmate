@@ -158,7 +158,7 @@ test_reaction_failure_does_not_fail_ingress() {
 }
 
 test_consumer_and_terminal_reactions_follow_durable_transitions() {
-  local home log request_id
+  local home log request_id reply_payload reply_out
   home="$TMP_ROOT/reaction-transitions"
   mkdir -p "$home/state"
   make_fake_discord_node "$home"
@@ -184,6 +184,13 @@ test_consumer_and_terminal_reactions_follow_durable_transitions() {
     FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN=fake-token \
     "$ROOT/bin/fm-discord-reaction.sh" "$request_id" blocked
   assert_equals "blocked" "$(jq -r '.phase' "$home/state/x-context/discord-lifecycle-$request_id-blocked.json")" "captain intervention is recorded"
+  reply_payload="$home/blocked-reply.json"
+  printf '{"channel_id":"1000000000000000001","message_id":"1352000000000000300","text":"Flagged for captain."}' > "$reply_payload"
+  reply_out=$(FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_REACTION_LOG="$log" PATH="$home/fake-bin:$BASE_PATH" \
+    FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN=fake-token \
+    "$ROOT/bin/fm-discord-reply.sh" "$request_id" "$reply_payload" answer)
+  assert_equals "$request_id" "$reply_out" "blocked request reply is delivered"
+  assert_absent "$home/state/x-context/discord-lifecycle-$request_id-success.json" "a reply after captain hold must not overwrite blocked with success"
   assert_equals "6" "$(wc -l < "$log" | tr -d ' ')" "all four transitions each add one reaction"
   assert_contains "$(cat "$log")" "%F0%9F%9F%A2" "terminal success uses the green reaction"
   assert_contains "$(cat "$log")" "%E2%9A%A0" "blocked transition uses the warning reaction"
@@ -289,6 +296,38 @@ test_final_followup_dry_run_does_not_react_or_persist_success() {
   assert_absent "$home/state/x-context/discord-lifecycle-$request_id-success.json.applied" \
     "dry-run final follow-up must not persist a success reaction receipt"
   pass "dry-run final follow-up records its preview without sending or recording success"
+}
+
+test_blocked_final_followup_records_warning() {
+  local home log request_id task_id out rc
+  home="$TMP_ROOT/followup-blocked-final"
+  request_id=discord-sh-1352000000000000288
+  task_id=task-blocked-final
+  mkdir -p "$home/state/x-inbox" "$home/state/x-context"
+  chmod 700 "$home/state" "$home/state/x-inbox" "$home/state/x-context"
+  make_fake_discord_node "$home"
+  log="$home/reactions.jsonl"
+
+  printf 'kind=ship\nx_request=%s\nx_request_ts=1700000000\nx_followups=0\nx_platform=discord\nx_reply_max_chars=1900\n' \
+    "$request_id" > "$home/state/$task_id.meta"
+  printf '{"request_id":"%s","platform":"discord","source":"discord-selfhosted","channel_id":"1000000000000000001","message_id":"1352000000000000288"}' \
+    "$request_id" > "$home/state/x-context/$request_id.json"
+  printf '{"request_id":"%s","source":"discord-selfhosted","channel_id":"1000000000000000001","message_id":"1352000000000000288"}' \
+    "$request_id" > "$home/state/x-inbox/$request_id.json"
+  printf '{"phase":"claimed"}' > "$home/state/x-context/discord-lifecycle-$request_id-claimed.json"
+  chmod 600 "$home/state/$task_id.meta" "$home/state/x-context/$request_id.json" \
+    "$home/state/x-inbox/$request_id.json" "$home/state/x-context/discord-lifecycle-$request_id-claimed.json"
+
+  out=$(FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_REACTION_LOG="$log" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FMX_NOW_OVERRIDE=1700003600 \
+    "$ROOT/bin/fm-x-followup.sh" "$task_id" --final --blocked - <<<"This task needs captain intervention." 2>/dev/null); rc=$?
+  expect_code 0 "$rc" "blocked final follow-up exit"
+  assert_equals "$request_id" "$out" "blocked final follow-up echoes its request id"
+  assert_equals "blocked" "$(jq -r '.phase' "$home/state/x-context/discord-lifecycle-$request_id-blocked.json")" "blocked final outcome is durable"
+  assert_absent "$home/state/x-context/discord-lifecycle-$request_id-success.json" "blocked final outcome must not persist success"
+  assert_contains "$(cat "$log")" "%E2%9A%A0" "blocked final outcome adds the warning reaction"
+  pass "a blocked final follow-up records a warning reaction instead of success"
 }
 
 test_collision_exclusion_filter() {
@@ -554,6 +593,7 @@ test_claim_without_token_then_success_after_token_restore
 test_default_dm_discovery
 test_reply_dry_run_routing
 test_final_followup_dry_run_does_not_react_or_persist_success
+test_blocked_final_followup_records_warning
 test_collision_exclusion_filter
 test_allowlist_overrides_default_exclusion
 test_reply_to_bot_message_without_mention

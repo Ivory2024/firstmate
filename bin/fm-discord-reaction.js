@@ -67,6 +67,7 @@ export async function reactToCapturedRequest(stateDir, requestId, phase, token =
 	if (phase === "claimed" && !existsSync(`${prefix}-accepted.json`)) return false;
 	if (phase === "success" || phase === "blocked") {
 		if (!existsSync(`${prefix}-claimed.json`)) return false;
+		if (phase === "success" && existsSync(`${prefix}-blocked.json`)) return false;
 		if (phase === "blocked" && existsSync(`${prefix}-success.json`)) return false;
 	}
 	publishOnce(marker, {

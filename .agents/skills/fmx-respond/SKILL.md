@@ -269,6 +269,8 @@ This skill's own responsibility during the mention-handling turn is linking the 
 - Every follow-up is held to the exact same public-safety bar as every reply here: outcomes only, no task ids, internals, captain-private material, or secrets. Past the window, past the cap, or on the relay's own rejection of an exhausted binding, a follow-up attempt is skipped silently and the link is cleared - never treated as a failure worth retrying.
 - If either a follow-up's platform or explicit budget cannot be authoritatively resolved from per-request context, inbox payload, or relay answer, `bin/fm-x-followup.sh` does NOT post it: the fail-safe holds it (the link is kept, exit non-zero) rather than use a local default. This is a retryable hold - a later milestone wake retries it once both values are recoverable.
 
+For a final outcome that needs captain intervention, pass `--blocked` with `--final` so the Discord lifecycle records a warning reaction instead of success.
+
 ## Promised final replies (the commitment that must survive compaction)
 
 The follow-up budget above is a courtesy.

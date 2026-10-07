@@ -23,8 +23,8 @@
 #     outcome. With --expect-request, a present link must match that request.
 #
 # Post (after composing the reply to a file or stdin):
-#   fm-x-followup.sh <task-id> [--image <path>] [--final] --text-file <path>
-#   fm-x-followup.sh <task-id> [--image <path>] [--final] -
+#   fm-x-followup.sh <task-id> [--image <path>] [--final] [--blocked] --text-file <path>
+#   fm-x-followup.sh <task-id> [--image <path>] [--final] [--blocked] -
 #     Linked, within window, and under the cap: posts ONE follow-up via
 #       fm-x-reply.sh --followup.
 #       On success: increments the counter and KEEPS the link, unless --final
@@ -46,9 +46,9 @@
 #     Not linked: nothing to do, exit 0.
 #
 # --final marks this as the outcome reply: it always clears the link after a
-# successful post, even if follow-ups remain under the cap. Use it for the
-# final milestone (shipped, failed) so a task never leaves a stale link lying
-# around waiting for a follow-up that will never come.
+# successful post, even if follow-ups remain under the cap. Use --blocked with
+# --final when the outcome needs captain intervention so the reaction is a
+# warning instead of success.
 #
 # Dry-run (FMX_DRY_RUN) flows through fm-x-reply.sh: the follow-up is recorded to
 # state/x-outbox/<request_id>.json instead of posted, and the counter/link are
@@ -79,8 +79,8 @@ help() {
   cat <<'EOF'
 usage: fm-x-followup.sh --check <task-id>
        fm-x-followup.sh --clear <task-id> [--expect-request <request-id>]
-       fm-x-followup.sh <task-id> [--image <path>] [--final] --text-file <path>
-       fm-x-followup.sh <task-id> [--image <path>] [--final] -
+       fm-x-followup.sh <task-id> [--image <path>] [--final] [--blocked] --text-file <path>
+       fm-x-followup.sh <task-id> [--image <path>] [--final] [--blocked] -
 
 Post a completion follow-up (up to 3 per link, within a 7-day window) for an
 X-mode-linked task and manage the link's follow-up counter.
@@ -92,6 +92,7 @@ Options:
                    With --clear, require a present link to match this request.
   --image <path>   Attach one local image file; threaded replies attach it to the opener tweet or message.
   --final          Clear the link after this post regardless of the remaining count.
+  --blocked        With --final, record the outcome as blocked / needs intervention.
   --text-file <path>
                    Read follow-up text from a file.
   -                Read follow-up text from stdin.
@@ -119,6 +120,7 @@ case "${1:-}" in
 esac
 
 FINAL=0
+BLOCKED=0
 EXPECT_REQUEST_SET=0
 EXPECT_REQUEST=
 if [ "${1:-}" = --clear ]; then
@@ -146,6 +148,9 @@ else
       --final)
         FINAL=1
         ;;
+      --blocked)
+        BLOCKED=1
+        ;;
       --image)
         TS_ARGS+=("$1")
         shift
@@ -161,6 +166,11 @@ else
     shift
   done
   if [ "${#TS_ARGS[@]}" -lt 1 ]; then usage; exit 2; fi
+  if [ "$BLOCKED" -eq 1 ] && [ "$FINAL" -ne 1 ]; then
+    echo "fm-x-followup: --blocked requires --final" >&2
+    usage
+    exit 2
+  fi
 fi
 
 case "$ID" in
@@ -259,7 +269,9 @@ case "$post_rc" in
   0)
     NEWCOUNT=$((COUNT + 1))
     if [ "$FINAL" = 1 ]; then
-      "$SCRIPT_DIR/fm-discord-reaction.sh" "$RID" success >/dev/null 2>&1 || true
+      reaction_phase=success
+      [ "$BLOCKED" -eq 1 ] && reaction_phase=blocked
+      "$SCRIPT_DIR/fm-discord-reaction.sh" "$RID" "$reaction_phase" >/dev/null 2>&1 || true
     fi
     if [ "$FINAL" = 1 ] || [ "$NEWCOUNT" -ge "$MAX_COUNT" ]; then
       if ! fmx_meta_link_clear "$META"; then
