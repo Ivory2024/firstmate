@@ -5,7 +5,6 @@
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { reactToCapturedRequest } from "./fm-discord-reaction.js";
 
 const token = process.env.FM_DISCORD_BOT_TOKEN || process.env.FM_DISCORD_TOKEN;
 const fmHome = process.env.FM_HOME || process.env.FM_ROOT || ".";
@@ -172,10 +171,6 @@ async function main() {
 	try {
 		if (existsSync(progressFile)) unlinkSync(progressFile);
 	} catch (_err) {}
-	if (endpoint === "answer" || endpoint === "final") {
-		await reactToCapturedRequest(stateDir, reqId, "success").catch(() => false);
-	}
-
 	console.log(reqId);
 }
 

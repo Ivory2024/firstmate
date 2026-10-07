@@ -73,6 +73,8 @@ export async function reactToCapturedRequest(stateDir, requestId, phase, token =
 		}
 		if (phase === "blocked" && existsSync(`${prefix}-success.json`)) return false;
 	}
+	const isDryRun = ["1", "true", "yes"].includes((process.env.FMX_DRY_RUN || "").toLowerCase()) || Boolean(process.env.FMX_DRY);
+	if (isDryRun) return false;
 	publishOnce(marker, {
 		schema: "fm-discord-reaction-lifecycle.v1",
 		request_id: requestId,
@@ -82,8 +84,7 @@ export async function reactToCapturedRequest(stateDir, requestId, phase, token =
 		recorded_at: Math.floor(Date.now() / 1000),
 	});
 	if (existsSync(applied)) return true;
-	const isDryRun = ["1", "true"].includes(process.env.FMX_DRY_RUN || "") || process.env.FMX_DRY === "1";
-	if (isDryRun || !token) return false;
+	if (!token) return false;
 	const encodedEmoji = encodeURIComponent(emoji);
 	try {
 		const response = await fetch(
