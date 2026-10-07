@@ -551,7 +551,18 @@ export const FmPrimaryWatchArm = async ({ client, directory, worktree }) => {
     ensureArmed: (sessionID, activeClient) => ensureArm(paths, sessionID, activeClient ?? client),
   };
 
+  const armFromEvent = async (event) => {
+    const type = event?.type;
+    if (type !== "session.idle") return;
+    const sessionID = event?.properties?.sessionID || event?.data?.sessionID;
+    if (!sessionID) return;
+    void ensureArm(paths, sessionID, client);
+  };
+
   return {
+    event: async ({ event } = {}) => {
+      await armFromEvent(event);
+    },
     quiescent: async (signal) => {
       if (signal?.type !== QUIESCENT || !signal.sessionID) return;
       const sessionID = signal.sessionID;

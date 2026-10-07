@@ -6,11 +6,15 @@ const QUIESCENT_EVENTS = new Set([
   "session.execution.succeeded",
   "session.execution.failed",
   "session.execution.interrupted",
+  "session.execution.cancelled",
+  "session.execution.canceled",
 ]);
 const TERMINAL_EVENTS = new Set([
   "session.execution.succeeded",
   "session.execution.failed",
   "session.execution.interrupted",
+  "session.execution.cancelled",
+  "session.execution.canceled",
 ]);
 const RECENT_TERMINAL_LIMIT = 256;
 
