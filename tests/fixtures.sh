@@ -316,6 +316,15 @@ make_spawn_fakebin() {
 fm_test_run_spawn() {
   local home=$1 pane=$2 fakebin=$3
   shift 3
+  if [ "${FM_TEST_BASE_CONTRACT:-local}" = local ]; then
+    local fixture_ref
+    fixture_ref=$(git -C "$pane" for-each-ref --format='%(refname)' refs/heads/main 2>/dev/null | head -1 || true)
+    [ -n "$fixture_ref" ] || fixture_ref=$(git -C "$pane" for-each-ref --format='%(refname)' refs/heads 2>/dev/null | head -1 || true)
+    if [ -n "$fixture_ref" ]; then
+      git -C "$pane" config firstmate.baseMode local
+      git -C "$pane" config firstmate.baseRef "$fixture_ref"
+    fi
+  fi
   # A claude spawn pre-registers workspace trust in the launching user's own
   # store (bin/fm-claude-trust.sh), so every spawn here runs against a throwaway
   # HOME; without it the suite would write the developer's real ~/.claude.json.
