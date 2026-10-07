@@ -1,0 +1,24 @@
+› Run `bin/fm-lock.sh` and report its exact output.
+
+• Ran bin/fm-session-start.sh
+  └ ●  again, report the exit status and the stage - raising the runtime bound
+    ●  cannot help a digest that died, and a stage that dies is a fleet problem.
+    ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    + 165 lines (ctrl+t to expand)
+
+• Captain, I couldn’t run bin/fm-lock.sh separately. bin/fm-session-start.sh
+  reported:
+
+  error: cannot locate harness process in ancestry
+
+  It marked this session read-only and forbade further fleet mutations. The
+  startup digest also ended with exit 1 during fleet-state because
+  ENDPOINT_TIMEOUT was unset.
+
+  Worked for 9s • 6:59 PM
+
+
+› Ask Codex to do anything
+
+  GPT-6-Luna medium · ~/.no-mistakes/worktrees/4ece0e65ab1a/01M4ASQZ44Y2H4ZG1HA…
+  ← for agents · ? for shortcuts

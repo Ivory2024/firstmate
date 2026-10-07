@@ -1,0 +1,24 @@
+Named Herdr lab: fm-lab-next-52123-3525
+Disposable FM_HOME: /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.wDRQSC
+
+OpenCode pane w3:p1, first session:
+$ FM_HOME=<lab> bin/fm-lock.sh
+lock acquired: harness pid 69664
+$ FM_HOME=<lab> bin/fm-lock.sh status
+lock: held by live harness pid 69664
+
+OpenCode pane w4:p1, second session under same Herdr/OpenCode server:
+$ FM_HOME=<lab> bin/fm-lock.sh
+error: another live firstmate session holds the lock (pid 69664, session HERDR_PANE_ID=w3:p1); operate read-only until resolved
+
+After ending owner pane w3:p1 while lab server remained up:
+$ FM_HOME=<lab> bin/fm-lock.sh status
+lock: stale (pid 69664 dead, recycled, or not a live harness session)
+
+Codex pane w2:p1, real Codex TUI and tool shell:
+CODEX_THREAD_ID=01a115c5-6a75-7ce0-96b1-ce988a5ae41b
+$ FM_HOME=<lab> bin/fm-lock.sh
+error: cannot locate harness process in ancestry
+
+Focused test `tests/fm-session-lock-ancestry.test.sh` (run twice):
+not ok - healthy chain: expected 1 arm(s), got 2
