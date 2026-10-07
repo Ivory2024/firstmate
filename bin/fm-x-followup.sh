@@ -141,10 +141,19 @@ else
   if [ -z "$ID" ]; then usage; exit 2; fi
   shift
   TS_ARGS=()
+  OUTCOME=
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --final)
         FINAL=1
+        ;;
+      --outcome)
+        shift
+        OUTCOME=${1:-}
+        case "$OUTCOME" in
+          success|blocked|failed) ;;
+          *) echo "fm-x-followup: --outcome requires success, blocked, or failed" >&2; exit 2 ;;
+        esac
         ;;
       --image)
         TS_ARGS+=("$1")
@@ -258,6 +267,21 @@ post_rc=$?
 case "$post_rc" in
   0)
     NEWCOUNT=$((COUNT + 1))
+    if [ "$FINAL" = 1 ]; then
+      effective_outcome=${OUTCOME:-}
+      if [ -z "$effective_outcome" ]; then
+        task_state=$("$SCRIPT_DIR/fm-crew-state.sh" "$ID" 2>/dev/null | awk '{print $2}')
+        case "$task_state" in
+          done) effective_outcome=success ;;
+          failed|blocked|needs-decision) effective_outcome=blocked ;;
+        esac
+      fi
+      if [ "$effective_outcome" = success ]; then
+        "$SCRIPT_DIR/fm-discord-reaction.sh" "$RID" success >/dev/null 2>&1 || true
+      elif [ "$effective_outcome" = blocked ] || [ "$effective_outcome" = failed ]; then
+        "$SCRIPT_DIR/fm-discord-reaction.sh" "$RID" blocked >/dev/null 2>&1 || true
+      fi
+    fi
     if [ "$FINAL" = 1 ] || [ "$NEWCOUNT" -ge "$MAX_COUNT" ]; then
       if ! fmx_meta_link_clear "$META"; then
         echo "fm-x-followup: error: posted but could not clear the link in state/$ID.meta" >&2
