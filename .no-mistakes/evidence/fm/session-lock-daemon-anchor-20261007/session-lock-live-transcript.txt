@@ -1,0 +1,7 @@
+owner_pid=23466
+server_pid=23094
+status_owner_live: lock: held by live harness pid 23096
+second_session_claim: error: another live firstmate session holds the lock (pid 23096, session thread-a); operate read-only until resolved
+status_owner_ended_server_alive: lock: stale (pid 23096 dead, recycled, or not a live harness session)
+replacement live harness pid=34151; status: lock: stale (pid 34151 dead, recycled, or not a live harness session)
+replacement live harness pid=35985; status: lock: stale (pid 35985 dead, recycled, or not a live harness session)
