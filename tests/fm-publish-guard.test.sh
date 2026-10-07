@@ -306,6 +306,49 @@ test_legitimate_large_scoped_recovery_change_passes() {
   pass "a 120-path scoped recovery change passes explicit byte budgets"
 }
 
+test_bare_zero_count_with_empty_list_passes() {
+  local out status
+  new_case bare-zero-count
+  write_scope 'recovery/*.txt' 1000 5000
+  mkdir -p "$TEST_REPO/recovery"
+  printf 'task change\n' > "$TEST_REPO/recovery/fix.txt"
+  commit_all scoped-fix
+  printf 'count: 0\npull_requests: []\n' > "$TEST_PR_LIST"
+  out=$(run_guard); status=$?
+  expect_code 0 "$status" "a bare zero count with an empty list should pass"$'\n'"$out"
+  pass "bare zero count and empty PR list pass validation"
+}
+
+test_malformed_pr_list_envelope_fails_closed() {
+  local out status
+  new_case malformed-pr-envelope
+  write_scope 'recovery/*.txt' 1000 5000
+  mkdir -p "$TEST_REPO/recovery"
+  printf 'task change\n' > "$TEST_REPO/recovery/fix.txt"
+  commit_all scoped-fix
+  printf 'count: 0 (showing first 0)\nunexpected: []\n' > "$TEST_PR_LIST"
+  out=$(run_guard); status=$?
+  [ "$status" -ne 0 ] || fail "an invalid PR list envelope passed as empty"
+  assert_contains "$out" 'gh-axi PR list envelope or rows are malformed' \
+    "invalid PR envelope refusal did not name the failed invariant"
+  pass "an invalid empty-list envelope fails closed"
+}
+
+test_malformed_pr_row_fails_closed() {
+  local out status
+  new_case malformed-pr-row
+  write_scope 'recovery/*.txt' 1000 5000
+  mkdir -p "$TEST_REPO/recovery"
+  printf 'task change\n' > "$TEST_REPO/recovery/fix.txt"
+  commit_all scoped-fix
+  printf 'count: 1 of 1 total\npull_requests[1]{number,title,state}:\n  malformed row\n' > "$TEST_PR_LIST"
+  out=$(run_guard); status=$?
+  [ "$status" -ne 0 ] || fail "a malformed PR row passed the list validation"
+  assert_contains "$out" 'gh-axi PR list envelope or rows are malformed' \
+    "invalid PR row refusal did not name the failed invariant"
+  pass "a malformed PR table row fails closed"
+}
+
 test_correct_base_scoped_delta_passes
 test_linked_worktrees_keep_private_base_pins
 test_hundreds_of_inherited_paths_are_rejected_by_scope
@@ -317,5 +360,8 @@ test_newline_filename_stays_one_scope_path
 test_existing_open_pr_for_task_branch_is_rejected
 test_malformed_pr_count_fails_closed
 test_legitimate_large_scoped_recovery_change_passes
+test_bare_zero_count_with_empty_list_passes
+test_malformed_pr_list_envelope_fails_closed
+test_malformed_pr_row_fails_closed
 
 echo '# all fm-publish-guard tests passed'

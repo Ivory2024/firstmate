@@ -51,7 +51,7 @@ scope_match() { # <path> <pattern>
 publish_check() { #
   local scope_file git_dir path pattern limit extra total_limit='' total_bytes=0 pattern_count=0 i path_count=0
   local bytes found unexpected total_commits first_parent_commits current_branch current_base inherited_commits expected_repository verification_ref
-  local pr_list pr_numbers reported_pr_count listed_pr_count
+  local pr_list pr_numbers pr_rows reported_pr_count listed_pr_count
   local -a patterns=() limits=()
 
   [ "$#" -eq 0 ] || die "check accepts no options; its scope manifest path is fixed per worktree"
@@ -174,8 +174,73 @@ publish_check() { #
     END { if (count == 1 && !invalid) print value; else exit 1 }
   ') \
     || die "gh-axi did not report a parseable open-PR count for '$FM_GIT_BASE_REPOSITORY' branch '$FM_GIT_BASE_BRANCH'"
-  pr_numbers=$(printf '%s\n' "$pr_list" | sed -n 's/^[[:space:]]*\([0-9][0-9]*\),.*/\1/p')
-  listed_pr_count=$(printf '%s\n' "$pr_numbers" | awk 'NF { count++ } END { print count+0 }')
+  pr_rows=$(printf '%s\n' "$pr_list" | awk -v expected="$reported_pr_count" '
+    function csv_valid(line, fields,    i, c, quoted, n, next_char) {
+      n = 1
+      quoted = 0
+      for (i = 1; i <= length(line); i++) {
+        c = substr(line, i, 1)
+        if (quoted) {
+          if (c == "\"") {
+            if (substr(line, i + 1, 1) == "\"") i++
+            else {
+              quoted = 0
+              next_char = substr(line, i + 1, 1)
+              if (next_char != "," && next_char != "") return 0
+            }
+          }
+        } else if (c == ",") {
+          n++
+          if (substr(line, i + 1, 1) == "\"") {
+            quoted = 1
+            i++
+          }
+        } else if (c == "\"") return 0
+      }
+      return !quoted && n == fields
+    }
+    {
+      if ($1 == "count:") next
+      if ($0 == "pull_requests: []" || $0 == "pull_requests[]: []") {
+        envelope++
+        empty_list = 1
+        next
+      }
+      if ($0 ~ /^pull_requests\[[0-9]+\]\{[^}]+\}:$/) {
+        envelope++
+        table = 1
+        declared = $0
+        sub(/^pull_requests\[/, "", declared)
+        sub(/\].*$/, "", declared)
+        sub(/^[^{]*\{/, "", $0)
+        sub(/\}:$/, "", $0)
+        field_count = split($0, columns, ",")
+        for (i = 1; i <= field_count; i++) if (columns[i] == "number") number_column++
+        if (number_column != 1 || columns[1] != "number") invalid = 1
+        next
+      }
+      if (table && !empty_list) {
+        line = $0
+        sub(/^[ \t]+/, "", line)
+        if (line == "") next
+        if (!csv_valid(line, field_count)) { invalid = 1; next }
+        number = line
+        sub(/,.*/, "", number)
+        if (number !~ /^[0-9]+$/) { invalid = 1; next }
+        row_count++
+        numbers = numbers (numbers == "" ? "" : ",") number
+        next
+      }
+      if ($0 != "") invalid = 1
+    }
+    END {
+      if (envelope != 1 || invalid || (empty_list && (table || expected != 0 || row_count != 0)) || (!empty_list && (!table || declared != expected || row_count != expected))) exit 1
+      printf "%d\t%s\n", row_count, numbers
+    }
+  ') \
+    || die "gh-axi PR list envelope or rows are malformed or inconsistent with count=$reported_pr_count"
+  listed_pr_count=${pr_rows%%$'\t'*}
+  pr_numbers=${pr_rows#*$'\t'}
   [ "$reported_pr_count" = "$listed_pr_count" ] \
     || die "gh-axi open-PR count mismatch: reported=$reported_pr_count parsed=$listed_pr_count for '$FM_GIT_BASE_REPOSITORY' branch '$FM_GIT_BASE_BRANCH'"
   [ "$reported_pr_count" -eq 0 ] \
