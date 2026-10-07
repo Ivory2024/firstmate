@@ -78,7 +78,7 @@ new_case() { # <name> [source-base-ref]
   TEST_BASE=$(git -C "$TEST_REPO" rev-parse refs/heads/main)
   TEST_SCOPE="$(git -C "$TEST_REPO" rev-parse --absolute-git-dir)/info/fm-publish-scope"
   TEST_PR_LIST="$TMP_ROOT/$name.pr-list"
-  printf 'count: 0\npull_requests: []\n' > "$TEST_PR_LIST"
+  printf 'count: 0 (showing first 0)\npull_requests: []\n' > "$TEST_PR_LIST"
   export FM_TEST_PR_LIST="$TEST_PR_LIST" FM_TEST_PR_BASE=main FM_TEST_PR_HEAD=fm/task
 }
 
@@ -271,6 +271,21 @@ test_existing_open_pr_for_task_branch_is_rejected() {
   pass "an existing open PR for the task branch is refused before publication"
 }
 
+test_malformed_pr_count_fails_closed() {
+  local out status
+  new_case malformed-pr-count
+  write_scope 'recovery/*.txt' 1000 5000
+  mkdir -p "$TEST_REPO/recovery"
+  printf 'task change\n' > "$TEST_REPO/recovery/fix.txt"
+  commit_all scoped-fix
+  printf 'count: many\npull_requests[]: []\n' > "$TEST_PR_LIST"
+  out=$(run_guard); status=$?
+  [ "$status" -ne 0 ] || fail "a malformed gh-axi PR count passed the publish guard"
+  assert_contains "$out" 'gh-axi did not report a parseable open-PR count' \
+    "malformed PR count refusal did not name the failed invariant"
+  pass "a malformed gh-axi count fails closed"
+}
+
 test_legitimate_large_scoped_recovery_change_passes() {
   local out status i
   new_case large-recovery
@@ -300,6 +315,7 @@ test_fast_forwarded_base_commits_are_rejected
 test_remote_fast_forward_rejected_without_local_main
 test_newline_filename_stays_one_scope_path
 test_existing_open_pr_for_task_branch_is_rejected
+test_malformed_pr_count_fails_closed
 test_legitimate_large_scoped_recovery_change_passes
 
 echo '# all fm-publish-guard tests passed'

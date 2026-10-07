@@ -158,7 +158,21 @@ publish_check() { #
   command -v gh-axi >/dev/null 2>&1 || die "gh-axi is unavailable; cannot verify conflicting open PRs"
   pr_list=$(gh-axi pr list --repo "$FM_GIT_BASE_REPOSITORY" --state open --head "$FM_GIT_BASE_BRANCH" --limit 100 2>&1) \
     || die "could not verify conflicting open PRs with gh-axi: $pr_list"
-  reported_pr_count=$(printf '%s\n' "$pr_list" | awk '$1 == "count:" { count++; value=$2 } END { if (count == 1 && value ~ /^[0-9]+$/) print value; else exit 1 }') \
+  reported_pr_count=$(printf '%s\n' "$pr_list" | awk '
+    $1 == "count:" {
+      count++
+      if ($2 !~ /^[0-9]+$/) { invalid = 1; next }
+      value = $2
+      if (NF == 2) next
+      if (NF == 5 && $3 == "of" && $4 ~ /^[0-9]+$/ && $5 == "total" && $2 <= $4) next
+      if (NF == 5 && $3 == "(showing" && $4 == "first" && $5 ~ /^[0-9]+\)$/) {
+        sub(/\)$/, "", $5)
+        if ($2 <= $5) next
+      }
+      invalid = 1
+    }
+    END { if (count == 1 && !invalid) print value; else exit 1 }
+  ') \
     || die "gh-axi did not report a parseable open-PR count for '$FM_GIT_BASE_REPOSITORY' branch '$FM_GIT_BASE_BRANCH'"
   pr_numbers=$(printf '%s\n' "$pr_list" | sed -n 's/^[[:space:]]*\([0-9][0-9]*\),.*/\1/p')
   listed_pr_count=$(printf '%s\n' "$pr_numbers" | awk 'NF { count++ } END { print count+0 }')
