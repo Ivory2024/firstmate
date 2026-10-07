@@ -216,6 +216,35 @@ ROW
   pass "session-lock: two Codex sessions sharing one app-server hold distinct ownership evidence"
 }
 
+test_codex_server_thread_id_is_ignored_for_pane_sessions() {
+  local dir fakebin state table got
+  dir="$TMP_ROOT/codex-pane-identity"
+  fakebin=$(fm_fakebin "$dir")
+  state="$dir/state"
+  mkdir -p "$state"
+  table="$dir/ps-table"
+  cat > "$table" <<'ROW'
+900|codex|/opt/codex/codex app-server --managed-daemon|1|Mon Oct  6 09:12:01 2026|CODEX_THREAD_ID=server-owned-thread
+510|codex|/opt/codex/codex-code-mode-host|1|Tue Oct  7 11:02:44 2026|TMUX_PANE=%3
+610|codex|/opt/codex/codex-code-mode-host|1|Tue Oct  7 11:03:10 2026|TMUX_PANE=%4
+session-a|bash|bash /repo/bin/fm-tool.sh|900|Tue Oct  7 11:02:45 2026|SHLVL=1
+session-b|bash|bash /repo/bin/fm-tool.sh|900|Tue Oct  7 11:03:11 2026|SHLVL=1
+ROW
+  use_table "$fakebin" "$table" session-b
+  got=$(FM_TEST_CODEX_ID=server-owned-thread FM_TEST_TMUX_PANE=%4 lib_eval "$fakebin" 'fm_session_lock_trusted_session_id') \
+    || fail "Codex session under a shared server did not resolve its pane identity"
+  [ "$got" = 'TMUX_PANE=%4' ] || fail "Codex inherited server id instead of pane identity: $got"
+  printf '510\n' > "$state/.lock"
+  printf 'TMUX_PANE=%%3\ncodex\nTue Oct  7 11:02:44 2026\n' > "$state/.lock-session"
+  if FM_TEST_CODEX_ID=server-owned-thread FM_TEST_TMUX_PANE=%4 lib_eval "$fakebin" "fm_session_lock_owned_by_self '$state'"; then
+    fail "Codex session in another pane claimed its sibling's lock"
+  fi
+  use_table "$fakebin" "$table" session-a
+  FM_TEST_CODEX_ID=server-owned-thread FM_TEST_TMUX_PANE=%3 lib_eval "$fakebin" "fm_session_lock_owned_by_self '$state'" \
+    || fail "Codex owner pane could not recognize its own lock"
+  pass "session-lock: shared Codex server id cannot collapse pane identities"
+}
+
 test_pid_reuse_is_not_mistaken_for_a_live_owner() {
   local dir fakebin state table
   dir="$TMP_ROOT/pid-reuse"
@@ -1503,6 +1532,7 @@ test_verified_reclaim_keeps_new_sidecar() {
 
 test_codex_session_under_a_shared_daemon_owns_its_own_process
 test_two_codex_sessions_sharing_one_daemon_hold_distinct_locks
+test_codex_server_thread_id_is_ignored_for_pane_sessions
 test_pid_reuse_is_not_mistaken_for_a_live_owner
 test_birth_token_prefers_stable_procfs_start_ticks
 test_fallback_birth_token_rejects_harness_mismatch

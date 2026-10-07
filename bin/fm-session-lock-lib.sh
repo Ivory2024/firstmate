@@ -470,6 +470,15 @@ fm_session_lock_resolve_trusted_id() {  # [<ancestry-pids>]
   args=$(ps -o args= -p "$innermost" 2>/dev/null)
   name=$(fm_harness_process_name "$comm" "$args") || return 1
 
+  # A shared server's inherited harness id belongs to the server, not this
+  # session. Resolve its per-session pane identity before reading any harness id.
+  if fm_harness_process_is_daemon "$comm" "$args"; then
+    marker=$(fm_session_lock_pane_identity) || return 1
+    FM_SESSION_LOCK_ID=$marker
+    FM_SESSION_LOCK_ID_HARNESS=$name
+    return 0
+  fi
+
   if [ "$name" = claude ]; then
     # Claude reference rule: the id is trusted only alongside a CLAUDE_PID that
     # is itself a claude-shaped member of this run.
@@ -493,15 +502,6 @@ fm_session_lock_resolve_trusted_id() {  # [<ancestry-pids>]
     return 0
   fi
 
-  # A shared server is this session's innermost harness process, so the session's
-  # own process is not in the ancestry at all: fall back to the session/tab
-  # identity the harness passed down to this shell.
-  if fm_harness_process_is_daemon "$comm" "$args"; then
-    marker=$(fm_session_lock_pane_identity) || return 1
-    FM_SESSION_LOCK_ID=$marker
-    FM_SESSION_LOCK_ID_HARNESS=$name
-    return 0
-  fi
   return 1
 }
 
