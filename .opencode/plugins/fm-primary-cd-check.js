@@ -39,7 +39,26 @@ async function resolveRoot(anchor) {
   }
 }
 
-export const FmPrimaryCdCheck = async ({ directory, worktree }) => {
+function resolvePath(anchor) {
+  if (!anchor) return "";
+  try {
+    return realpathSync(anchor);
+  } catch {
+    return resolve(anchor);
+  }
+}
+
+async function isSessionInDirectory(ctx, sessionID, directory) {
+  if (!sessionID || !directory) return false;
+  try {
+    const session = await ctx.session.get({ sessionID });
+    return resolvePath(session?.directory) === directory;
+  } catch {
+    return false;
+  }
+}
+
+export const FmPrimaryCdCheck = async ({ directory, worktree, isOwnSession }) => {
   const root = worktree ? (() => {
     try {
       return realpathSync(worktree);
@@ -53,6 +72,7 @@ export const FmPrimaryCdCheck = async ({ directory, worktree }) => {
       if (!root || input?.tool !== "bash") return;
       const command = output?.args?.command;
       if (!command || typeof command !== "string") return;
+      if (!await isOwnSession?.(input?.sessionID)) return;
 
       const result = await runProcess(`${root}/bin/fm-cd-pretool-check.sh`, ["--command", command]);
       if (result.code !== 2) return;
@@ -66,13 +86,15 @@ export const FmPrimaryCdCheck = async ({ directory, worktree }) => {
 export default {
   id: "fm-primary-cd-check",
   async setup(ctx) {
+    const loadedDirectory = resolvePath(ctx.location?.worktree ?? ctx.location?.directory);
     const hooks = await FmPrimaryCdCheck({
       directory: ctx.location?.directory,
       worktree: ctx.location?.worktree,
+      isOwnSession: (sessionID) => isSessionInDirectory(ctx, sessionID, loadedDirectory),
     });
     await ctx.tool.hook("execute.before", (event) =>
       hooks["tool.execute.before"](
-        { tool: event.tool === "shell" ? "bash" : event.tool },
+        { tool: event.tool === "shell" ? "bash" : event.tool, sessionID: event.sessionID ?? event.data?.sessionID },
         { args: event.input },
       ),
     );

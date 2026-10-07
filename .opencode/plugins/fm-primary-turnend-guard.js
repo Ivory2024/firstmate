@@ -3,9 +3,9 @@ import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
 
-const COORDINATOR_KEY = "__firstmateOpenCodeWatchArm";
-
-let skipNextIdle = false;
+function watchArmCoordinatorKey(root) {
+  return `__firstmateOpenCodeWatchArm:${root}`;
+}
 
 function runProcess(command, args, input = "") {
   return new Promise((resolve) => {
@@ -35,10 +35,24 @@ async function resolveRoot(anchor) {
 }
 
 function resolvePath(anchor) {
+  if (!anchor) return "";
   try {
     return realpathSync(anchor);
   } catch {
     return resolve(anchor);
+  }
+}
+
+async function isSessionInLoadedDirectory(event, sessionID, directory, getSession) {
+  if (!directory) return false;
+  const observedDirectory = event.location?.directory ?? event.data?.info?.directory ?? event.properties?.info?.directory;
+  if (observedDirectory) return resolvePath(observedDirectory) === directory;
+  if (!sessionID || !getSession) return false;
+  try {
+    const session = await getSession(sessionID);
+    return resolvePath(session?.directory) === directory;
+  } catch {
+    return false;
   }
 }
 
@@ -47,29 +61,31 @@ function runGuard(root) {
   return runProcess(`${root}/bin/fm-turnend-guard.sh`, [], '{"stop_hook_active":false}');
 }
 
-async function letWatchArmRun(sessionID, client) {
-  const coordinator = globalThis[COORDINATOR_KEY];
+async function letWatchArmRun(sessionID, client, root) {
+  const coordinator = globalThis[watchArmCoordinatorKey(root)];
   if (!coordinator?.ensureArmed) return false;
   const status = await coordinator.ensureArmed(sessionID, client);
   return status === "armed" || status === "wake" || status === "failed";
 }
 
-export const FmPrimaryTurnendGuard = async ({ client, directory, worktree }) => {
+export const FmPrimaryTurnendGuard = async ({ client, directory, worktree, isOwnSession }) => {
   const root = worktree ? resolvePath(worktree) : await resolveRoot(directory);
+  let skipNextIdle = false;
 
   return {
     event: async ({ event }) => {
       if (event.type !== "session.idle") return;
+
+      const sessionID = event.data?.sessionID ?? event.properties?.sessionID;
+      if (!sessionID) return;
+      if (!await isOwnSession?.(event, sessionID)) return;
 
       if (skipNextIdle) {
         skipNextIdle = false;
         return;
       }
 
-      const sessionID = event.properties?.sessionID;
-      if (!sessionID) return;
-
-      if (await letWatchArmRun(sessionID, client)) return;
+      if (await letWatchArmRun(sessionID, client, root)) return;
 
       const result = await runGuard(root);
       if (result.code !== 2) return;
@@ -99,6 +115,7 @@ export const FmPrimaryTurnendGuard = async ({ client, directory, worktree }) => 
 export default {
   id: "fm-primary-turnend-guard",
   async setup(ctx) {
+    const loadedDirectory = resolvePath(ctx.location?.worktree ?? ctx.location?.directory);
     const client = {
       session: {
         promptAsync: ({ path, body }) => ctx.session.prompt({
@@ -111,11 +128,20 @@ export default {
       client,
       directory: ctx.location?.directory,
       worktree: ctx.location?.worktree,
+      isOwnSession: (event, sessionID) => isSessionInLoadedDirectory(
+        event,
+        sessionID,
+        loadedDirectory,
+        (id) => ctx.session.get({ sessionID: id }),
+      ),
     });
     const controller = new AbortController();
     const eventTask = (async () => {
       for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
-        await hooks.event({ event: { ...event, properties: event.data } });
+        if (!isTurnEndEvent(event?.type)) continue;
+        const sessionID = event.data?.sessionID ?? event.data?.info?.id ?? event.properties?.sessionID ?? event.properties?.info?.id;
+        if (!sessionID) continue;
+        await hooks.event({ event: { ...event, type: "session.idle", data: { ...event.data, sessionID } } });
       }
     })().catch(() => {});
     return async () => {
@@ -124,3 +150,8 @@ export default {
     };
   },
 };
+
+function isTurnEndEvent(type) {
+  return type === "session.idle" || type === "session.execution.succeeded" ||
+    type === "session.execution.failed" || type === "session.execution.interrupted";
+}
