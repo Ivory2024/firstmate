@@ -141,7 +141,7 @@ publish_check() { #
     done
     [ "$found" -eq 1 ] \
       || die "scope allowlist invariant failed: changed path '$path' matches no expected task scope"
-    bytes=$(git diff --binary --no-renames "$FM_GIT_BASE_SHA...HEAD" -- "$path" | wc -c | tr -d '[:space:]') \
+    bytes=$(git --literal-pathspecs diff --binary --no-renames "$FM_GIT_BASE_SHA...HEAD" -- "$path" | wc -c | tr -d '[:space:]') \
       || die "could not measure diff bytes for '$path'"
     case "$bytes" in ''|*[!0-9]*) die "could not measure diff bytes for '$path'" ;; esac
     [ "$bytes" -le "$limit" ] \

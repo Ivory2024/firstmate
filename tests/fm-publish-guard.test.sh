@@ -166,6 +166,21 @@ test_oversized_scoped_file_is_rejected() {
   pass "the byte-budget guard rejects an oversized scoped file"
 }
 
+test_pathspec_magic_filename_obeys_byte_budget() {
+  local out status path
+  new_case literal-pathspec
+  path=':(exclude)recovery/secret.txt'
+  write_scope "$path" 40 5000
+  mkdir -p "$TEST_REPO/$(dirname "$path")"
+  printf '%0100d\n' 123 > "$TEST_REPO/$path"
+  commit_all literal-pathspec
+  out=$(run_guard); status=$?
+  [ "$status" -ne 0 ] || fail "a pathspec-magic filename bypassed its byte budget"
+  assert_contains "$out" "oversized diff invariant failed: path='$path'" \
+    "literal filename budget refusal did not identify the exact path"
+  pass "pathspec-magic filename is measured literally"
+}
+
 test_unexpected_merged_commits_are_rejected() {
   local out status
   new_case unexpected-commits
@@ -353,6 +368,7 @@ test_correct_base_scoped_delta_passes
 test_linked_worktrees_keep_private_base_pins
 test_hundreds_of_inherited_paths_are_rejected_by_scope
 test_oversized_scoped_file_is_rejected
+test_pathspec_magic_filename_obeys_byte_budget
 test_unexpected_merged_commits_are_rejected
 test_fast_forwarded_base_commits_are_rejected
 test_remote_fast_forward_rejected_without_local_main
