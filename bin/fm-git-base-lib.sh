@@ -150,7 +150,7 @@ EOF
       }
       if [ "$effective_url" != "$source_url" ]; then
         effective_identity=$(fm_git_base_repo_identity_from_url "$effective_url" 2>/dev/null || true)
-        if [ -n "$effective_identity" ] && [ "$effective_identity" != "$expected_repository_normalized" ]; then
+        if [ "$effective_identity" != "$expected_repository_normalized" ]; then
           echo "error: Git URL rewrite changes verified repository '$expected_repository' to an unverified fetch destination '$effective_url'; refusing to fetch" >&2
           return 1
         fi

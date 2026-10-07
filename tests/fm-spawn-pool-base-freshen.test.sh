@@ -12,6 +12,29 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
 
 TMP_ROOT=$(fm_test_tmproot fm-spawn-pool-base-freshen)
+REAL_GIT=$(command -v git)
+
+install_git_fetch_adapter() { # <fakebin>
+  local fakebin=$1
+  cat > "$fakebin/git" <<'SH'
+#!/usr/bin/env bash
+set -eu
+args=("$@")
+fetch=0
+for arg in "${args[@]}"; do
+  [ "$arg" = fetch ] && fetch=1
+done
+if [ "$fetch" = 1 ] && [ -n "${FM_TEST_GIT_FETCH_URL:-}" ]; then
+  for i in "${!args[@]}"; do
+    if [ "${args[$i]}" = https://github.com/Ivory2024/firstmate.git ]; then
+      args[$i]="file://$FM_TEST_GIT_FETCH_URL"
+    fi
+  done
+fi
+exec "$FM_TEST_REAL_GIT" "${args[@]}"
+SH
+  chmod +x "$fakebin/git"
+}
 
 make_case() {
   local name=$1 id=$2 default=${3:-main} case_dir home project origin pool publisher fakebin initial
@@ -22,6 +45,7 @@ make_case() {
   pool="$case_dir/pool"
   publisher="$case_dir/publisher"
   fakebin=$(make_spawn_fakebin "$case_dir/fake")
+  install_git_fetch_adapter "$fakebin"
 
   mkdir -p "$home/data/$id" "$home/projects" "$home/state" "$home/config"
   printf 'codex\n' > "$home/config/crew-harness"
@@ -36,7 +60,6 @@ make_case() {
   git -C "$project" remote add origin https://github.com/Ivory2024/firstmate.git
   git -C "$project" config firstmate.expectedRepository Ivory2024/firstmate
   git -C "$project" config firstmate.baseRef "refs/heads/$default"
-  git -C "$project" config "url.file://$origin.insteadOf" https://github.com/Ivory2024/firstmate.git
   initial=$(git -C "$project" rev-parse HEAD)
   git -C "$project" worktree add --quiet --detach "$pool" "$initial"
 
@@ -58,7 +81,8 @@ EOF
 run_spawn() {
   local id=$1
   shift
-  FM_TEST_BASE_CONTRACT=remote fm_test_run_spawn "$HOME_DIR" "$POOL_DIR" "$FAKEBIN_DIR" \
+  FM_TEST_REAL_GIT="$REAL_GIT" FM_TEST_GIT_FETCH_URL="$CASE_DIR/origin.git" \
+    FM_TEST_BASE_CONTRACT=remote fm_test_run_spawn "$HOME_DIR" "$POOL_DIR" "$FAKEBIN_DIR" \
     "$id" "$PROJECT_DIR" "$@"
 }
 
@@ -220,7 +244,7 @@ test_current_fork_main_passes() {
   id='pool-current-fork-main-r1'
   rec=$(make_case current-fork-main "$id")
   read_case_record "$rec"
-  git -C "$POOL_DIR" fetch --quiet --no-tags origin refs/heads/main:refs/remotes/fm-verified-fork/main
+  git -C "$POOL_DIR" fetch --quiet --no-tags "file://$CASE_DIR/origin.git" refs/heads/main:refs/remotes/fm-verified-fork/main
   git -C "$POOL_DIR" checkout --quiet --detach refs/remotes/fm-verified-fork/main
   current=$(git -C "$POOL_DIR" rev-parse HEAD)
 
@@ -254,12 +278,43 @@ test_github_url_rewrite_to_different_repository_fails_closed() {
   pass "a GitHub URL rewrite to another repository fails before fetch"
 }
 
+test_github_url_rewrite_to_file_repository_fails_closed() {
+  local rec id out status before other publisher pin
+  id='pool-file-rewrite-r1'
+  rec=$(make_case file-rewrite "$id")
+  read_case_record "$rec"
+  other="$CASE_DIR/other.git"
+  publisher="$CASE_DIR/other-publisher"
+  git init --quiet --bare -b main "$other"
+  git init --quiet -b main "$publisher"
+  printf 'unrelated repository\n' > "$publisher/README.md"
+  git -C "$publisher" add README.md
+  git -C "$publisher" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit -qm unrelated
+  git -C "$publisher" remote add origin "file://$other"
+  git -C "$publisher" push --quiet origin main
+  git -C "$POOL_DIR" config --unset-all "url.file://$CASE_DIR/origin.git.insteadOf"
+  git -C "$POOL_DIR" config "url.file://$other.insteadOf" \
+    https://github.com/Ivory2024/firstmate.git
+  before=$(git -C "$POOL_DIR" rev-parse HEAD)
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn fetched from a file URL rewritten from the verified fork"
+  assert_contains "$out" "Git URL rewrite changes verified repository 'Ivory2024/firstmate'" \
+    "file rewrite refusal did not identify the unverified fetch destination"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
+    || fail "file rewrite refusal moved the pooled worktree"
+  pin=$(test_base_pin_path "$POOL_DIR")
+  [ ! -e "$pin" ] || fail "file rewrite refusal left a verified-base pin"
+  pass "a rewrite to a different file repository fails before fetch and pinning"
+}
+
 test_fork_identity_does_not_depend_on_remote_name() {
   local rec id out status current
   id='pool-named-fork-source-r1'
   rec=$(make_case named-fork-source "$id")
   read_case_record "$rec"
-  git -C "$POOL_DIR" fetch --quiet --no-tags origin refs/heads/main:refs/remotes/fm-verified-fork/main
+  git -C "$POOL_DIR" fetch --quiet --no-tags "file://$CASE_DIR/origin.git" refs/heads/main:refs/remotes/fm-verified-fork/main
   git -C "$POOL_DIR" checkout --quiet --detach refs/remotes/fm-verified-fork/main
   current=$(git -C "$POOL_DIR" rev-parse HEAD)
   git -C "$POOL_DIR" remote rename origin verified-source
@@ -565,8 +620,8 @@ test_unreachable_origin_refuses_stale_pool_base() {
   out=$(run_spawn "$id" --mode no-mistakes --yolo off)
   status=$?
   [ "$status" -ne 0 ] || fail "spawn succeeded despite an unreachable origin"
-  assert_contains "$out" "could not fetch 'refs/heads/main' from verified repository" \
-    "spawn did not clearly refuse an unreachable expected repository"
+  assert_contains "$out" "Git URL rewrite changes verified repository 'Ivory2024/firstmate'" \
+    "spawn did not refuse an unverified rewritten fetch destination"
   after=$(git -C "$POOL_DIR" rev-parse HEAD)
   [ "$after" = "$before" ] || fail "spawn changed the pooled worktree after origin became unreachable"
   if [ "${FM_TEST_EVIDENCE:-0}" = 1 ]; then
@@ -660,6 +715,7 @@ make_submodule_case() {  # <name> <id>
   publisher="$case_dir/publisher"
   sub="$case_dir/sub-origin"
   fakebin=$(make_spawn_fakebin "$case_dir/fake")
+  install_git_fetch_adapter "$fakebin"
 
   mkdir -p "$home/data/$id" "$home/projects" "$home/state" "$home/config"
   printf 'codex\n' > "$home/config/crew-harness"
@@ -686,7 +742,6 @@ make_submodule_case() {  # <name> <id>
   git -C "$project" remote add origin https://github.com/Ivory2024/firstmate.git
   git -C "$project" config firstmate.expectedRepository Ivory2024/firstmate
   git -C "$project" config firstmate.baseRef refs/heads/main
-  git -C "$project" config "url.file://$origin.insteadOf" https://github.com/Ivory2024/firstmate.git
   git -C "$project" worktree add --quiet --detach "$pool" HEAD
   git -C "$pool" -c protocol.file.allow=always submodule --quiet update --init
 
@@ -946,6 +1001,7 @@ test_linked_spawning_home_rejects_primary_before_refresh
 test_stale_pool_base_refreshes_before_branching
 test_current_fork_main_passes
 test_github_url_rewrite_to_different_repository_fails_closed
+test_github_url_rewrite_to_file_repository_fails_closed
 test_fork_identity_does_not_depend_on_remote_name
 test_remote_base_other_than_fork_main_fails_closed
 test_direct_pr_and_scout_refresh_before_launch
