@@ -578,15 +578,20 @@ export default {
     });
     const controller = new AbortController();
     const lifecycle = new OpenCodeLifecycleAdapter();
+    let eventError = null;
     const eventTask = (async () => {
       for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
         const signal = lifecycle.normalize(event);
         if (signal) await hooks.quiescent(signal);
       }
-    })().catch(() => {});
+    })().catch((error) => {
+      eventError = error;
+      console.error("OpenCode watch-arm lifecycle event stream failed:", error);
+    });
     return async () => {
       controller.abort();
       await eventTask;
+      if (eventError) throw eventError;
     };
   },
 };

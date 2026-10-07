@@ -149,6 +149,22 @@ try {
   assert.equal(readFileSync(armMarker, "utf8"), "--restart", "watch-arm launches for v2 data.sessionID");
   assert.equal(readFileSync(armCalls, "utf8").trim().split("\n").length, 1, "duplicate terminal delivery does not start a second watcher arm");
   await stopWatch();
+
+  const streamError = new Error("fixture event stream failure");
+  const streamDiagnostics = [];
+  const originalConsoleError = console.error;
+  console.error = (...args) => streamDiagnostics.push(args);
+  try {
+    const failedWatchCtx = eventContext(fixture, [], []);
+    failedWatchCtx.event.subscribe = () => (async function* () { throw streamError; })();
+    const stopFailedWatch = await (await import(pathToFileURL(`${root}/.opencode/plugins/fm-primary-watch-arm.js`).href + `?failure=${Date.now()}`)).default.setup(failedWatchCtx);
+    await waitFor(() => streamDiagnostics.length === 1);
+    assert.equal(streamDiagnostics[0][0], "OpenCode watch-arm lifecycle event stream failed:", "stream failure is reported");
+    assert.equal(streamDiagnostics[0][1], streamError, "reported failure preserves original error");
+    await assert.rejects(stopFailedWatch(), streamError, "cleanup exposes the failed event task to the host");
+  } finally {
+    console.error = originalConsoleError;
+  }
 } finally {
   for (const [key, value] of Object.entries(savedFmEnv)) {
     if (value === undefined) delete process.env[key];
