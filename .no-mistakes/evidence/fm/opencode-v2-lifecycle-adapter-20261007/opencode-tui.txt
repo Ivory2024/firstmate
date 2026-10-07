@@ -1,0 +1,25 @@
+
+
+
+
+
+                                                      ▄
+                     █▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█
+                     █  █ █  █ █▀▀▀ █  █ █    █  █ █  █ █▀▀▀
+                     ▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀
+
+
+   ┃
+   ┃  timestamp=2026-10-07T10:23:22.588Z level=INFO run=1d0c933e message="plugin
+ re┃onciliation completed" component=plugin id=2 durationMs=7 plugins=12 role=cl
+iim┃                                                                          am
+tim┃stBuild0·6DeepSeek V4.1 FlashZOpenCode Go run=1d0c933e message="plugin recon
+cil╹ation started" component=plugin id=3 role=clit+tab agentsssctrl+p commandson
+timesopencode-v2-lifecyc23:22.589Z level=INFO run=1d0c933e message="plugin recon
+ciliation completed" component=plugin id=3 durationMs=1 plugins=12 role=clirecon
+timestamp=2026-10-07T10:23:22.589Z level=INFO run=1d0c933e message="plugin recon
+ciliation started" component=plugin id=4 role=cli=1d0c933e message="plugin recon
+timestamp=2026-10-07T10:23:22.589Z level=INFO run=1d0c933e message="plugin recon
+ciliation completed" component=plugin id=4 durationMs=0 plugins=12 role=cli
+
+pane=80x24
