@@ -54,5 +54,6 @@ The follow-up was verified in the interactive TUI.
 `opencode run` can exit before displaying a queued follow-up, so the adapter steps aside in headless mode.
 On native Windows, the operational-input adapter runs its Bash helper through `bash`; macOS and Linux invoke it directly.
 
-The companion `.opencode/plugins/fm-primary-watch-arm.js` owns normal TUI watcher supervision, wakes it with `client.session.promptAsync`, and coordinates with the guard before a blind-turn follow-up.
+The companion `.opencode/plugins/fm-primary-watch-arm.js` owns normal TUI watcher supervision and recovery from durable state changes, watcher health checks, and lifecycle events; it reconnects a failed event subscription with bounded backoff.
+It wakes the watcher with `client.session.promptAsync` and coordinates with the guard before a blind-turn follow-up.
 The PreToolUse-equivalent watcher-arm seatbelt blocks by throwing from `tool.execute.before`.
