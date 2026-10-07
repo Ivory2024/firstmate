@@ -36,20 +36,433 @@ NAMED_CLAUDE="$FAKEBIN/claude"
 
 # Run one library expression with <fakebin> shadowing ps. kill is stubbed so
 # liveness questions are decided by the process table alone (FM_TEST_KILL_RC=1
-# makes every pid dead). The suite itself may run inside a Claude session whose
-# CLAUDE_CODE_SESSION_ID and CLAUDE_PID would leak into the expression, so both
-# are scrubbed and only FM_TEST_SESSION_ID and FM_TEST_CLAUDE_PID reach it.
+# makes every pid dead). The suite itself may run inside a harness session whose
+# own identity variables would leak into the expression, so every published
+# session id and pane marker is scrubbed and only the FM_TEST_* names set by the
+# case reach it: FM_TEST_SESSION_ID and FM_TEST_CLAUDE_PID for Claude's pair,
+# FM_TEST_CODEX_ID for Codex's thread id, FM_TEST_TMUX_PANE and
+# FM_TEST_HERDR_PANE for the pane identities a shared server passes down.
 lib_eval() {  # <fakebin> <expression>
   local fakebin=$1 expr=$2
   local -a session_env=()
   [ -z "${FM_TEST_SESSION_ID:-}" ] || session_env+=("CLAUDE_CODE_SESSION_ID=$FM_TEST_SESSION_ID")
   [ -z "${FM_TEST_CLAUDE_PID:-}" ] || session_env+=("CLAUDE_PID=$FM_TEST_CLAUDE_PID")
-  env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_PID ${session_env[@]+"${session_env[@]}"} \
+  [ -z "${FM_TEST_CODEX_ID:-}" ] || session_env+=("CODEX_THREAD_ID=$FM_TEST_CODEX_ID")
+  [ -z "${FM_TEST_TMUX_PANE:-}" ] || session_env+=("TMUX_PANE=$FM_TEST_TMUX_PANE")
+  [ -z "${FM_TEST_HERDR_PANE:-}" ] || session_env+=("HERDR_ENV=1" "HERDR_PANE_ID=$FM_TEST_HERDR_PANE")
+  env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_PID \
+    -u CODEX_THREAD_ID -u CODEX_SESSION_ID \
+    -u TMUX_PANE -u HERDR_ENV -u HERDR_PANE_ID \
+    ${session_env[@]+"${session_env[@]}"} \
     PATH="$fakebin:$PATH" bash -c "
     . \"\$0\"
     kill() { return \${FM_TEST_KILL_RC:-0}; }
     $expr
   " "$LIB"
+}
+
+# --- table-driven process table ---------------------------------------------
+#
+# One fake ps serving every reading the library takes - comm, args, ppid, lstart,
+# and the `ps eww -A` environment listing - from a pipe-delimited table, so a
+# case states its whole process topology as data instead of hand-rolling a
+# parser per case. `|` separates the fields because tab is IFS whitespace and
+# would collapse the empty birth token of a process that has none.
+#
+#   pid|comm|args|ppid|lstart|env
+#
+# The evaluating shell's own pid is not known while the table is written, so the
+# row named $FM_TEST_PS_ROW stands in for it and for anything below the
+# innermost harness; every other pid answers from its own row.
+write_table_ps() {  # <fakebin> <table>
+  cat > "$1/ps" <<'SH'
+#!/usr/bin/env bash
+set -u
+table=${FM_TEST_PS_TABLE:?no table}
+self=${FM_TEST_PS_ROW:-}
+field= pid=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) field=$2; shift 2 ;;
+    -p) pid=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+row() {
+  local p rest
+  while IFS='|' read -r p rest; do
+    [ "$p" = "$1" ] || continue
+    printf '%s\n' "$rest"
+    return 0
+  done < "$table"
+  row "$self"
+}
+case "$field" in
+  'pid=,args=')
+    while IFS='|' read -r p _ rest; do
+      [ -n "$p" ] || continue
+      # Real `ps eww` appends the environment to the command line.
+      printf '%s %s %s\n' "$p" "$(printf '%s' "$rest" | cut -d'|' -f1)" "$(printf '%s' "$rest" | cut -d'|' -f4)"
+    done < "$table"
+    exit 0
+    ;;
+esac
+fields=$(row "$pid") || exit 1
+[ -n "$fields" ] || exit 1
+comm=${fields%%|*}; rest=${fields#*|}
+args=${rest%%|*}; rest=${rest#*|}
+ppid=${rest%%|*}; rest=${rest#*|}
+lstart=${rest%%|*}
+case "$field" in
+  comm=) printf '%s\n' "$comm" ;;
+  args=) printf '%s\n' "$args" ;;
+  ppid=) printf '%s\n' "$ppid" ;;
+  lstart=) [ -n "$lstart" ] && printf '%s\n' "$lstart" ;;
+  *) exit 1 ;;
+esac
+SH
+  chmod +x "$1/ps"
+}
+
+
+
+# --- acceptance layer: the four reported failures, across the three harnesses --
+#
+# Each case states its whole process topology as data, so the daemon shapes
+# under test are the ones actually verified on this machine: `codex app-server
+# --listen unix:// --managed-daemon` and `opencode serve --service`, both long
+# lived and both the outermost process of every session they host.
+
+use_table() {  # <fakebin> <table-file> <self-row>
+  export FM_TEST_PS_TABLE=$2 FM_TEST_PS_ROW=$3
+  write_table_ps "$1" "$2"
+}
+
+test_codex_session_under_a_shared_daemon_owns_its_own_process() {
+  local dir fakebin state table got
+  dir="$TMP_ROOT/codex-shared-daemon"
+  fakebin=$(fm_fakebin "$dir")
+  state="$dir/state"
+  mkdir -p "$state"
+  table="$dir/ps-table"
+  # The shared app-server parents every session and outlives all of them; this
+  # session's own process is the per-session code-mode host beneath it, carrying
+  # the thread id Codex publishes into tool shells.
+  cat > "$table" <<'ROW'
+900|codex|/opt/codex/codex app-server --listen unix:// --managed-daemon|1|Mon Oct  6 09:12:01 2026|CODEX_THREAD_ID=server-owned-thread
+510|codex|/opt/codex/codex-code-mode-host|900|Tue Oct  7 11:02:44 2026|CODEX_THREAD_ID=7f3a-session-thread
+self|bash|bash /repo/bin/fm-tool.sh|510|Tue Oct  7 11:02:45 2026|SHLVL=1
+ROW
+  use_table "$fakebin" "$table" self
+
+  got=$(FM_TEST_CODEX_ID=7f3a-session-thread lib_eval "$fakebin" 'fm_session_lock_anchor_pid') \
+    || fail "no anchor pid was resolved for a Codex session under a shared daemon"
+  [ "$got" = 510 ] || fail "the Codex anchor was '$got', expected its own per-session process 510, never the shared daemon 900"
+  got=$(FM_TEST_CODEX_ID=7f3a-session-thread lib_eval "$fakebin" 'fm_session_lock_trusted_session_id') \
+    || fail "Codex's published thread id was not accepted as this session's identity"
+  [ "$got" = 7f3a-session-thread ] || fail "the trusted Codex id was '$got', expected its thread id"
+  if lib_eval "$fakebin" 'fm_harness_pid_alive 900'; then
+    fail "the shared codex app-server was classified as a live harness session"
+  fi
+  lib_eval "$fakebin" 'fm_harness_pid_is_daemon 900' \
+    || fail "the shared codex app-server was not classified as a daemon"
+  lib_eval "$fakebin" 'fm_harness_pid_alive 510' \
+    || fail "a live per-session Codex process was not classified as a harness session"
+  pass "session-lock: a Codex session under a shared app-server anchors on its own process, never the daemon"
+}
+
+test_two_codex_sessions_sharing_one_daemon_hold_distinct_locks() {
+  local dir fakebin state table got
+  dir="$TMP_ROOT/codex-two-sessions"
+  fakebin=$(fm_fakebin "$dir")
+  state="$dir/state"
+  mkdir -p "$state"
+  table="$dir/ps-table"
+  # One shared app-server hosting two sessions, each a per-session process with
+  # its own thread id. Session A holds the lock; session B runs under the same
+  # daemon, which is what used to make both claim the same ownership evidence.
+  cat > "$table" <<'ROW'
+900|codex|/opt/codex/codex app-server --listen unix:// --managed-daemon|1|Mon Oct  6 09:12:01 2026|CODEX_THREAD_ID=server-owned-thread
+510|codex|/opt/codex/codex-code-mode-host|900|Tue Oct  7 11:02:44 2026|CODEX_THREAD_ID=thread-a
+610|codex|/opt/codex/codex-code-mode-host|900|Tue Oct  7 11:03:10 2026|CODEX_THREAD_ID=thread-b
+session-a|bash|bash /repo/bin/fm-tool.sh|510|Tue Oct  7 11:02:45 2026|SHLVL=1
+session-b|bash|bash /repo/bin/fm-tool.sh|610|Tue Oct  7 11:03:11 2026|SHLVL=1
+ROW
+  use_table "$fakebin" "$table" session-b
+  printf '510\n' > "$state/.lock"
+  printf 'thread-a\ncodex\nTue Oct  7 11:02:44 2026\n' > "$state/.lock-session"
+
+  # Non-vacuity: both per-session processes really are parented by the one shared
+  # daemon, so the two sessions do share a process and no verdict below can pass
+  # by that daemon being absent. The ancestry walk reports only the innermost
+  # match for every harness but Claude, so it names 610 alone.
+  got=$(FM_TEST_CODEX_ID=thread-b lib_eval "$fakebin" 'fm_harness_ancestry_pids' | tr '\n' ' ')
+  [ "$got" = "610 " ] || fail "session B's ancestry resolved '$got', expected its own process 610"
+  for got in 510 610; do
+    parent=$(FM_TEST_CODEX_ID=thread-b lib_eval "$fakebin" "ps -o ppid= -p $got" | tr -d '[:space:]')
+    [ "$parent" = 900 ] || fail "session process $got's parent is '$parent', expected the shared daemon 900"
+  done
+
+  if FM_TEST_CODEX_ID=thread-b lib_eval "$fakebin" "fm_session_lock_owned_by_self '$state'"; then
+    fail "a second Codex session sharing the daemon claimed the first one's lock"
+  fi
+  got=$(FM_TEST_CODEX_ID=thread-b lib_eval "$fakebin" "fm_session_lock_foreign_owner_live '$state' && printf '%s' \"\$FM_SESSION_LOCK_FOREIGN_OWNER_PID\"") \
+    || fail "session B did not see session A's live lock owner as foreign"
+  [ "$got" = 510 ] || fail "the foreign owner was pid '$got', expected session A's process 510"
+  # And from the owning session's own position under the same daemon.
+  use_table "$fakebin" "$table" session-a
+  FM_TEST_CODEX_ID=thread-a lib_eval "$fakebin" "fm_session_lock_owned_by_self '$state'" \
+    || fail "the live owning Codex session could not recognize its own lock"
+  pass "session-lock: two Codex sessions sharing one app-server hold distinct ownership evidence"
+}
+
+test_codex_server_thread_id_is_ignored_for_pane_sessions() {
+  local dir fakebin state table got
+  dir="$TMP_ROOT/codex-pane-identity"
+  fakebin=$(fm_fakebin "$dir")
+  state="$dir/state"
+  mkdir -p "$state"
+  table="$dir/ps-table"
+  cat > "$table" <<'ROW'
+900|codex|/opt/codex/codex app-server --managed-daemon|1|Mon Oct  6 09:12:01 2026|CODEX_THREAD_ID=server-owned-thread
+510|codex|/opt/codex/codex-code-mode-host|1|Tue Oct  7 11:02:44 2026|TMUX_PANE=%3
+610|codex|/opt/codex/codex-code-mode-host|1|Tue Oct  7 11:03:10 2026|TMUX_PANE=%4
+session-a|bash|bash /repo/bin/fm-tool.sh|900|Tue Oct  7 11:02:45 2026|SHLVL=1
+session-b|bash|bash /repo/bin/fm-tool.sh|900|Tue Oct  7 11:03:11 2026|SHLVL=1
+ROW
+  use_table "$fakebin" "$table" session-b
+  got=$(FM_TEST_CODEX_ID=server-owned-thread FM_TEST_TMUX_PANE=%4 lib_eval "$fakebin" 'fm_session_lock_trusted_session_id') \
+    || fail "Codex session under a shared server did not resolve its pane identity"
+  [ "$got" = 'TMUX_PANE=%4' ] || fail "Codex inherited server id instead of pane identity: $got"
+  printf '510\n' > "$state/.lock"
+  printf 'TMUX_PANE=%%3\ncodex\nTue Oct  7 11:02:44 2026\n' > "$state/.lock-session"
+  if FM_TEST_CODEX_ID=server-owned-thread FM_TEST_TMUX_PANE=%4 lib_eval "$fakebin" "fm_session_lock_owned_by_self '$state'"; then
+    fail "Codex session in another pane claimed its sibling's lock"
+  fi
+  use_table "$fakebin" "$table" session-a
+  FM_TEST_CODEX_ID=server-owned-thread FM_TEST_TMUX_PANE=%3 lib_eval "$fakebin" "fm_session_lock_owned_by_self '$state'" \
+    || fail "Codex owner pane could not recognize its own lock"
+  pass "session-lock: shared Codex server id cannot collapse pane identities"
+}
+
+test_pid_reuse_is_not_mistaken_for_a_live_owner() {
+  local dir fakebin state table
+  dir="$TMP_ROOT/pid-reuse"
+  fakebin=$(fm_fakebin "$dir")
+  state="$dir/state"
+  mkdir -p "$state"
+  table="$dir/ps-table"
+  # pid 700 is alive and harness-shaped, but it is a different process than the
+  # one that recorded the lock: the birth token proves the pid was recycled.
+  cat > "$table" <<'ROW'
+700|codex|/opt/codex/codex-code-mode-host|1|Wed Oct  7 16:59:59 2026|CODEX_THREAD_ID=recycled-thread
+self|bash|bash /repo/bin/fm-tool.sh|1|Tue Oct  7 11:05:00 2026|SHLVL=1
+ROW
+  use_table "$fakebin" "$table" self
+  printf '700\n' > "$state/.lock"
+  printf 'dead-session-thread\ncodex\nTue Oct  7 09:00:00 2026\n' > "$state/.lock-session"
+
+  lib_eval "$fakebin" 'fm_harness_pid_alive 700' \
+    || fail "non-vacuity: the recycled pid is not a live harness process at all"
+  lib_eval "$fakebin" 'fm_session_lock_recorded_owner_live' >/dev/null 2>&1
+  if FM_TEST_KILL_RC=0 lib_eval "$fakebin" "fm_session_lock_recorded_owner_live '$state'"; then
+    fail "a pid the OS had recycled onto a new process passed as the recorded live owner"
+  fi
+  if FM_TEST_KILL_RC=0 lib_eval "$fakebin" "fm_session_lock_foreign_owner_live '$state'"; then
+    fail "a recycled pid suppressed the reclaim path as foreign-owner evidence"
+  fi
+  # The same table with the matching birth token is the un-recycled case, so the
+  # refusal above is the birth token and not a missing birth token.
+  printf '700\n' > "$state/.lock"
+  printf 'dead-session-thread\ncodex\nWed Oct  7 16:59:59 2026\n' > "$state/.lock-session"
+  FM_TEST_KILL_RC=0 lib_eval "$fakebin" "fm_session_lock_recorded_owner_live '$state'" \
+    || fail "a live owner whose recorded birth token still matches was judged stale"
+  pass "session-lock: a pid the OS recycled does not pass as the recorded live owner"
+}
+
+test_birth_token_prefers_stable_procfs_start_ticks() {
+  local dir fakebin proc_root table got changed n
+  dir="$TMP_ROOT/proc-birth-token"
+  fakebin=$(fm_fakebin "$dir")
+  proc_root="$dir/proc"
+  mkdir -p "$proc_root/700"
+  table="$dir/ps-table"
+  cat > "$table" <<'ROW'
+700|codex|/opt/codex/codex-code-mode-host|1|Tue Oct  7 11:05:00 2026|CODEX_THREAD_ID=thread
+ROW
+  use_table "$fakebin" "$table" self
+  {
+    printf '700 (codex) S'
+    n=0
+    while [ "$n" -lt 18 ]; do printf ' %s' "$n"; n=$((n + 1)); done
+    printf ' 4242\n'
+  } > "$proc_root/700/stat"
+  printf 'codex\0code-mode-host\0' > "$proc_root/700/cmdline"
+  got=$(FM_PROC_ROOT_OVERRIDE="$proc_root" lib_eval "$fakebin" 'fm_session_lock_birth_token 700') \
+    || fail "procfs birth identity was not readable"
+  case "$got" in
+    *'starttime=4242'*) ;;
+    *) fail "procfs identity omitted start ticks: $got" ;;
+  esac
+  printf 'codex\0renamed-title\0' > "$proc_root/700/cmdline"
+  changed=$(FM_PROC_ROOT_OVERRIDE="$proc_root" lib_eval "$fakebin" 'fm_session_lock_birth_token 700') \
+    || fail "procfs birth identity failed after argv changed"
+  [ "$changed" = "$got" ] || fail "mutable argv changed the stable birth identity"
+  mkdir -p "$dir/state"
+  printf '700\n' > "$dir/state/.lock"
+  printf 'thread\nopencode\n%s\n' "$got" > "$dir/state/.lock-session"
+  if FM_PROC_ROOT_OVERRIDE="$proc_root" FM_TEST_KILL_RC=0 \
+    lib_eval "$fakebin" "fm_session_lock_recorded_owner_live '$dir/state'"; then
+    fail "a procfs identity accepted a recorded harness mismatch"
+  fi
+  pass "session-lock: birth identity uses stable procfs start ticks"
+}
+
+test_fallback_birth_token_rejects_harness_mismatch() {
+  local dir fakebin table state
+  dir="$TMP_ROOT/fallback-harness-mismatch"
+  fakebin=$(fm_fakebin "$dir")
+  state="$dir/state"
+  mkdir -p "$state" "$dir/no-proc"
+  table="$dir/ps-table"
+  cat > "$table" <<'ROW'
+700|codex|/opt/codex/codex-code-mode-host|1|Tue Oct  7 11:05:00 2026|CODEX_THREAD_ID=thread
+self|bash|bash /repo/bin/fm-tool.sh|1|Tue Oct  7 11:06:00 2026|SHLVL=1
+ROW
+  use_table "$fakebin" "$table" self
+  printf '700\n' > "$state/.lock"
+  printf 'thread\nopencode\nTue Oct  7 11:05:00 2026\n' > "$state/.lock-session"
+  if FM_PROC_ROOT_OVERRIDE="$dir/no-proc" FM_TEST_KILL_RC=0 \
+    lib_eval "$fakebin" "fm_session_lock_recorded_owner_live '$state'"; then
+    fail "the one-second fallback accepted a different recorded harness"
+  fi
+  printf 'thread\n' > "$state/.lock-session"
+  FM_PROC_ROOT_OVERRIDE="$dir/no-proc" FM_TEST_KILL_RC=0 \
+    lib_eval "$fakebin" "fm_session_lock_recorded_owner_live '$state'" \
+    || fail "line-2-absent legacy identity changed its pre-token liveness judgment"
+  pass "session-lock: fallback checks harness while legacy records keep compatibility"
+}
+
+test_prompt_text_does_not_mark_harness_as_daemon() {
+  local result args
+  for args in \
+    'codex --prompt explain --service' \
+    'codex -p explain --managed-daemon' \
+    'codex --instructions explain --service' \
+    'codex --instructions explain --service --prompt foo' \
+    'codex -i explain --managed-daemon' \
+    'codex --prompt=explain --service' \
+    'codex -p=explain --managed-daemon' \
+    'codex --instructions=explain --service' \
+    'codex --instructions=explain --service --prompt foo'; do
+    result=$(lib_eval "$FAKEBIN" "fm_harness_process_is_daemon codex '$args'" && printf daemon || printf session)
+    [ "$result" = session ] || fail "prompt option value classified Codex session as daemon: $args"
+  done
+  result=$(lib_eval "$FAKEBIN" 'fm_harness_process_is_daemon codex "codex --service --listen local"' && printf daemon || printf session)
+  [ "$result" = daemon ] || fail "actual Codex daemon option was not recognized"
+  pass "session-lock: prompt text cannot impersonate daemon flags"
+}
+
+test_opencode_session_identity_is_the_pane_under_a_shared_server() {
+  local dir fakebin state table got
+  dir="$TMP_ROOT/opencode-shared-server"
+  fakebin=$(fm_fakebin "$dir")
+  state="$dir/state"
+  mkdir -p "$state"
+  table="$dir/ps-table"
+  # `opencode serve --service` is shared, parents every tool shell, and
+  # publishes no session id of its own, so a tool shell's only harness ancestor
+  # IS the server. The session's own process is a sibling of that shell rather
+  # than an ancestor, which is why it is found by the pane id the harness passes
+  # down to both; two tabs of the server differ only in that pane id.
+  cat > "$table" <<'ROW'
+900|opencode|/Users/u/.opencode/bin/opencode serve --service|1|Tue Oct  7 14:22:10 2026|HERDR_ENV=1 HERDR_PANE_ID=w1:p0
+710|opencode|/Users/u/.opencode/bin/opencode mini --prompt HERDR_PANE_ID=w1:p9|1|Tue Oct  7 14:23:00 2026|HERDR_ENV=1 HERDR_PANE_ID=w1:other
+510|opencode|/Users/u/.opencode/bin/opencode mini --model opencode/x --prompt hi|1|Tue Oct  7 14:23:31 2026|HERDR_ENV=1 HERDR_PANE_ID=w1:p7
+610|opencode|/Users/u/.opencode/bin/opencode mini --model opencode/x --prompt HERDR_PANE_ID=w1:p9|1|Tue Oct  7 14:24:02 2026|HERDR_ENV=1 HERDR_PANE_ID=w1:p9
+session-a|bash|bash /repo/bin/fm-tool.sh|900|Tue Oct  7 14:23:32 2026|HERDR_ENV=1 HERDR_PANE_ID=w1:p7
+session-b|bash|bash /repo/bin/fm-tool.sh|900|Tue Oct  7 14:24:03 2026|HERDR_ENV=1 HERDR_PANE_ID=w1:p9
+ROW
+  use_table "$fakebin" "$table" session-b
+
+  lib_eval "$fakebin" 'fm_harness_pid_is_daemon 900' \
+    || fail "the shared opencode serve server was not classified as a daemon"
+  if lib_eval "$fakebin" 'fm_harness_pid_alive 900'; then
+    fail "the shared opencode serve server was classified as a live harness session"
+  fi
+  got=$(FM_TEST_HERDR_PANE=w1:p9 lib_eval "$fakebin" 'fm_session_lock_trusted_session_id') \
+    || fail "no identity was resolved for an OpenCode session under a shared server"
+  [ "$got" = "HERDR_PANE_ID=w1:p9" ] || fail "the OpenCode identity was '$got', expected its own pane"
+  got=$(FM_TEST_HERDR_PANE=w1:p9 lib_eval "$fakebin" 'fm_session_lock_anchor_pid') \
+    || fail "no anchor pid was resolved for an OpenCode session under a shared server"
+  [ "$got" = 610 ] || fail "the OpenCode anchor was '$got', expected its own session process 610, never the shared server 900"
+  # The two panes are separate sessions: this one cannot own the other's lock,
+  # and the other's lock owner is a live foreign owner rather than reclaimable.
+  printf '510\n' > "$state/.lock"
+  printf 'HERDR_PANE_ID=w1:p7\nopencode\nTue Oct  7 14:23:31 2026\n' > "$state/.lock-session"
+  if FM_TEST_HERDR_PANE=w1:p9 lib_eval "$fakebin" "fm_session_lock_owned_by_self '$state'"; then
+    fail "an OpenCode session in another pane claimed this one's lock"
+  fi
+  got=$(FM_TEST_HERDR_PANE=w1:p9 lib_eval "$fakebin" "fm_session_lock_foreign_owner_live '$state' && printf '%s' \"\$FM_SESSION_LOCK_FOREIGN_OWNER_PID\"") \
+    || fail "the other pane's live OpenCode session was not reported as a foreign owner"
+  [ "$got" = 510 ] || fail "the foreign owner was pid '$got', expected the other pane's session process 510"
+  # And from the owning pane's own position under the same shared server.
+  use_table "$fakebin" "$table" session-a
+  FM_TEST_HERDR_PANE=w1:p7 lib_eval "$fakebin" "fm_session_lock_owned_by_self '$state'" \
+    || fail "the live owning OpenCode pane could not recognize its own lock"
+  pass "session-lock: an OpenCode session under a shared server is identified by its own pane, and panes stay distinct"
+}
+
+test_tokenless_legacy_lock_liveness() {
+  local dir fakebin table state
+  dir="$TMP_ROOT/tokenless-legacy"
+  fakebin=$(fm_fakebin "$dir")
+  state="$dir/state"
+  mkdir -p "$state"
+  table="$dir/ps-table"
+  cat > "$table" <<'ROW'
+700|codex|/opt/codex/codex-code-mode-host|1|Tue Oct  7 11:05:00 2026|CODEX_THREAD_ID=legacy-owner
+900|codex|/opt/codex/codex app-server --managed-daemon|1|Tue Oct  7 09:00:00 2026|CODEX_THREAD_ID=server
+self|bash|bash /repo/bin/fm-tool.sh|1|Tue Oct  7 11:06:00 2026|SHLVL=1
+ROW
+  use_table "$fakebin" "$table" self
+  printf '700\n' > "$state/.lock"
+  printf 'legacy-owner\ncodex\n' > "$state/.lock-session"
+  FM_TEST_KILL_RC=0 lib_eval "$fakebin" "fm_session_lock_recorded_owner_live '$state'" \
+    || fail "a tokenless legacy lock lost its live non-server owner"
+  printf '900\n' > "$state/.lock"
+  printf 'server\ncodex\n' > "$state/.lock-session"
+  FM_TEST_KILL_RC=0 lib_eval "$fakebin" "fm_session_lock_recorded_owner_live '$state'" \
+    && fail "a shared server kept a tokenless legacy lock live"
+  printf '700\n' > "$state/.lock"
+  printf 'legacy-owner\ncodex\n' > "$state/.lock-session"
+  FM_TEST_KILL_RC=1 lib_eval "$fakebin" "fm_session_lock_recorded_owner_live '$state'" \
+    && fail "a dead pid kept a tokenless legacy lock live"
+  pass "session-lock: tokenless legacy locks retain safe pre-token liveness"
+}
+
+test_unreadable_birth_token_is_omitted() {
+  local dir bin
+  dir="$TMP_ROOT/no-birth-token"
+  bin="$dir/bin"
+  mkdir -p "$bin" "$dir/state"
+  cat > "$bin/ps" <<'SH'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  [ "$arg" = 'lstart=' ] && exit 1
+done
+exec /bin/ps "$@"
+SH
+  chmod +x "$bin/ps"
+  env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_PID \
+    FM_HOME="$dir" FM_LOCK="$ROOT/bin/fm-lock.sh" \
+    FM_PROC_ROOT_OVERRIDE="$dir/no-proc" PATH="$bin:$PATH" \
+    "$NAMED_CLAUDE" -c 'CLAUDE_CODE_SESSION_ID=S1 CLAUDE_PID=$$ "$FM_LOCK" > "$FM_HOME/state/acquire.out" 2>&1; printf "%s\n" "$?" > "$FM_HOME/state/acquire.rc"'
+  expect_code 0 "$(tr -d '[:space:]' < "$dir/state/acquire.rc")" \
+    "the session could not acquire its lock: $(cat "$dir/state/acquire.out")"
+  [ "$(wc -l < "$dir/state/.lock-session" | tr -d '[:space:]')" = 2 ] \
+    || fail "an unreadable birth token was written as a sidecar line"
+  pass "session-lock: an unreadable birth token is omitted from the sidecar"
 }
 
 test_version_named_session_is_identified_on_both_platforms() {
@@ -443,7 +856,11 @@ install_autoarm_scripts() {
   chmod +x "$dir/bin/fm-claude-stop-autoarm.sh" "$dir/bin/fm-lock.sh"
   cat > "$dir/bin/fm-watch-arm.sh" <<'SH'
 #!/usr/bin/env bash
-echo "$$" >> "$FM_HOME/state/arm-ran"
+if [ -n "${FM_WATCH_PREDECESSOR_ARM_PID:-}" ]; then
+  echo "$$" >> "$FM_HOME/state/successor-arm-ran"
+else
+  echo "$$" >> "$FM_HOME/state/arm-ran"
+fi
 printf 'pending:downtime:fixture-generation\n' > "$FM_HOME/state/.watcher-down"
 touch "$FM_HOME/state/.last-watcher-beat"
 printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
@@ -691,6 +1108,12 @@ phase_value() {  # <dir> <n> <file>
   tr -d '[:space:]' < "$1/state/phase-$2/$3"
 }
 
+# Line 1 of the lock sidecar: the session id, with the harness and the anchor's
+# birth token after it.
+sidecar_id() {  # <path>
+  sed -n '1p' "$1" 2>/dev/null || true
+}
+
 arm_count() {  # <dir>
   [ -e "$1/state/arm-ran" ] || { printf '0'; return; }
   wc -l < "$1/state/arm-ran" | tr -d ' '
@@ -700,7 +1123,7 @@ arm_count() {  # <dir>
 # lock accepted, line 1 untouched while the recorded pid lives, sidecar bytes
 # untouched.
 expect_phase_owned() {  # <dir> <n> <expected-arms> <expected-lock-pid> <label>
-  local dir=$1 n=$2 arms=$3 lock_pid=$4 label=$5
+  local dir=$1 n=$2 arms=$3 lock_pid=$4 label=$5 sidecar_mode=${6:-same} birth
   expect_code 2 "$(phase_value "$dir" "$n" hook.rc)" "$label: the Stop auto-arm did not rewake"
   [ "$(arm_count "$dir")" = "$arms" ] || fail "$label: expected $arms arm(s), got $(arm_count "$dir")"
   [ "$(epoch_outcome "$dir")" = rewake ] || fail "$label: no rewake claim was recorded, got: $(epoch_outcome "$dir")"
@@ -711,8 +1134,27 @@ expect_phase_owned() {  # <dir> <n> <expected-arms> <expected-lock-pid> <label>
   expect_code 0 "$(phase_value "$dir" "$n" lock.rc)" "$label: fm-lock.sh refused the session's own lock: $(cat "$dir/state/phase-$n/lock.out")"
   [ "$(phase_value "$dir" "$n" lock-after)" = "$lock_pid" ] \
     || fail "$label: lock line 1 is $(phase_value "$dir" "$n" lock-after), expected $lock_pid"
-  cmp -s "$dir/state/phase-$n/session-after" "$dir/sidecar-initial" \
-    || fail "$label: the session sidecar is not byte-identical to the one the owner wrote"
+  if [ "$sidecar_mode" = same ]; then
+    cmp -s "$dir/state/phase-$n/session-after" "$dir/sidecar-initial" \
+      || fail "$label: the session sidecar is not byte-identical to the one the owner wrote"
+  else
+    [ "$(sidecar_id "$dir/state/phase-$n/session-after")" = S1 ] \
+      || fail "$label: refreshed sidecar lost the session id"
+    [ "$(sed -n '2p' "$dir/state/phase-$n/session-after")" = claude ] \
+      || fail "$label: refreshed sidecar lost the harness id"
+    # Use the production token reader: Linux procfs ticks and the ps fallback
+    # are distinct representations of the same birth-token contract.
+    # shellcheck source=bin/fm-session-lock-lib.sh
+    . "$ROOT/bin/fm-session-lock-lib.sh"
+    birth=$(fm_session_lock_birth_token "$lock_pid" 2>/dev/null || true)
+    if [ -n "$birth" ]; then
+      [ "$(sed -n '3p' "$dir/state/phase-$n/session-after")" = "$birth" ] \
+        || fail "$label: refreshed sidecar birth token [$birth] vs recorded [$(sed -n '3p' "$dir/state/phase-$n/session-after")] does not match lock pid $lock_pid"
+    else
+      [ "$(wc -l < "$dir/state/phase-$n/session-after" | tr -d '[:space:]')" = 2 ] \
+        || fail "$label: unreadable birth token was persisted"
+    fi
+  fi
 }
 
 # Not the owner: no arm, the guard's foreign-owner diagnostic naming the live
@@ -748,7 +1190,7 @@ test_e2e_background_session_keeps_its_lock_across_a_recycled_chain() {
   expect_code 0 "$(tr -d '[:space:]' < "$dir/state/frontend-lock.rc")" "the front-end could not acquire the lock: $(cat "$dir/state/frontend-lock.out")"
   [ "$(tr -d '[:space:]' < "$dir/state/.lock")" = "$frontend" ] \
     || fail "the front-end's lock names $(cat "$dir/state/.lock"), expected its own pid $frontend"
-  [ "$(tr -d '[:space:]' < "$dir/state/.lock-session")" = S1 ] \
+  [ "$(sidecar_id "$dir/state/.lock-session")" = S1 ] \
     || fail "the front-end did not record its trusted session id beside the lock"
   cp "$dir/state/.lock-session" "$dir/sidecar-initial"
 
@@ -795,7 +1237,7 @@ test_e2e_background_session_keeps_its_lock_across_a_recycled_chain() {
   done
   kill -0 "$frontend" 2>/dev/null && fail "the front-end did not exit"
   fire_phase "$dir" 6 'export CLAUDE_CODE_SESSION_ID=S1; export CLAUDE_PID=$$'
-  expect_phase_owned "$dir" 6 3 "$spare" "dead front-end, same session"
+  expect_phase_owned "$dir" 6 3 "$spare" "dead front-end, same session" refreshed
   [ "$spare" != "$ptyhost" ] || fail "fixture collapsed the spare into the pty-host"
 
   : > "$dir/state/stop-spare"
@@ -870,7 +1312,7 @@ SH
   wait_for_file "$dir/state/acquire.rc" "the initial lock acquisition"
   expect_code 0 "$(tr -d '[:space:]' < "$dir/state/acquire.rc")" \
     "the session could not acquire its lock: $(cat "$dir/state/acquire.out")"
-  [ "$(tr -d '[:space:]' < "$dir/state/sidecar-after-acquire")" = S1 ] \
+  [ "$(sidecar_id "$dir/state/sidecar-after-acquire")" = S1 ] \
     || fail "the initial acquire did not record S1"
   wait_for_file "$dir/state/holder-pid" "the claim-lock holder pid"
   holder_pid=$(tr -d '[:space:]' < "$dir/state/holder-pid")
@@ -882,7 +1324,7 @@ SH
   wait "$session_pid" || true
   expect_code 0 "$(tr -d '[:space:]' < "$dir/state/confirm.rc")" \
     "the same-session confirmation failed while the claim lock was held: $(cat "$dir/state/confirm.out")"
-  [ "$(tr -d '[:space:]' < "$dir/state/.lock-session")" = S2 ] \
+  [ "$(sidecar_id "$dir/state/.lock-session")" = S2 ] \
     || fail "the sidecar still names $(cat "$dir/state/.lock-session"), expected the re-keyed id S2"
   [ "$(tr -d '[:space:]' < "$dir/state/.lock")" = "$(tr -d '[:space:]' < "$dir/state/session-pid")" ] \
     || fail "the confirmation rewrote lock line 1"
@@ -992,7 +1434,7 @@ SH
   wait "$session_pid" || true
   [ "$(tr -d '[:space:]' < "$dir/state/confirm.rc")" != 0 ] \
     || fail "the waiter reported success after another live session published: $(cat "$dir/state/confirm.out")"
-  [ "$(tr -d '[:space:]' < "$dir/state/.lock-session")" = OTHER ] \
+  [ "$(sidecar_id "$dir/state/.lock-session")" = OTHER ] \
     || fail "the waiter overwrote the other session's sidecar to $(cat "$dir/state/.lock-session")"
   [ "$(tr -d '[:space:]' < "$dir/state/.lock")" = "$other_pid" ] \
     || fail "the waiter rewrote lock line 1 off the other live session"
@@ -1016,7 +1458,7 @@ test_failed_lock_write_restores_previous_sidecar() {
     '
   expect_code 0 "$(tr -d '[:space:]' < "$dir/state/acquire.rc")" \
     "the first session could not acquire its lock: $(cat "$dir/state/acquire.out")"
-  [ "$(tr -d '[:space:]' < "$dir/state/.lock-session")" = S1 ] \
+  [ "$(sidecar_id "$dir/state/.lock-session")" = S1 ] \
     || fail "the first session did not record S1"
   stale_pid=$(tr -d '[:space:]' < "$dir/state/stale-pid")
   cp "$dir/state/.lock" "$dir/state/lock-before-reclaim"
@@ -1032,7 +1474,7 @@ test_failed_lock_write_restores_previous_sidecar() {
     || fail "a read-only stale lock was overwritten: $(cat "$dir/state/reclaim.out")"
   grep -q 'cannot write session lock' "$dir/state/reclaim.out" \
     || fail "the reclaim did not fail on the lock write: $(cat "$dir/state/reclaim.out")"
-  [ "$(tr -d '[:space:]' < "$dir/state/.lock-session")" = S1 ] \
+  [ "$(sidecar_id "$dir/state/.lock-session")" = S1 ] \
     || fail "the failed reclaim left sidecar $(cat "$dir/state/.lock-session"), expected the previous id S1"
   [ "$(tr -d '[:space:]' < "$dir/state/.lock")" = "$stale_pid" ] \
     || fail "the failed reclaim rewrote lock line 1"
@@ -1084,13 +1526,23 @@ test_verified_reclaim_keeps_new_sidecar() {
     '
   expect_code 0 "$(tr -d '[:space:]' < "$dir/state/reclaim.rc")" \
     "the reclaim failed: $(cat "$dir/state/reclaim.out")"
-  [ "$(tr -d '[:space:]' < "$dir/state/.lock-session")" = S2 ] \
+  [ "$(sidecar_id "$dir/state/.lock-session")" = S2 ] \
     || fail "the verified reclaim left sidecar $(cat "$dir/state/.lock-session"), expected S2"
   [ "$(tr -d '[:space:]' < "$dir/state/.lock")" = "$(tr -d '[:space:]' < "$dir/state/new-pid")" ] \
     || fail "the verified reclaim did not record the new anchor pid"
   pass "session-lock: a verified reclaim keeps the new sidecar beside the new pid"
 }
 
+test_codex_session_under_a_shared_daemon_owns_its_own_process
+test_two_codex_sessions_sharing_one_daemon_hold_distinct_locks
+test_codex_server_thread_id_is_ignored_for_pane_sessions
+test_pid_reuse_is_not_mistaken_for_a_live_owner
+test_birth_token_prefers_stable_procfs_start_ticks
+test_fallback_birth_token_rejects_harness_mismatch
+test_prompt_text_does_not_mark_harness_as_daemon
+test_opencode_session_identity_is_the_pane_under_a_shared_server
+test_tokenless_legacy_lock_liveness
+test_unreadable_birth_token_is_omitted
 test_version_named_session_is_identified_on_both_platforms
 test_harness_at_namespace_pid1_is_examined
 test_ordinary_paths_are_never_harness_processes
