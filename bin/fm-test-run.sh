@@ -297,6 +297,7 @@ family_for_basename() {
       printf '%s\n' pure-contract-unit
       ;;
     fm-daemon.test.sh|fm-guard-stale-banner.test.sh|fm-pi-watch-extension.test.sh|\
+    fm-watcher-liveness-alert.test.sh|\
     fm-session-lock-ancestry.test.sh|fm-cursor-primary.test.sh|\
     fm-supervision-events.test.sh|fm-turnend-guard.test.sh|fm-wake-daemon-lifecycle-e2e.test.sh|\
     fm-wake-drain-unread-status.test.sh|\
@@ -1434,6 +1435,8 @@ families_for_changed_path() {
       ;;
     bin/fm-bootstrap.sh)
       printf '%s\n' session-bootstrap
+      printf '%s\n' watcher-wake-lock
+      printf '%s\n' "__script__:fm-watcher-liveness-alert.test.sh"
       printf '%s\n' "__script__:fm-brief.test.sh"
       ;;
     bin/fm-quota-axi-lib.sh)

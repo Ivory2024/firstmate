@@ -145,7 +145,7 @@ start_rearm_arm() {  # <home> <state> <fakebin> <arm-out> [predecessor-arm-pid]
   PATH="$fakebin:$PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$state" \
     FM_POLL=1 FM_SIGNAL_GRACE=0 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
     FM_WATCH_PREDECESSOR_ARM_PID="$predecessor" \
-    "$WATCH_ARM" --restart > "$armout" &
+    "$WATCH_ARM" --arm > "$armout" &
   ARM_PID=$!
   i=0
   while [ "$i" -lt 80 ]; do
@@ -579,34 +579,6 @@ test_recovery_consumption_serializes_queue_publication() {
   pass "watch-arm: publication after recovery handoff is surfaced"
 }
 
-test_restart_preserves_recovery_across_reused_pid_lock() {
-  local dir home state fakebin armout unrelated owner
-  dir=$(make_case restart-reused-pid-recovery)
-  home="$dir/home"
-  state="$dir/state"
-  fakebin="$dir/fakebin"
-  armout="$dir/arm.out"
-  owner="$state/.watch.lock.owner.fixture"
-  mkdir -p "$home/data" "$owner"
-
-  sleep 300 &
-  unrelated=$!
-  printf '%s\n' "$unrelated" > "$owner/pid"
-  printf '%s\n' "$home" > "$owner/fm-home"
-  printf '%s\n' "$WATCH" > "$owner/watcher-path"
-  printf '%s\n' 'reused-pid-does-not-match' > "$owner/pid-identity"
-  ln -s "$owner" "$state/.watch.lock"
-
-  start_rearm_arm "$home" "$state" "$fakebin" "$armout"
-  wait_for_exit "$ARM_PID" 80 || fail "restart did not surface recovery after clearing a reused-pid lock"
-  grep -F 'check: rearm-resurface' "$armout" >/dev/null \
-    || fail "restart cleared reused-pid lock evidence without a recovery wake: $(cat "$armout")"
-  is_live_non_zombie "$unrelated" || fail "restart signaled the unrelated process whose pid was reused"
-  kill "$unrelated" 2>/dev/null || true
-  wait "$unrelated" 2>/dev/null || true
-  pass "watch-arm: restart publishes recovery before clearing a reused-pid watcher lock"
-}
-
 test_markerless_legacy_queue_is_recovered_on_arm() {
   local dir home state fakebin row
   dir=$(make_case markerless-legacy-arm)
@@ -851,7 +823,6 @@ test_delivery_gap_wake_is_recovered_once
 test_interrupted_handling_is_redrained_on_rearm
 test_malformed_marker_is_quarantined_once
 test_recovery_consumption_serializes_queue_publication
-test_restart_preserves_recovery_across_reused_pid_lock
 test_markerless_legacy_queue_is_recovered_on_arm
 test_handling_window_close_keeps_the_acknowledgement_valid
 test_moved_generation_acknowledgement_is_self_healing
