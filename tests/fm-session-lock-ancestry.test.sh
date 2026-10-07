@@ -826,7 +826,11 @@ install_autoarm_scripts() {
   chmod +x "$dir/bin/fm-claude-stop-autoarm.sh" "$dir/bin/fm-lock.sh"
   cat > "$dir/bin/fm-watch-arm.sh" <<'SH'
 #!/usr/bin/env bash
-echo "$$" >> "$FM_HOME/state/arm-ran"
+if [ -n "${FM_WATCH_PREDECESSOR_ARM_PID:-}" ]; then
+  echo "$$" >> "$FM_HOME/state/successor-arm-ran"
+else
+  echo "$$" >> "$FM_HOME/state/arm-ran"
+fi
 printf 'pending:downtime:fixture-generation\n' > "$FM_HOME/state/.watcher-down"
 touch "$FM_HOME/state/.last-watcher-beat"
 printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
