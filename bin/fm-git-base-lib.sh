@@ -127,6 +127,24 @@ fm_git_base_fetch_remote_ref() { # <worktree> <expected-repository> <source-ref>
   git -C "$worktree" fetch --quiet --no-tags "$source_url" "+$source_ref:$target_ref"
 }
 
+fm_git_base_has_verifiable_remote_identity() { # <worktree>
+  local worktree=$1 remote urls url identity
+  while IFS= read -r remote; do
+    [ -n "$remote" ] || continue
+    urls=$(git -C "$worktree" config --get-all "remote.$remote.url" 2>/dev/null || true)
+    while IFS= read -r url; do
+      [ -n "$url" ] || continue
+      identity=$(fm_git_base_repo_identity_from_url "$url" 2>/dev/null || true)
+      [ -n "$identity" ] && return 0
+    done <<EOF
+$urls
+EOF
+  done <<EOF
+$(git -C "$worktree" remote 2>/dev/null || true)
+EOF
+  return 1
+}
+
 fm_git_base_refresh_worktree() { # <worktree> <source-repository>
   local worktree=$1 source_repo=$2 mode expected_repository expected_ref
   local target_ref expected actual source_common worktree_common
@@ -136,6 +154,16 @@ fm_git_base_refresh_worktree() { # <worktree> <source-repository>
   if [ "$mode" = remote ] && [ "$expected_ref" != refs/heads/main ]; then
     echo "error: verified remote base must be refs/heads/main (configured '$expected_ref'); refusing to use a remote default branch or another ref" >&2
     return 1
+  fi
+  # No configured repository identity and not a firstmate source checkout: this
+  # project cannot name an expected fork, so fall back to the explicit local-base
+  # contract instead of refusing to launch. A project that configures
+  # firstmate.expectedRepository, or that carries a verifiable GitHub remote, stays
+  # strict, so a wrong or upstream remote is still rejected.
+  if [ "$mode" = remote ] && ! fm_git_base_expected_repository "$source_repo" >/dev/null 2>&1; then
+    if ! fm_git_base_has_verifiable_remote_identity "$worktree"; then
+      mode=local
+    fi
   fi
 
   case "$mode" in
