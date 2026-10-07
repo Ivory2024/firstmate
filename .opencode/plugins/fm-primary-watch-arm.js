@@ -670,6 +670,10 @@ export const FmPrimaryWatchArm = async ({ client, directory, worktree }) => {
   const stopWatchingSignals = watchContinuitySignals(paths, () => {
     void requestArm(paths, currentSessionID, client, lifecycle, true);
   });
+  const healthTimer = setInterval(() => {
+    void requestArm(paths, currentSessionID, client, lifecycle);
+  }, WATCHER_HEALTH_RECHECK_MS);
+  healthTimer.unref();
   const coordinator = {
     ensureArmed: (sessionID, activeClient) => requestArm(paths, sessionID, activeClient ?? client, lifecycle, true),
   };
@@ -679,6 +683,7 @@ export const FmPrimaryWatchArm = async ({ client, directory, worktree }) => {
   return {
     dispose: async () => {
       lifecycle.stopped = true;
+      clearInterval(healthTimer);
       stopWatchingSignals();
       if (retryTimer) {
         clearTimeout(retryTimer);
