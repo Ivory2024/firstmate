@@ -1708,7 +1708,8 @@ shell_quote() {
 
 opencode_health_catalog_identity() { # <dispatch-identity> -> canonical free-model catalog identity
   case "$1" in
-  */*) printf 'opencode-free/%s\n' "${1#*/}" ;;
+  opencode/*) printf 'opencode-free/%s\n' "${1#opencode/}" ;;
+  opencode-go/*) printf 'opencode-free/%s\n' "${1#opencode-go/}" ;;
   *) return 1 ;;
   esac
 }
@@ -2273,11 +2274,6 @@ if [ "$HARNESS" = opencode ]; then
       OPENCODE_HEALTH_TERMINATED=$(printf '%s' "$OPENCODE_HEALTH_ENTRY" | jq -r '.early_termination_detected // false')
       if [ "$OPENCODE_HEALTH_STATUS" != active ] || [ "$OPENCODE_HEALTH_TERMINATED" = true ]; then
         echo "error: OpenCode model '$MODEL' is flagged unhealthy in the free-model health catalog (status=$OPENCODE_HEALTH_STATUS, early_termination_detected=$OPENCODE_HEALTH_TERMINATED); choose a different model or domain default" >&2
-        exit 1
-      fi
-      OPENCODE_HEALTH_EXPIRING=$(printf '%s' "$OPENCODE_HEALTH_ENTRY" | jq -r '.is_expiring_soon // false')
-      if [ "$OPENCODE_HEALTH_EXPIRING" = true ]; then
-        echo "error: OpenCode model '$MODEL' is flagged is_expiring_soon in the free-model health catalog; refusing dispatch" >&2
         exit 1
       fi
     fi

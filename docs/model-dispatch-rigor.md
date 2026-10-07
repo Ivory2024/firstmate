@@ -55,8 +55,9 @@ It canonicalizes an OpenCode dispatch identity such as `opencode/<model>` to the
 catalog identity `opencode-free/<model>`, then resolves a unique catalog alias
 when one is present.
 Missing, unreadable, ambiguous, or untracked health entries fail closed.
-An inactive status, `early_termination_detected: true`, or
-`is_expiring_soon: true` also refuses dispatch.
+An inactive status or `early_termination_detected: true` also refuses
+dispatch. Treat `is_expiring_soon: true` as a signal to narrow the brief or
+prefer the domain's recommended default.
 It checks the same two candidate paths `opencode_model_router.py`'s
 `load_catalog()` uses, in the same order (with `FM_OPENCODE_HEALTH_CATALOG`
 environment override taking precedence when set): `AutomationSync/knowledge/opencode-free-models.json`
@@ -66,9 +67,9 @@ Before dispatching an opencode free-model candidate:
 
 1. Read that knowledge file. Match the candidate's domain classification to
    the task shape — don't hand `scout_tool` a coding_large-sized change.
-2. `early_termination_detected: true` or `is_expiring_soon: true` on the
-   candidate means the gate refuses dispatch; prefer the domain's
-   `recommended_defaults` entry instead.
+2. `early_termination_detected: true` means the gate refuses dispatch.
+   `is_expiring_soon: true` is a signal to narrow the brief or prefer the
+   domain's `recommended_defaults` entry.
 3. If `scanned_at` is older than ~10 days (past the weekly cadence plus
    slack), treat the data as stale — fall back to the most conservative
    narrowing for that domain rather than trusting a classification that may
