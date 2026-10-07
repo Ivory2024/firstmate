@@ -6,6 +6,22 @@ import { join } from "node:path";
 
 const retryPending = process.argv[2] === "--retry-pending";
 const reportMode = process.argv[2] === "--report";
+// One definition of the decision-ask marker lives in bin/fm-discord-lib.sh, which
+// every wrapper sources and exports. Refusing to guess keeps the generic send
+// paths fail-closed: without the marker a decision ask could leave uncorrelated.
+const decisionMarker = process.env.FM_DISCORD_DECISION_MARKER;
+if (typeof decisionMarker !== "string" || !decisionMarker) {
+	console.error("fm-discord-notify: FM_DISCORD_DECISION_MARKER is unset; refusing to send an unregistered message");
+	process.exit(2);
+}
+
+// A captain decision ask must go out through the keyed decision path below, which
+// registers the durable correlation record the reply route needs. A generic
+// report carrying the same marker would leave the captain's answer with no
+// durable identity to correlate against, so refuse it here instead of sending.
+function refusesDecisionMarker(message) {
+	return typeof message === "string" && message.includes(decisionMarker);
+}
 const [trigger, taskId, key, summary, recommendation, channelId, statusTaskId, ...options] = process.argv.slice(retryPending ? 3 : reportMode ? 3 : 2);
 const token = process.env.FM_DISCORD_BOT_TOKEN;
 const home = process.env.FM_HOME || process.env.FM_ROOT || ".";
@@ -183,6 +199,9 @@ async function main() {
     const [reportChannelId, reportMessage, reportEventId] = process.argv.slice(3);
     if (!token || !/^\d+$/.test(reportChannelId || "") || !reportMessage) {
       throw new Error("report requires a bot token, numeric channel id, and a non-empty message");
+    }
+    if (refusesDecisionMarker(reportMessage)) {
+      throw new Error("a captain decision ask cannot be sent as a generic report; use the keyed decision notification path");
     }
     // An event id makes this a completion outcome, which gets the durable
     // exactly-once contract above. Without one the caller wants a fresh

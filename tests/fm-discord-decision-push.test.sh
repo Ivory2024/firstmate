@@ -501,6 +501,207 @@ test_no_unrelated_reply_is_captured() {
   pass "ordinary Discord replies do not enter the decision inbox"
 }
 
+test_generic_report_refuses_a_captain_decision_ask() {
+  local home log output rc
+  home="$TMP_ROOT/report-refuses-decision"
+  mkdir -p "$home/state/x-context"
+  chmod 700 "$home/state" "$home/state/x-context"
+  make_fake_node "$home"
+  log="$home/posts.jsonl"
+  # The defect this pins: a decision ask sent as a generic notification leaves the
+  # captain's answer with no durable identity, so the reply lands as generic work.
+  output=$(FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token \
+    "$ROOT/bin/fm-discord-notify.sh" --report 1000000000000000001 \
+      $'결정 필요 - 작업: task-a\n1. 계속 진행\n2. 보류' 2>&1); rc=$?
+  expect_code 1 "$rc" "a decision ask cannot be delivered as a generic report"
+  assert_contains "$output" "cannot be sent as a generic report" "generic report names the decision-path requirement"
+  assert_absent "$home/posts.jsonl" "a refused decision ask posts nothing"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token \
+    "$ROOT/bin/fm-discord-notify.sh" --report 1000000000000000001 "작업 완료 [task-a]: 끝" >/dev/null \
+    || fail "an ordinary report was refused too"
+  assert_equals "1" "$(wc -l < "$log" | tr -d '[:space:]')" "an ordinary report still posts exactly once"
+  pass "a captain decision ask cannot leave through the generic report path"
+}
+test_ordinary_reply_refuses_a_captain_decision_ask() {
+  local home log output rc
+  home="$TMP_ROOT/reply-refuses-decision"
+  mkdir -p "$home/state/x-context" "$home/state/x-inbox"
+  chmod 700 "$home/state" "$home/state/x-context" "$home/state/x-inbox"
+  make_fake_node "$home"
+  log="$home/posts.jsonl"
+  req=discord-sh-1352000000000002001
+  printf '{"request_id":"%s","channel_id":"1000000000000000001","message_id":"1352000000000002000","text":"결정 필요 - proceed or hold?"}' "$req" > "$home/payload.json"
+  output=$(FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token \
+    "$ROOT/bin/fm-discord-reply.sh" "$req" "$home/payload.json" 2>&1); rc=$?
+  expect_code 2 "$rc" "a decision ask cannot be delivered as an ordinary reply"
+  assert_contains "$output" "cannot be sent as an ordinary reply" "ordinary reply names the decision path"
+  assert_contains "$output" "fm-discord-notify.sh" "ordinary reply names the canonical decision command"
+  assert_absent "$home/posts.jsonl" "a refused decision reply posts nothing"
+  printf '{"request_id":"%s","channel_id":"1000000000000000001","message_id":"1352000000000002000","text":"작업 완료했습니다."}' "$req" > "$home/payload.json"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token \
+    "$ROOT/bin/fm-discord-reply.sh" "$req" "$home/payload.json" >/dev/null \
+    || fail "an ordinary reply was refused too"
+  assert_equals "1" "$(wc -l < "$log" | tr -d '[:space:]')" "an ordinary reply still posts exactly once"
+  pass "a captain decision ask cannot leave through the ordinary reply path"
+}
+test_registered_decision_correlates_in_a_fresh_process() {
+  local home log wake req inbox record
+  home="$TMP_ROOT/decision-restart"
+  mkdir -p "$home/state/x-context" "$home/state/x-inbox"
+  chmod 700 "$home/state" "$home/state/x-context" "$home/state/x-inbox"
+  make_fake_node "$home"
+  log="$home/posts.jsonl"
+  # Send and answer in separate processes with nothing in memory between them:
+  # the correlation identity has to come off disk, so a restart cannot lose it.
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify.sh" captain-hold task-restart captain-hold-task-restart-1 \
+      "Choose how to proceed" "Continue|Pause" "Pause" >/dev/null \
+    || fail "decision notification post failed"
+  record=$(find "$home/state/x-context" -name 'discord-notify-*.json' -print -quit)
+  FM_TEST_REAL_NODE=$(command -v node) \
+    FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000003001","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"id":"8000000000000000001","username":"captain"},"content":"Pause","message_reference":{"message_id":"1352000000000000999","channel_id":"1000000000000000001"}}]' \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    FM_DISCORD_AUTHORIZED_USER_IDS=8000000000000000001 \
+    "$ROOT/bin/fm-discord-poll.sh" > "$home/wake.log" || fail "poll failed"
+  wake=$(cat "$home/wake.log")
+  req=discord-sh-1352000000000003001
+  assert_equals "x-mention $req" "$wake" "a fresh poll process still wakes on the registered decision reply"
+  inbox="$home/state/x-inbox/$req.json"
+  assert_equals "discord-selfhosted-decision" "$(jq -r '.source' "$inbox")" "reply is a decision reply in a fresh process"
+  assert_equals "captain-hold-task-restart-1" "$(jq -r '.decision.key' "$inbox")" "the decision key survives the process boundary"
+  assert_equals "false" "$(jq -r '.decision.superseded' "$inbox")" "the first reply is not superseded"
+  pass "a registered decision correlates its reply across a process restart"
+}
+test_reply_without_mention_keeps_decision_correlation() {
+  local home wake req inbox
+  home="$TMP_ROOT/reply-no-mention"
+  mkdir -p "$home/state/x-context" "$home/state/x-inbox"
+  chmod 700 "$home/state" "$home/state/x-context" "$home/state/x-inbox"
+  make_fake_node "$home"
+  cat > "$home/state/x-context/discord-notify-test.json" <<'EOF'
+{"schema":"fm-discord-decision-notification.v1","kind":"decision-notification","state":"sent","task_id":"task-a","key":"captain-hold-task-a-1","trigger":"captain-hold","channel_id":"1000000000000000001","message_id":"1352000000000000999","summary":"Choose how to proceed","options":["Continue","Pause"],"recorded_at":1790319000}
+EOF
+  # Discord adds no @mention for a reply, so the decision binding - not a mention -
+  # has to be what identifies this answer.
+  FM_TEST_REAL_NODE=$(command -v node) \
+    FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000003100","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"id":"8000000000000000001","username":"captain"},"content":"Continue","mentions":[],"message_reference":{"message_id":"1352000000000000999","channel_id":"1000000000000000001"}}]' \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    FM_DISCORD_AUTHORIZED_USER_IDS=8000000000000000001 \
+    "$ROOT/bin/fm-discord-poll.sh" > "$home/wake.log" || fail "poll failed"
+  req=discord-sh-1352000000000003100
+  assert_equals "x-mention $req" "$(cat "$home/wake.log")" "a mention-free decision reply still wakes"
+  inbox="$home/state/x-inbox/$req.json"
+  assert_equals "discord-selfhosted-decision" "$(jq -r '.source' "$inbox")" "a mention-free reply keeps the decision correlation"
+  assert_equals "captain-hold-task-a-1" "$(jq -r '.decision.key' "$inbox")" "a mention-free reply carries the decision key"
+  pass "a decision reply needs no @mention to stay correlated"
+}
+test_ordinary_command_stays_generic_while_a_decision_is_open() {
+  local home wake req inbox
+  home="$TMP_ROOT/command-with-open-decision"
+  mkdir -p "$home/state/x-context" "$home/state/x-inbox"
+  chmod 700 "$home/state" "$home/state/x-context" "$home/state/x-inbox"
+  make_fake_node "$home"
+  cat > "$home/state/x-context/discord-notify-test.json" <<'EOF'
+{"schema":"fm-discord-decision-notification.v1","kind":"decision-notification","state":"sent","task_id":"task-a","key":"captain-hold-task-a-1","trigger":"captain-hold","channel_id":"1000000000000000001","message_id":"1352000000000000999","summary":"Choose how to proceed","options":["Continue","Pause"],"recorded_at":1790319000}
+EOF
+  # An open decision must not turn ordinary traffic into a decision answer.
+  FM_TEST_REAL_NODE=$(command -v node) \
+    FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000003200","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"id":"8000000000000000001","username":"captain"},"content":"task-b 상태 알려줘"}]' \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    FM_DISCORD_COMMAND_CHANNELS=1000000000000000001 FM_DISCORD_AUTHORIZED_USER_IDS=8000000000000000001 \
+    "$ROOT/bin/fm-discord-poll.sh" > "$home/wake.log" || fail "poll failed"
+  req=discord-sh-1352000000000003200
+  assert_equals "x-mention $req" "$(cat "$home/wake.log")" "an ordinary command still reaches firstmate"
+  inbox="$home/state/x-inbox/$req.json"
+  assert_equals "discord-selfhosted" "$(jq -r '.source' "$inbox")" "an ordinary command stays generic"
+  assert_equals "null" "$(jq -r '.decision // "null"' "$inbox")" "an ordinary command carries no decision binding"
+  assert_equals "null" "$(jq -r '.replied_to // "null"' "$home/state/x-context/discord-notify-test.json")" \
+    "an ordinary command leaves the open decision unanswered"
+  pass "an ordinary Discord command stays a generic command while a decision is open"
+}
+test_duplicate_reply_is_captured_once() {
+  local home record wake req inbox
+  home="$TMP_ROOT/duplicate-reply"
+  mkdir -p "$home/state/x-context" "$home/state/x-inbox"
+  chmod 700 "$home/state" "$home/state/x-context" "$home/state/x-inbox"
+  make_fake_node "$home"
+  record="$home/state/x-context/discord-notify-test.json"
+  cat > "$record" <<'EOF'
+{"schema":"fm-discord-decision-notification.v1","kind":"decision-notification","state":"sent","task_id":"task-a","key":"captain-hold-task-a-1","trigger":"captain-hold","channel_id":"1000000000000000001","message_id":"1352000000000000999","summary":"Choose how to proceed","options":["Continue","Pause"],"recorded_at":1790319000}
+EOF
+  messages='[{"id":"1352000000000003300","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"id":"8000000000000000001","username":"captain"},"content":"Continue","message_reference":{"message_id":"1352000000000000999","channel_id":"1000000000000000001"}}]'
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_MESSAGES="$messages" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    FM_DISCORD_AUTHORIZED_USER_IDS=8000000000000000001 \
+    "$ROOT/bin/fm-discord-poll.sh" > "$home/first.log" || fail "first poll failed"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_MESSAGES="$messages" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    FM_DISCORD_AUTHORIZED_USER_IDS=8000000000000000001 \
+    "$ROOT/bin/fm-discord-poll.sh" > "$home/second.log" || fail "second poll failed"
+  req=discord-sh-1352000000000003300
+  assert_equals "x-mention $req" "$(cat "$home/first.log")" "the first poll captures the reply"
+  assert_equals "" "$(cat "$home/second.log")" "a replayed poll does not wake on the same reply again"
+  assert_equals "1" "$(awk -F '\t' -v want="discord-$req" 'NF >= 5 && $3 == "check" && $4 == want { n++ } END { print n + 0 }' "$home/state/.wake-queue")" \
+    "the durable wake queue holds the reply exactly once"
+  inbox="$home/state/x-inbox/$req.json"
+  assert_equals "Continue" "$(jq -r '.text' "$inbox")" "the captured reply keeps the captain's own words"
+  assert_equals "1352000000000003300" "$(jq -r '.replied_to.message_id' "$record")" "the notification binds exactly one reply"
+  pass "a duplicate poll of one decision reply is idempotent"
+}
+test_late_reply_to_answered_decision_is_superseded() {
+  local home record wake first second
+  home="$TMP_ROOT/late-reply"
+  mkdir -p "$home/state/x-context" "$home/state/x-inbox"
+  chmod 700 "$home/state" "$home/state/x-context" "$home/state/x-inbox"
+  make_fake_node "$home"
+  record="$home/state/x-context/discord-notify-test.json"
+  cat > "$record" <<'EOF'
+{"schema":"fm-discord-decision-notification.v1","kind":"decision-notification","state":"sent","task_id":"task-a","key":"captain-hold-task-a-1","trigger":"captain-hold","channel_id":"1000000000000000001","message_id":"1352000000000000999","summary":"Choose how to proceed","options":["Continue","Pause"],"recorded_at":1790319000}
+EOF
+  FM_TEST_REAL_NODE=$(command -v node) \
+    FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000003400","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"id":"8000000000000000001","username":"captain"},"content":"Continue","message_reference":{"message_id":"1352000000000000999","channel_id":"1000000000000000001"}}]' \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    FM_DISCORD_AUTHORIZED_USER_IDS=8000000000000000001 \
+    "$ROOT/bin/fm-discord-poll.sh" > "$home/first.log" || fail "first poll failed"
+  first=$home/state/x-inbox/discord-sh-1352000000000003400.json
+  assert_equals "false" "$(jq -r '.decision.superseded' "$first")" "the first reply is not superseded"
+  # The captain answers again after the decision was already applied. His words
+  # must still reach firstmate, flagged so nothing rebinds to a settled decision.
+  FM_TEST_REAL_NODE=$(command -v node) \
+    FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000003401","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"id":"8000000000000000001","username":"captain"},"content":"actually Pause","message_reference":{"message_id":"1352000000000000999","channel_id":"1000000000000000001"}}]' \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    FM_DISCORD_AUTHORIZED_USER_IDS=8000000000000000001 \
+    "$ROOT/bin/fm-discord-poll.sh" > "$home/second.log" || fail "second poll failed"
+  wake=$(cat "$home/second.log")
+  assert_equals "x-mention discord-sh-1352000000000003401" "$wake" "a late decision reply is not silently dropped"
+  second=$home/state/x-inbox/discord-sh-1352000000000003401.json
+  assert_equals "actually Pause" "$(jq -r '.text' "$second")" "the late reply keeps the captain's own words"
+  assert_equals "true" "$(jq -r '.decision.superseded' "$second")" "the late reply is flagged superseded"
+  assert_equals "1352000000000003400" "$(jq -r '.decision.superseded_by' "$second")" "the late reply names the reply it supersedes"
+  assert_equals "captain-hold-task-a-1" "$(jq -r '.decision.key' "$second")" "the late reply still names the decision it answers"
+  assert_equals "1352000000000003400" "$(jq -r '.replied_to.message_id' "$record")" \
+    "the notification keeps its first binding instead of rebinding"
+  assert_equals "Continue" "$(jq -r '.text' "$first")" "the original captured reply is not overwritten"
+  pass "a late reply to an already-answered decision is captured as superseded"
+}
+
 test_ask_user_gate_alone_triggers_no_push() {
   local home posts
   home="$TMP_ROOT/ask-user-decided-in-scope"
@@ -857,6 +1058,13 @@ test_perm_ask_reply_carries_the_identity_the_applier_needs
 test_captured_reply_without_offer_recovers_one_wake
 test_unauthorized_decision_reply_is_ignored
 test_no_unrelated_reply_is_captured
+test_generic_report_refuses_a_captain_decision_ask
+test_ordinary_reply_refuses_a_captain_decision_ask
+test_registered_decision_correlates_in_a_fresh_process
+test_reply_without_mention_keeps_decision_correlation
+test_ordinary_command_stays_generic_while_a_decision_is_open
+test_duplicate_reply_is_captured_once
+test_late_reply_to_answered_decision_is_superseded
 test_ask_user_gate_alone_triggers_no_push
 test_ask_user_escalation_hold_carries_finding_text
 test_pr_push_requires_yolo_off
