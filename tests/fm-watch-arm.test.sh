@@ -145,7 +145,7 @@ start_rearm_arm() {  # <home> <state> <fakebin> <arm-out> [predecessor-arm-pid]
   PATH="$fakebin:$PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$state" \
     FM_POLL=1 FM_SIGNAL_GRACE=0 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
     FM_WATCH_PREDECESSOR_ARM_PID="$predecessor" \
-    "$WATCH_ARM" --restart > "$armout" &
+    "$WATCH_ARM" --arm > "$armout" &
   ARM_PID=$!
   i=0
   while [ "$i" -lt 80 ]; do
