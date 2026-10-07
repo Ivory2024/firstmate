@@ -75,7 +75,14 @@ install_agent() {
       return 0
     fi
   fi
-  chmod 0644 "$tmp" && mv -f "$tmp" "$PLIST" || { rm -f "$tmp"; return 1; }
+  if ! chmod 0644 "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  if ! mv -f "$tmp" "$PLIST"; then
+    rm -f "$tmp"
+    return 1
+  fi
   uid=$(id -u)
   launchctl bootout "gui/$uid/$LABEL" >/dev/null 2>&1 || true
   out=$(launchctl bootstrap "gui/$uid" "$PLIST" 2>&1) || {
