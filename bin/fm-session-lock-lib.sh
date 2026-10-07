@@ -144,8 +144,7 @@ fm_harness_pid_is_daemon() {  # <pid>
 }
 
 # True when the process described by command name $1 and full argument string $2
-# is a verified harness. Sets FM_HARNESS_IS_CLAUDE and FM_HARNESS_IS_DAEMON for
-# the callers below, and FM_HARNESS_NAME when the name is readable.
+# is a verified harness. Sets FM_HARNESS_IS_CLAUDE for the ancestry walk below.
 #
 # Evidence, in order:
 #   1. the basename of the reported command name, against FM_HARNESS_RE.
@@ -157,24 +156,17 @@ fm_harness_pid_is_daemon() {  # <pid>
 #   3. a bare interpreter (node, python) running a harness script path.
 #   4. Cursor's own structural identity, owned by bin/fm-cursor-lib.sh.
 FM_HARNESS_IS_CLAUDE=0
-FM_HARNESS_IS_DAEMON=0
-FM_HARNESS_NAME=
 fm_harness_process_matches() {  # <comm> <args>
   local comm=$1 args=$2 base argv0 name
   FM_HARNESS_IS_CLAUDE=0
-  FM_HARNESS_NAME=
   base=$(basename -- "$comm")
   if printf '%s' "$base" | grep -qE "$FM_HARNESS_RE"; then
     case "$base" in *claude*) FM_HARNESS_IS_CLAUDE=1 ;; esac
-    FM_HARNESS_NAME=$(fm_harness_name_from_word "$base" 2>/dev/null || true)
-    fm_harness_process_is_daemon "$comm" "$args" && FM_HARNESS_IS_DAEMON=1
     return 0
   fi
   argv0=${args%% *}
   if name=$(fm_harness_path_name "$comm") || name=$(fm_harness_path_name "$argv0"); then
     case "$name" in claude) FM_HARNESS_IS_CLAUDE=1 ;; esac
-    FM_HARNESS_NAME=$name
-    fm_harness_process_is_daemon "$comm" "$args" && FM_HARNESS_IS_DAEMON=1
     return 0
   fi
   # Bare interpreter (e.g. node): match the harness name in its script path.
@@ -182,8 +174,6 @@ fm_harness_process_matches() {  # <comm> <args>
     *node* | *python*)
       if printf '%s' "$args" | grep -qE "$FM_HARNESS_RE"; then
         case "$args" in *claude*) FM_HARNESS_IS_CLAUDE=1 ;; esac
-        FM_HARNESS_NAME=$(fm_harness_path_name "$args" 2>/dev/null || true)
-        fm_harness_process_is_daemon "$comm" "$args" && FM_HARNESS_IS_DAEMON=1
         return 0
       fi
       ;;
@@ -193,7 +183,6 @@ fm_harness_process_matches() {  # <comm> <args>
   # locate its own harness in the ancestry, so every session start refuses the
   # fleet lock as read-only and the park can never arm.
   if fm_cursor_process_matches "$comm" "$args" "$argv0"; then
-    FM_HARNESS_NAME=cursor
     return 0
   fi
   return 1
