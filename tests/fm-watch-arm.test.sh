@@ -579,105 +579,6 @@ test_recovery_consumption_serializes_queue_publication() {
   pass "watch-arm: publication after recovery handoff is surfaced"
 }
 
-test_restart_preserves_recovery_across_reused_pid_lock() {
-  local dir home state fakebin armout unrelated owner
-  dir=$(make_case restart-reused-pid-recovery)
-  home="$dir/home"
-  state="$dir/state"
-  fakebin="$dir/fakebin"
-  armout="$dir/arm.out"
-  owner="$state/.watch.lock.owner.fixture"
-  mkdir -p "$home/data" "$owner"
-
-  sleep 300 &
-  unrelated=$!
-  printf '%s\n' "$unrelated" > "$owner/pid"
-  printf '%s\n' "$home" > "$owner/fm-home"
-  printf '%s\n' "$WATCH" > "$owner/watcher-path"
-  printf '%s\n' 'reused-pid-does-not-match' > "$owner/pid-identity"
-  ln -s "$owner" "$state/.watch.lock"
-
-  start_rearm_arm "$home" "$state" "$fakebin" "$armout"
-  wait_for_exit "$ARM_PID" 80 || fail "restart did not surface recovery after clearing a reused-pid lock"
-  grep -F 'check: rearm-resurface' "$armout" >/dev/null \
-    || fail "restart cleared reused-pid lock evidence without a recovery wake: $(cat "$armout")"
-  is_live_non_zombie "$unrelated" || fail "restart signaled the unrelated process whose pid was reused"
-  kill "$unrelated" 2>/dev/null || true
-  wait "$unrelated" 2>/dev/null || true
-  pass "watch-arm: restart publishes recovery before clearing a reused-pid watcher lock"
-}
-
-test_concurrent_restart_preserves_healthy_successor() {
-  local dir home state fakebin seedout firstout secondout successor i
-  dir=$(make_case concurrent-restart-successor)
-  home="$dir/home"
-  state="$dir/state"
-  fakebin="$dir/fakebin"
-  seedout="$dir/seed.out"
-  firstout="$dir/first-arm.out"
-  secondout="$dir/second-arm.out"
-  mkdir -p "$home/data"
-
-  PATH="$fakebin:$PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$state" \
-    FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
-    "$WATCH" > "$seedout" &
-  SEED_PID=$!
-  i=0
-  while [ "$i" -lt 60 ]; do
-    [ "$(cat "$state/.watch.lock/pid" 2>/dev/null || true)" = "$SEED_PID" ] \
-      && [ -e "$state/.last-watcher-beat" ] && break
-    sleep 0.1
-    i=$((i + 1))
-  done
-  [ "$(cat "$state/.watch.lock/pid" 2>/dev/null || true)" = "$SEED_PID" ] \
-    || fail "seed watcher did not take the custom home lock"
-  sleep 0.2
-  touch -t 201901010000 "$state/.last-watcher-beat"
-  start_rearm_arm "$home" "$state" "$fakebin" "$firstout"
-  i=0
-  while [ "$i" -lt 100 ] && is_live_non_zombie "$SEED_PID"; do
-    sleep 0.1
-    i=$((i + 1))
-  done
-  is_live_non_zombie "$SEED_PID" \
-    && fail "first recovery arm did not stop the stale watcher: $(cat "$firstout" 2>/dev/null); lock-pid=$(cat "$state/.watch.lock/pid" 2>/dev/null)"
-  wait "$SEED_PID" 2>/dev/null || true
-  wait "$ARM_PID" 2>/dev/null || true
-  grep -F 'check: rearm-resurface' "$firstout" >/dev/null \
-    || fail "stale recovery did not replay its wake: $(cat "$firstout")"
-  ack_wakes "$state" || fail "replayed recovery wake could not be acknowledged"
-
-  start_rearm_arm "$home" "$state" "$fakebin" "$dir/successor-arm.out"
-  is_live_non_zombie "$ARM_PID" || fail "healthy successor arm did not stay live"
-  successor=$(cat "$state/.watch.lock/pid" 2>/dev/null || true)
-  [ -n "$successor" ] && [ "$successor" != "$SEED_PID" ] \
-    || fail "acknowledged recovery did not leave a new watcher generation"
-  is_live_non_zombie "$successor" || fail "recovery successor was not live"
-
-  PATH="$fakebin:$PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$state" \
-    FM_POLL=1 FM_SIGNAL_GRACE=0 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
-    FM_ARM_ATTACH_POLL=0.1 FM_ARM_CONFIRM_TIMEOUT=5 \
-    "$WATCH_ARM" --restart > "$secondout" &
-  local second_arm=$!
-  i=0
-  while [ "$i" -lt 100 ] && ! grep -qF "watcher: attached pid=$successor" "$secondout" 2>/dev/null; do
-    is_live_non_zombie "$second_arm" || fail "second recovery arm exited instead of attaching: $(cat "$secondout")"
-    sleep 0.05
-    i=$((i + 1))
-  done
-  grep -qF "watcher: attached pid=$successor" "$secondout" \
-    || fail "second recovery arm did not attach to the healthy successor: $(cat "$secondout")"
-  [ "$(cat "$state/.watch.lock/pid" 2>/dev/null || true)" = "$successor" ] \
-    || fail "concurrent re-arm replaced a successor that was healthy at restart time"
-  is_live_non_zombie "$successor" || fail "concurrent re-arm terminated the healthy successor"
-
-  kill -TERM "$second_arm" 2>/dev/null || true
-  wait "$second_arm" 2>/dev/null || true
-  kill -TERM "$ARM_PID" 2>/dev/null || true
-  wait "$ARM_PID" 2>/dev/null || true
-  pass "watch-arm: concurrent re-arm preserves and attaches to the healthy successor generation"
-}
-
 test_markerless_legacy_queue_is_recovered_on_arm() {
   local dir home state fakebin row
   dir=$(make_case markerless-legacy-arm)
@@ -922,8 +823,6 @@ test_delivery_gap_wake_is_recovered_once
 test_interrupted_handling_is_redrained_on_rearm
 test_malformed_marker_is_quarantined_once
 test_recovery_consumption_serializes_queue_publication
-test_restart_preserves_recovery_across_reused_pid_lock
-test_concurrent_restart_preserves_healthy_successor
 test_markerless_legacy_queue_is_recovered_on_arm
 test_handling_window_close_keeps_the_acknowledgement_valid
 test_moved_generation_acknowledgement_is_self_healing
