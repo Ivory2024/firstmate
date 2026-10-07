@@ -1112,10 +1112,12 @@ expect_phase_owned() {  # <dir> <n> <expected-arms> <expected-lock-pid> <label>
       || fail "$label: refreshed sidecar lost the session id"
     [ "$(sed -n '2p' "$dir/state/phase-$n/session-after")" = claude ] \
       || fail "$label: refreshed sidecar lost the harness id"
-    birth=$(ps -p "$lock_pid" -o lstart= 2>/dev/null | sed 's/^ *//;s/ *$//')
+    # LC_ALL=C pins the same format the library writes the token under, so this
+    # comparison cannot fail on a non-English host locale alone.
+    birth=$(LC_ALL=C ps -p "$lock_pid" -o lstart= 2>/dev/null | sed 's/^ *//;s/ *$//')
     if [ -n "$birth" ]; then
       [ "$(sed -n '3p' "$dir/state/phase-$n/session-after")" = "$birth" ] \
-        || fail "$label: refreshed sidecar birth token does not match lock pid $lock_pid"
+        || fail "$label: refreshed sidecar birth token [$birth] vs recorded [$(sed -n '3p' "$dir/state/phase-$n/session-after")] does not match lock pid $lock_pid"
     else
       [ "$(wc -l < "$dir/state/phase-$n/session-after" | tr -d '[:space:]')" = 2 ] \
         || fail "$label: unreadable birth token was persisted"
