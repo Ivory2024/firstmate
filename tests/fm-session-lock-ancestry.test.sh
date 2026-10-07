@@ -455,7 +455,8 @@ exec /bin/ps "$@"
 SH
   chmod +x "$bin/ps"
   env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_PID \
-    FM_HOME="$dir" FM_LOCK="$ROOT/bin/fm-lock.sh" PATH="$bin:$PATH" \
+    FM_HOME="$dir" FM_LOCK="$ROOT/bin/fm-lock.sh" \
+    FM_PROC_ROOT_OVERRIDE="$dir/no-proc" PATH="$bin:$PATH" \
     "$NAMED_CLAUDE" -c 'CLAUDE_CODE_SESSION_ID=S1 CLAUDE_PID=$$ "$FM_LOCK" > "$FM_HOME/state/acquire.out" 2>&1; printf "%s\n" "$?" > "$FM_HOME/state/acquire.rc"'
   expect_code 0 "$(tr -d '[:space:]' < "$dir/state/acquire.rc")" \
     "the session could not acquire its lock: $(cat "$dir/state/acquire.out")"
