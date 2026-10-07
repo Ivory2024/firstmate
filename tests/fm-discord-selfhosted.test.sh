@@ -30,13 +30,21 @@ make_fake_discord_node() {
   cat > "$home/fake-bin/node" <<'SH'
 #!/usr/bin/env bash
 set -u
+script=$1
+shift
 exec "$FM_TEST_REAL_NODE" --input-type=module -e '
   import { pathToFileURL } from "node:url";
   const script = process.argv[1];
   const messages = JSON.parse(process.env.FM_DISCORD_FAKE_MESSAGES || "[]");
   const channels = JSON.parse(process.env.FM_DISCORD_FAKE_CHANNELS || "[]");
   const log = process.env.FM_DISCORD_FAKE_FETCH_LOG;
-  globalThis.fetch = async (url) => {
+  const reactionLog = process.env.FM_DISCORD_FAKE_REACTION_LOG;
+  globalThis.fetch = async (url, options = {}) => {
+    if (url.includes("/reactions/")) {
+      if (reactionLog) await import("node:fs/promises").then(({ appendFile }) => appendFile(reactionLog, JSON.stringify({ url, method: options.method }) + "\n"));
+      if (process.env.FM_DISCORD_FAKE_REACTION_STATUS) return new Response("failed", { status: Number(process.env.FM_DISCORD_FAKE_REACTION_STATUS) });
+      return new Response(null, { status: 204 });
+    }
     if (log) {
       const channel = url.match(/\/channels\/([^/]+)\/messages/);
       if (channel) {
@@ -49,7 +57,7 @@ exec "$FM_TEST_REAL_NODE" --input-type=module -e '
     return new Response("not found", { status: 404 });
   };
   await import(pathToFileURL(script).href);
-' "$1"
+' "$script" "$@"
 SH
   chmod +x "$home/fake-bin/node"
 }
@@ -65,16 +73,18 @@ wake_rows() {
 CAPTAIN_MENTION='[{"id":"1352000000000003001","channel_id":"1000000000000000001","author":{"id":"8000000000000000001","username":"captain"},"mentions":[{"id":"9000000000000000001"}],"content":"<@9000000000000000001> why no reply","attachments":[]}]'
 
 test_ingestion_payload_shape_and_wake() {
-  local home inbox_file ctx_file wake_out platform source cursor
+  local home inbox_file ctx_file wake_out platform source cursor log replay
   home="$TMP_ROOT/ingestion-test"
   mkdir -p "$home/state/x-inbox" "$home/state/x-context"
   chmod 700 "$home/state" "$home/state/x-inbox" "$home/state/x-context"
   make_fake_discord_node "$home"
+  log="$home/reactions.jsonl"
 
   FM_TEST_REAL_NODE=$(command -v node) \
   FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000000099","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"username":"captain"},"mentions":[{"id":"9000000000000000001"}],"content":"<@9000000000000000001> add login fix to backlog","attachments":[]}]' \
   PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN="fake-test-token" \
   FM_DISCORD_CHANNEL_ID="1000000000000000001" FM_DISCORD_EXCLUDE_CHANNELS="1551134713727426570" \
+  FM_DISCORD_FAKE_REACTION_LOG="$log" \
   "$ROOT/bin/fm-discord-poll.sh" > "$home/wake.log"
 
   wake_out=$(cat "$home/wake.log")
@@ -84,6 +94,9 @@ test_ingestion_payload_shape_and_wake() {
   ctx_file="$home/state/x-context/discord-sh-1352000000000000099.json"
   assert_present "$inbox_file" "inbox payload exists"
   assert_present "$ctx_file" "context record exists"
+  assert_equals "PUT" "$(jq -r '.method' "$log")" "ingress reaction uses Discord's idempotent add endpoint"
+  assert_contains "$(jq -r '.url' "$log")" "/reactions/%F0%9F%91%81%EF%B8%8F/@me" "ingress accepted reaction target"
+  assert_present "$home/state/x-context/discord-lifecycle-discord-sh-1352000000000000099-accepted.json.applied" "ingress reaction receipt is durable"
 
   platform=$(jq -r '.platform' "$inbox_file")
   source=$(jq -r '.source' "$inbox_file")
@@ -94,7 +107,87 @@ test_ingestion_payload_shape_and_wake() {
   assert_present "$cursor" "poll cursor exists after ingestion"
   assert_equals "1352000000000000099" "$(jq -r '.last_id' "$cursor")" "poll cursor advances after ingestion"
 
+  replay=$(FM_TEST_REAL_NODE=$(command -v node) \
+    FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000000099","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"username":"captain"},"mentions":[{"id":"9000000000000000001"}],"content":"<@9000000000000000001> add login fix to backlog","attachments":[]}]' \
+    FM_DISCORD_FAKE_REACTION_LOG="$log" PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN="fake-test-token" \
+    FM_DISCORD_CHANNEL_ID="1000000000000000001" FM_DISCORD_EXCLUDE_CHANNELS="1551134713727426570" \
+    "$ROOT/bin/fm-discord-poll.sh")
+  assert_equals "" "$replay" "replayed capture emits no second wake"
+  assert_equals "1" "$(wc -l < "$log" | tr -d ' ')" "replayed capture does not re-add the accepted reaction"
+
   pass "self-hosted Discord ingestion writes x-inbox payload shape and fires x-mention wake"
+}
+
+test_reaction_failure_does_not_fail_ingress() {
+  local home wake_out rc
+  home="$TMP_ROOT/reaction-failure"
+  mkdir -p "$home/state"
+  make_fake_discord_node "$home"
+  wake_out=$(FM_TEST_REAL_NODE=$(command -v node) \
+    FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000000199","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"username":"captain"},"mentions":[{"id":"9000000000000000001"}],"content":"<@9000000000000000001> hello","attachments":[]}]' \
+    FM_DISCORD_FAKE_REACTION_STATUS=500 PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN=fake-token \
+    FM_DISCORD_CHANNEL_ID=1000000000000000001 "$ROOT/bin/fm-discord-poll.sh"); rc=$?
+  expect_code 0 "$rc" "failed reaction leaves ingress successful"
+  assert_equals "x-mention discord-sh-1352000000000000199" "$wake_out" "failed reaction does not suppress ingress wake"
+  assert_present "$home/state/x-inbox/discord-sh-1352000000000000199.json" "failed reaction keeps durable inbox"
+  assert_absent "$home/state/x-context/discord-lifecycle-discord-sh-1352000000000000199-accepted.json.applied" "failed reaction is eligible for a later retry"
+  pass "a failed Discord reaction does not fail durable ingress"
+}
+
+test_consumer_and_terminal_reactions_follow_durable_transitions() {
+  local home log request_id
+  home="$TMP_ROOT/reaction-transitions"
+  mkdir -p "$home/state"
+  make_fake_discord_node "$home"
+  log="$home/reactions.jsonl"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_REACTION_LOG="$log" \
+    FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000000299","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"username":"captain"},"mentions":[{"id":"9000000000000000001"}],"content":"<@9000000000000000001> finish it","attachments":[]},{"id":"1352000000000000300","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"username":"captain"},"mentions":[{"id":"9000000000000000001"}],"content":"<@9000000000000000001> needs approval","attachments":[]}]' \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN=fake-token \
+    FM_DISCORD_CHANNEL_ID=1000000000000000001 "$ROOT/bin/fm-discord-poll.sh" >/dev/null
+  request_id=discord-sh-1352000000000000299
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_REACTION_LOG="$log" PATH="$home/fake-bin:$BASE_PATH" \
+    FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN=fake-token \
+    "$ROOT/bin/fm-discord-reaction.sh" "$request_id" claimed
+  assert_present "$home/state/x-context/discord-lifecycle-$request_id-claimed.json" "consumer claim is durable before its reaction"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_REACTION_LOG="$log" PATH="$home/fake-bin:$BASE_PATH" \
+    FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN=fake-token \
+    "$ROOT/bin/fm-discord-reaction.sh" "$request_id" success
+  assert_equals "success" "$(jq -r '.phase' "$home/state/x-context/discord-lifecycle-$request_id-success.json")" "terminal success is recorded"
+  request_id=discord-sh-1352000000000000300
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_REACTION_LOG="$log" PATH="$home/fake-bin:$BASE_PATH" \
+    FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN=fake-token \
+    "$ROOT/bin/fm-discord-reaction.sh" "$request_id" claimed
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_REACTION_LOG="$log" PATH="$home/fake-bin:$BASE_PATH" \
+    FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN=fake-token \
+    "$ROOT/bin/fm-discord-reaction.sh" "$request_id" blocked
+  assert_equals "blocked" "$(jq -r '.phase' "$home/state/x-context/discord-lifecycle-$request_id-blocked.json")" "captain intervention is recorded"
+  assert_equals "6" "$(wc -l < "$log" | tr -d ' ')" "all four transitions each add one reaction"
+  assert_contains "$(cat "$log")" "%F0%9F%9F%A2" "terminal success uses the green reaction"
+  assert_contains "$(cat "$log")" "%E2%9A%A0" "blocked transition uses the warning reaction"
+  pass "all four lifecycle reactions follow durable transitions"
+}
+
+test_claim_without_token_then_success_after_token_restore() {
+  local home log request_id
+  home="$TMP_ROOT/reaction-token-recovery"
+  mkdir -p "$home/state"
+  make_fake_discord_node "$home"
+  log="$home/reactions.jsonl"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_REACTION_LOG="$log" \
+    FM_DISCORD_FAKE_MESSAGES='[{"id":"1352000000000000399","channel_id":"1000000000000000001","guild_id":"1000000000000000000","author":{"username":"captain"},"mentions":[{"id":"9000000000000000001"}],"content":"<@9000000000000000001> recover token","attachments":[]}]' \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN=fake-token \
+    FM_DISCORD_CHANNEL_ID=1000000000000000001 "$ROOT/bin/fm-discord-poll.sh" >/dev/null
+  request_id=discord-sh-1352000000000000399
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_REACTION_LOG="$log" PATH="$home/fake-bin:$BASE_PATH" \
+    FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN='' \
+    "$ROOT/bin/fm-discord-reaction.sh" "$request_id" claimed
+  assert_present "$home/state/x-context/discord-lifecycle-$request_id-claimed.json" "claim is durable without a Discord token"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_REACTION_LOG="$log" PATH="$home/fake-bin:$BASE_PATH" \
+    FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DISCORD_BOT_TOKEN=fake-token \
+    "$ROOT/bin/fm-discord-reaction.sh" "$request_id" success
+  assert_equals "success" "$(jq -r '.phase' "$home/state/x-context/discord-lifecycle-$request_id-success.json")" "success follows a claim recorded without a token"
+  assert_contains "$(cat "$log")" "%F0%9F%9F%A2" "success reaction is sent after token restoration"
+  pass "token recovery preserves the durable claim and allows terminal success"
 }
 
 test_default_dm_discovery() {
@@ -396,6 +489,9 @@ test_command_channel_conflict_with_exclusion_is_reported() {
 
 test_poll_no_token_is_hard_noop
 test_ingestion_payload_shape_and_wake
+test_reaction_failure_does_not_fail_ingress
+test_consumer_and_terminal_reactions_follow_durable_transitions
+test_claim_without_token_then_success_after_token_restore
 test_default_dm_discovery
 test_reply_dry_run_routing
 test_collision_exclusion_filter

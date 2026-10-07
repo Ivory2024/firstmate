@@ -83,6 +83,7 @@ if command -v fm_discord_is_selfhosted_request >/dev/null 2>&1 \
     printf '%s\n' "$REQ"
     exit 0
   fi
+  "$SCRIPT_DIR/fm-discord-reaction.sh" "$REQ" success >/dev/null 2>&1 || true
   fmx_context_registry_clear "$STATE" "$REQ"
   printf '%s\n' "$REQ"
   exit 0

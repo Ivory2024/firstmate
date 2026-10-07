@@ -147,6 +147,7 @@ Images are only for actual visual artifacts - a generated illustration, a screen
 ## Procedure
 
 Before classifying an inbox item as a new mention, check whether `source` is `discord-selfhosted-decision`.
+For that captured decision reply, call `bin/fm-discord-reaction.sh <request_id> claimed` before applying the answer.
 Such an item is an answer to a specific pushed decision: use its `.decision` object and `.text`, and do not reply publicly or treat it as fresh work.
 For `trigger=captain-hold`, call `bin/fm-captain-hold.sh answer-one "$task_id" "$answer" "Discord reply" --source discord-selfhosted --expect-occurrence "$occurrence"`; it folds tabs and line breaks in the answer into spaces before keyed resolution.
 `$task_id` is `.decision.task_id` and `$occurrence` is the trailing integer of `.decision.key`, which has the shape `captain-hold-<task-id>-<occurrence>`; both come from the decision object, and never be derived from the reply text.
@@ -160,6 +161,7 @@ When the reply does not clearly select one of the three offered options, do not 
 That script is the only thing that can grant, and it refuses on its own when the request expired, was already answered, or belongs to a task generation that has moved on.
 These are the existing keyed-answer paths; never edit status files directly.
 Remove the inbox record only after the matching command confirms success.
+After the matching decision command succeeds, call `bin/fm-discord-reaction.sh <request_id> success`; the reaction is best-effort and does not replace the recorded answer.
 On failure leave it for retry and report the exact error.
 
 Every decision answer is applied and then confirmed, in that order.
@@ -191,6 +193,7 @@ Treat `state/x-inbox/` as the source of truth and process **every** file you fin
       "Fetching inbound attachments" above governs which hosts you may fetch from and how to treat what comes back.
       Never answer from a URL alone when you could have looked at the file, and never guess at what a screenshot shows.
       If a fetch fails, or the host is not on that list, tell the captain rather than quietly dropping the attachment.
+      After reading the valid inbox object and its context, call `bin/fm-discord-reaction.sh <request_id> claimed` before classifying or handling it; this persists the consumer-claim transition and best-effort adds 🛠️.
    b. **Classify the mention into one of three cases** (see "A request to act on: act, bind the outcome, then report meaningful results"):
       - **Actionable instruction / request** ("add this to the backlog", "look into X", "fix Y", "ship Z") - go to step 2c and do the work first.
       - **Question** - nothing to do; skip step 2c and answer from live fleet state in step 2d.
@@ -204,6 +207,7 @@ Treat `state/x-inbox/` as the source of truth and process **every** file you fin
       **If intake routes the work to a second mate instead**, do not reach for the link: register the typed promised-final commitment bound to `secondmate:<id>` and brief the routed worker with its reporting command (step 2 of "A request to act on: act, bind the outcome, then report meaningful results", with the commands in "Promised final replies").
       Post no progress reply in step 2d and do not dismiss the request; preserve the request context and outcome binding so genuine milestone updates plus the final outcome can come later as follow-ups (see "Completion follow-up" below), with the terminal one posted using `--final` when no typed promised-final commitment exists.
       If the work completed in this turn (a backlog item filed, a question answered), there is no task to link and step 2d reports the outcome directly.
+      When the request needs captain intervention, first record the captain hold through `bin/fm-captain-hold.sh hold`, then call `bin/fm-discord-reaction.sh <request_id> blocked`.
    d. **Compose the reply when one is due.** For a **question**, answer `.text` from the fleet state gathered in step 1. For an **actionable request that completed now**, report the outcome of step 2c (what was done, or - for escalated work - that it has been flagged for the captain). For an **actionable request that spawned a linked task**, post nothing now; a genuine milestone or final outcome follows later through the bound completion path. When a reply is due, keep it short, in firstmate's voice, and public-safe.
       Conversation continuity: resolve referents like "this", "it", "that", "and then?" against **all** the conversation context the payload carries - `in_reply_to.text` (what `in_reply_to.author_handle` said just before, when present) plus the full `in_reply_to_chain` transcript, whose oldest-first order puts what was said most recently just before the mention at the end.
       A standalone mention (`in_reply_to` null) can still carry a chain - a thread starter or recent nearby messages - and its referents usually point there, so read the chain before concluding a mention has no context; only a mention with neither answers on its own.

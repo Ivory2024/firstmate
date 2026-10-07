@@ -258,6 +258,9 @@ post_rc=$?
 case "$post_rc" in
   0)
     NEWCOUNT=$((COUNT + 1))
+    if [ "$FINAL" = 1 ]; then
+      "$SCRIPT_DIR/fm-discord-reaction.sh" "$RID" success >/dev/null 2>&1 || true
+    fi
     if [ "$FINAL" = 1 ] || [ "$NEWCOUNT" -ge "$MAX_COUNT" ]; then
       if ! fmx_meta_link_clear "$META"; then
         echo "fm-x-followup: error: posted but could not clear the link in state/$ID.meta" >&2

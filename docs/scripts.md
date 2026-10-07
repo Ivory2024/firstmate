@@ -156,6 +156,8 @@ The shared no-mistakes gate refusal for fleet lifecycle entrypoints is summarize
 | `fm-discord-notify.js`   | Persist and deliver self-hosted Discord decision notifications through the REST API  |
 | `fm-discord-poll.sh`     | Invoke the bounded self-hosted Discord poll for mentions and authorized decision replies |
 | `fm-discord-poll.js`     | Poll Discord messages, capture authorized decision replies, and emit inbox wakes     |
+| `fm-discord-reaction.sh` | Add a best-effort lifecycle reaction to a durably captured self-hosted Discord request |
+| `fm-discord-reaction.js` | Persist and apply idempotent self-hosted Discord request lifecycle reactions           |
 | `fm-opencode-permission.sh` | Record a real OpenCode permission request, push it to the captain as a keyed decision, and apply the keyed answer to exactly that request |
 | `fm-x-reply.sh`          | Post or dry-run preview a composed Relay reply or follow-up                          |
 | `fm-x-dismiss.sh`        | Dismiss a skipped Relay mention at the relay without replying                        |
