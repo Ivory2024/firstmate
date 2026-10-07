@@ -369,7 +369,10 @@ test_command_channel_duplicate_poll_is_idempotent() {
   }
   run_poll
   run_poll
-  count=$(ls "$home/state/x-inbox" 2>/dev/null | grep -c "discord-sh-1352000000000003004" || true)
+  count=0
+  for inbox_file in "$home/state/x-inbox"/*discord-sh-1352000000000003004*; do
+    [ -e "$inbox_file" ] && count=$((count + 1))
+  done
   assert_equals "1" "$count" "a re-polled command-channel message yields exactly one inbox record"
   pass "command-channel capture is idempotent across re-polls"
 }
