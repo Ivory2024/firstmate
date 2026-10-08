@@ -1,0 +1,44 @@
+{
+  "batch_id": "firstmate-unattended-real-e2e-canary-20261008",
+  "baseline_sha": "5f4a10281937c4999138d61b945589d829c25d34",
+  "mode": "production",
+  "allowed_paths": [
+    "/Users/irene/Developer/kunchenguid_repos/firstmate/data/firstmate-unattended-real-e2e-canary-20261008/report.md",
+    "/Users/irene/Developer/kunchenguid_repos/firstmate/state/firstmate-unattended-real-e2e-canary-20261008.status"
+  ],
+  "forbidden_operations": [
+    "github_write",
+    "credential_change",
+    "home_checkout_change",
+    "watcher_runtime_change",
+    "real_worker_call",
+    "wake_drain",
+    "backpass_change",
+    "kill_other_session_process",
+    "external_write"
+  ],
+  "retry_limit": 1,
+  "ack_timeout_secs": 90,
+  "tasks": [
+    {
+      "task_id": "firstmate-unattended-real-e2e-canary-20261008",
+      "depends_on": [],
+      "approval_required": false,
+      "required_tests": [
+        "test-structure-survey"
+      ],
+      "executor": {
+        "command": [
+          "true"
+        ],
+        "intent": "Firstmate 저장소의 테스트 구조를 읽기 전용으로 조사하라. tests/ 아래 테스트 파일 수(최상위·재귀), 대표 실행 명령, 실제 실행 가능한 대표 suite 1개의 exit code와 소요 시간을 보고서에 남겨라. 무인 크루 orchestrator의 Live Real E2E canary 실행자 임무이며, 저장소 내용은 변경하지 않는다.",
+        "spec": "Read-only survey only. Do not modify any tracked file; the only files you may write are your report and your status file. Count tests/*.sh at the top level and recursively; identify the runner entrypoints (bin/fm-test-run.sh, tests/*.test.sh); run one representative suite such as bin/fm-test-run.sh tests/fm-brief.test.sh and report its exit code and duration. Put the exact commands and their output in the report. Never push, never open a PR, never touch projects/ or the firstmate state/ settings."
+      },
+      "audit": {
+        "required": true,
+        "intent": "Executor가 남긴 원본 증거를 별도 세션·별도 작업공간에서 독립 검토하라. Executor 보고서 /Users/irene/Developer/kunchenguid_repos/firstmate/data/firstmate-unattended-real-e2e-canary-20261008/report.md, 상태 /Users/irene/Developer/kunchenguid_repos/firstmate/state/firstmate-unattended-real-e2e-canary-20261008.status, 메타 /Users/irene/Developer/kunchenguid_repos/firstmate/state/firstmate-unattended-real-e2e-canary-20261008.meta. Executor가 주장한 테스트 파일 수와 실행 명령을 저장소에서 독립적으로 다시 세고 대표 suite를 재실행하여 일치·불일치를 명시하라. Executor의 결론을 그대로 인용하지 말라.",
+        "spec": "Independent audit only. Do not modify any tracked file; the only files you may write are your report and your status file. Re-derive the counts yourself with your own read-only commands and re-run one representative suite; report any disagreement with the executor with the exact commands and output. You are a DIFFERENT session in a DIFFERENT worktree; do not write to the executor's report or workspace. If you cannot read the executor's raw evidence, say so and mark the audit UNAVAILABLE rather than guessing. Deliverable: your report with a clear verdict line: 'Verdict: PASS' if the executor's counts and commands reproduce, 'Verdict: CONFLICT' if they differ, 'Verdict: UNAVAILABLE' if evidence is unreadable."
+      }
+    }
+  ]
+}

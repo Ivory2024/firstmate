@@ -30,7 +30,7 @@ mkreal() { # <file> <retry_limit> <tasks-json>
   "retry_limit": $2, "ack_timeout_secs": 3, "tasks": $3 }
 EOF
 }
-TASK1='[{"task_id":"t1","depends_on":[],"approval_required":false,"required_tests":["real-e2e"],"executor":{"command":["true"]},"audit":{"required":true}}]'
+TASK1='[{"task_id":"t1","depends_on":[],"approval_required":false,"required_tests":["real-e2e"],"executor":{"command":["true"],"intent":"mock executor mission","spec":"mock executor spec"},"audit":{"required":true,"intent":"mock auditor mission","spec":"mock auditor spec"}}]'
 reason_has() { grep -q "task_id=$2 .*reason=$3" "$UC_HOME/batches/$1/state.jsonl" 2>/dev/null; }
 
 # 1. full real path: dispatch -> ack -> run -> evidence -> separate auditor ->
@@ -137,10 +137,31 @@ run_uc init --batch b --contract "$UC_HOME/c.json" >/dev/null
 MOCK_DONE_DELAY=3 UC_CREW_WAIT_SECS=1 "$UCX/fm-unattended.sh" run --batch b >/dev/null 2>&1 &
 cpid=$!; sleep 1
 kill -9 "$cpid" 2>/dev/null; wait "$cpid" 2>/dev/null
-UC_CREW_WAIT_SECS=8 run_uc resume --batch b >/dev/null
+MOCK_REFUSE_DUP=1 UC_CREW_WAIT_SECS=8 run_uc resume --batch b >/dev/null
 disp=$(grep -c 'task_id=t1 .*new=DISPATCHING' "$UC_HOME/batches/b/state.jsonl")
 [ "$disp" = 1 ] && ok "real: resume did not re-dispatch the executor (1 dispatch)" || no "real restart duplicate dispatch ($disp)"
 [ "$(task_state b t1)" = VERIFIED_PASS ] && ok "real: resume completed via the adopted crew => VERIFIED_PASS" || no "real resume (state=$(task_state b t1))"
+cleanup_real
+
+# 12b. auditor takes longer than the ACK window: the coordinator must wait the
+#      full crew budget, not judge on the ACK timeout (real-canary regression)
+new_realhome; mkreal "$UC_HOME/c.json" 1 "$TASK1"
+run_uc init --batch b --contract "$UC_HOME/c.json" >/dev/null
+MOCK_AUDIT_DONE_DELAY=5 UC_CREW_WAIT_SECS=12 run_uc run --batch b >/dev/null
+[ "$(task_state b t1)" = VERIFIED_PASS ] \
+  && ok "real: slow auditor completes within crew budget => VERIFIED_PASS" || no "real slow-auditor (state=$(task_state b t1) verdict=$(verdict_of b t1))"
+cleanup_real
+
+# 12c. AUDIT_UNAVAILABLE from an observation timeout is recoverable on resume
+#      by adopting the SAME auditor (never a new crew)
+new_realhome; mkreal "$UC_HOME/c.json" 1 "$TASK1"
+run_uc init --batch b --contract "$UC_HOME/c.json" >/dev/null
+MOCK_AUDIT_DONE_DELAY=4 UC_CREW_WAIT_SECS=1 run_uc run --batch b >/dev/null
+pre=$(task_state b t1)
+MOCK_REFUSE_DUP=1 MOCK_AUDIT_DONE_DELAY=4 UC_CREW_WAIT_SECS=8 run_uc resume --batch b >/dev/null
+aud=$(ls "$UC_HOME/batches/b/sessions" | grep -c 'audit')
+{ [ "$pre" = AUDITING ] && [ "$(task_state b t1)" = VERIFIED_PASS ] && [ "$aud" = 1 ]; } \
+  && ok "real: slow auditor parks at AUDITING, resume adopts the same auditor => VERIFIED_PASS" || no "real audit adopt (pre=$pre post=$(task_state b t1) auditors=$aud)"
 cleanup_real
 
 # 13. approval-required task is held, never dispatched
@@ -154,7 +175,7 @@ cleanup_real
 
 # 14. production may never use the built-in fake auditor (real backend)
 new_realhome
-mkreal "$UC_HOME/c.json" 1 '[{"task_id":"t1","executor":{"command":["true"]},"required_tests":["x"],"audit":{"required":true,"command":["bash","'"$UCX"'/fake-auditor.sh"]}}]'
+mkreal "$UC_HOME/c.json" 1 '[{"task_id":"t1","executor":{"command":["true"],"intent":"i","spec":"s"},"required_tests":["x"],"audit":{"required":true,"intent":"a","spec":"s","command":["bash","'"$UCX"'/fake-auditor.sh"]}}]'
 run_uc init --batch b --contract "$UC_HOME/c.json" >/dev/null
 UC_CREW_WAIT_SECS=5 run_uc run --batch b >/dev/null
 { [ "$(task_state b t1)" = HOLD ] && reason_has b t1 fake-auditor-in-production; } \
@@ -169,6 +190,15 @@ FM_UNATTENDED_ADAPTER=fake run_uc run --batch b >/dev/null
 { [ "$(task_state b t1)" = HOLD ] && reason_has b t1 fake-auditor-in-production; } \
   && ok "production fake backend: no real audit => HOLD (fake-auditor-in-production)" || no "fake-backend production guard (state=$(task_state b t1))"
 cleanup_home
+
+# 16. real spawn with no mission brief is refused fail-closed (no crew spawned)
+new_realhome
+mkreal "$UC_HOME/c.json" 1 '[{"task_id":"t1","executor":{"command":["true"]},"required_tests":["x"],"audit":{"required":true}}]'
+run_uc init --batch b --contract "$UC_HOME/c.json" >/dev/null
+run_uc run --batch b >/dev/null
+{ [ "$(task_state b t1)" = HOLD ] && reason_has b t1 spawn-failed && [ ! -f "$RMOCK/state/t1.meta" ]; } \
+  && ok "real: no brief/mission => spawn refused, HOLD (no crew)" || no "real no-brief guard (state=$(task_state b t1))"
+cleanup_real
 
 echo "# real-e2e.test.sh PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

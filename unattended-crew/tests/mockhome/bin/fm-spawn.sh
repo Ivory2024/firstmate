@@ -12,6 +12,10 @@ id=$1; shift || true
 [ -n "$id" ] || { echo "mock fm-spawn: need id" >&2; exit 2; }
 mkdir -p "$ROOT/state" "$ROOT/data/$id" "$ROOT/worktrees/$id"
 
+if [ "${MOCK_REFUSE_DUP:-0}" = 1 ] && [ -f "$ROOT/state/$id.meta" ]; then
+  echo "mock: duplicate spawn refused for $id" >&2; exit 1
+fi
+
 is_audit=0; case "$id" in *-audit) is_audit=1;; esac
 
 if [ "$is_audit" = 1 ]; then
@@ -62,17 +66,19 @@ echo "worktree=$wt"
 echo "spawned $id harness=opencode kind=scout window=$window worktree=$wt"
 
 status="$ROOT/state/$id.status"
+delay=${MOCK_DONE_DELAY:-1}
+[ "$is_audit" = 1 ] && delay=${MOCK_AUDIT_DONE_DELAY:-$delay}
 if [ "${MOCK_DEAD:-0}" = 1 ]; then
   printf 'failed [at=%s]: endpoint died during spawn\n' "$(date +%s)" >> "$status"
   exit 0
 fi
 if [ "${MOCK_FAIL:-0}" = 1 ]; then
-  ( sleep "${MOCK_DONE_DELAY:-1}"; printf 'failed [at=%s]: mock executor failure\n' "$(date +%s)" >> "$status" ) >/dev/null 2>&1 &
+  ( sleep "$delay"; printf 'failed [at=%s]: mock executor failure\n' "$(date +%s)" >> "$status" ) >/dev/null 2>&1 &
   exit 0
 fi
 if [ "${MOCK_NO_DONE:-0}" = 1 ]; then exit 0; fi
 
 line_msg="mock executor complete"
 [ "$is_audit" = 1 ] && line_msg="audit complete - verdict ${MOCK_AUDIT_VERDICT:-PASS}"
-( sleep "${MOCK_DONE_DELAY:-1}"; printf 'done [at=%s]: %s\n' "$(date +%s)" "$line_msg" >> "$status" ) >/dev/null 2>&1 &
+( sleep "$delay"; printf 'done [at=%s]: %s\n' "$(date +%s)" "$line_msg" >> "$status" ) >/dev/null 2>&1 &
 exit 0

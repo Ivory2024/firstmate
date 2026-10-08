@@ -1,0 +1,8 @@
+ok - ready but not authorized
+ok - ready and authorized
+ok - red CI => blocked even if authorized
+ok - conflict => blocked
+ok - closed PR => blocked
+ok - merged PR reported merged
+ok - authorized but not ready
+# pr-classify.test.sh PASS=7 FAIL=0

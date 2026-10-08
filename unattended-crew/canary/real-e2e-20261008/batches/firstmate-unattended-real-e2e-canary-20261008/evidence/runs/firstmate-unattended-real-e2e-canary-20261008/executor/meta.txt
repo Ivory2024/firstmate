@@ -1,0 +1,13 @@
+window=firstmate:fm-firstmate-unattended-real-e2e-canary-20261008
+endpoint_task_id=firstmate-unattended-real-e2e-canary-20261008
+worktree=/Users/irene/.treehouse/firstmate-697ce1/14/firstmate
+project=/Users/irene/Developer/kunchenguid_repos/firstmate
+harness=opencode
+kind=scout
+tasktmp=/tmp/fm-firstmate-unattended-real-e2e-canary-20261008
+model=opencode/ling-3.1-flash-free
+effort=low
+busy_gen=g1791455823.58459.622
+spawn_gen=s1791455823.54863.25648
+decisions_reviewed=1
+decision_keys=

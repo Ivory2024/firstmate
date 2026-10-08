@@ -87,16 +87,54 @@ _real_spawn_id() { # <role> <task>
   esac
 }
 
-_real_dispatch() { # --batch B --task T --role R --attempt N --workdir W
-  local b='' t='' r='' a='' w='' spawn_id='' home='' project='' out rc window wt sd
+# fm-spawn refuses a scout whose id has no dispatchable backlog item, so register
+# one first through this home's own tasks-axi wrapper. Idempotent: an existing row
+# is left untouched; a home with no backlog backend needs nothing.
+_real_ensure_backlog() { # <home> <id> <kind> <title>
+  local home=$1 id=$2 kind=$3 title=$4
+  [ -f "$home/data/backlog.md" ] || return 0
+  grep -qF "] $id - " "$home/data/backlog.md" && return 0
+  [ -x "$home/bin/fm-tasks-axi.sh" ] || return 0
+  "$home/bin/fm-tasks-axi.sh" add "$id" "$title" --kind "$kind" >/dev/null 2>&1 || true
+}
+
+_real_dispatch() { # --batch B --task T --role R --attempt N --workdir W [--brief-intent TXT --brief-spec TXT]
+  local b='' t='' r='' a='' w='' spawn_id='' home='' project='' out rc window wt sd intent='' spec=''
   while [ $# -gt 0 ]; do case "$1" in
     --batch) b=$2; shift 2;; --task) t=$2; shift 2;; --role) r=$2; shift 2;;
-    --attempt) a=$2; shift 2;; --workdir) w=$2; shift 2;; *) _refuse "real dispatch: unexpected arg $1" 2;;
+    --attempt) a=$2; shift 2;; --workdir) w=$2; shift 2;;
+    --brief-intent) intent=$2; shift 2;; --brief-spec) spec=$2; shift 2;;
+    *) _refuse "real dispatch: unexpected arg $1" 2;;
   esac; done
   home=${UC_FM_HOME:?real backend needs UC_FM_HOME}
   project=${UC_REAL_PROJECT:?real backend needs UC_REAL_PROJECT}
   spawn_id=$(_real_spawn_id "$r" "$t")
   [ -x "$home/bin/fm-spawn.sh" ] || _refuse "real dispatch: no fm-spawn.sh at $home" 2
+
+  # Idempotency: a live/completed binding for this (task, role, attempt) is
+  # adopted, never spawned twice. This is the real-path duplicate guard.
+  local existing
+  if existing=$(_find_binding "$b" "$t" "$r" "$a"); then
+    echo "DUPLICATE_DISPATCH session=$existing"
+    return 3
+  fi
+
+  # fm-spawn refuses a scout with no brief, so author one first through
+  # firstmate's own scaffold. Fail closed: a real spawn without a mission is
+  # never attempted.
+  local brief="$home/data/$spawn_id/brief.md"
+  if [ ! -f "$brief" ]; then
+    [ -n "$intent" ] && [ -n "$spec" ] || _refuse "real dispatch: no brief at $brief and no --brief-intent/--brief-spec" 2
+    [ -x "$home/bin/fm-brief.sh" ] || _refuse "real dispatch: no fm-brief.sh at $home" 2
+    _real_ensure_backlog "$home" "$spawn_id" scout "$intent"
+    "$home/bin/fm-brief.sh" "$spawn_id" "$(basename "$project")" --scout >/dev/null 2>&1 \
+      || _refuse "real dispatch: brief scaffold failed for $spawn_id" 2
+    BRIEF_FILE="$brief" BRIEF_INTENT="$intent" BRIEF_SPEC="$spec" python3 -c 'import os
+p=os.environ["BRIEF_FILE"]; s=open(p).read()
+s=s.replace("{TASK}", os.environ["BRIEF_INTENT"]).replace("{FIRSTMATE_SPEC}", os.environ["BRIEF_SPEC"])
+open(p,"w").write(s)'
+    grep -q '{TASK}\|{FIRSTMATE_SPEC}' "$brief" && _refuse "real dispatch: brief still holds placeholders" 2
+  fi
 
   local -a flags=()
   [ -n "${UC_REAL_HARNESS:-}" ] && flags+=(--harness "$UC_REAL_HARNESS")

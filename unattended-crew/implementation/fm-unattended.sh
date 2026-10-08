@@ -81,6 +81,18 @@ _real_wait_done() { # <batch> <session> <secs>
   echo "${st:-timeout}"; return 1
 }
 
+# Is the task's real auditor still live or already done? Used to re-enter
+# AUDITING after a mere observation-timeout (never a new spawn).
+_auditor_alive() { # <task>
+  local t=$1 spawn cs
+  [ -n "${UC_FM_HOME:-}" ] || return 1
+  spawn="${UC_REAL_AUDIT_ID:-${t}-audit}"
+  [ -f "$UC_FM_HOME/state/$spawn.meta" ] || return 1
+  [ -x "$UC_FM_HOME/bin/fm-crew-state.sh" ] || return 1
+  cs=$("$UC_FM_HOME/bin/fm-crew-state.sh" "$spawn" 2>/dev/null | sed -n 's/^state:[[:space:]]*\([a-z-]*\).*/\1/p')
+  case "$cs" in working|parked|done) return 0;; *) return 1;; esac
+}
+
 
 # ---- contract access (python3) ---------------------------------------------
 _jget() { python3 -c 'import json,sys
@@ -240,7 +252,8 @@ _dispatch_executor_real() { # <batch> <task> <attempt>
   if [ -f "$rd/executor/rc" ]; then _transition "$b" "$t" "$(_state_of "$b" "$t" new)" RUNNING "adopt-completed-run" "$a"; return 0; fi
 
   _transition "$b" "$t" "$(_state_of "$b" "$t" new)" DISPATCHING "dispatch-executor" "$a"
-  dm=$(UC_HOME="$UC_HOME" "$ADAPTER" dispatch --batch "$b" --task "$t" --role executor --attempt "$a" --workdir "$ws" 2>&1) || true
+  dm=$(UC_HOME="$UC_HOME" "$ADAPTER" dispatch --batch "$b" --task "$t" --role executor --attempt "$a" --workdir "$ws" \
+    --brief-intent "$(_jget "$c" "tasks.$i.executor.intent")" --brief-spec "$(_jget "$c" "tasks.$i.executor.spec")" 2>&1) || true
   if ! printf '%s' "$dm" | grep -q 'DISPATCHED'; then
     printf '%s' "$dm" | grep -q 'DUPLICATE_DISPATCH' && { _transition "$b" "$t" DISPATCHING HOLD "duplicate-dispatch" "$a"; return 0; }
     _transition "$b" "$t" DISPATCHING REWORK "spawn-failed" "$a"; return 0
@@ -298,13 +311,16 @@ _dispatch_auditor_real() { # <batch> <task> <attempt>
     _transition "$b" "$t" "$(_state_of "$b" "$t" new)" HOLD "fake-auditor-in-production" "$a"; return 0
   fi
 
-  dm=$(UC_HOME="$UC_HOME" "$ADAPTER" dispatch --batch "$b" --task "$t" --role auditor --attempt "$a" --workdir "$aws" 2>&1) || true
+  dm=$(UC_HOME="$UC_HOME" "$ADAPTER" dispatch --batch "$b" --task "$t" --role auditor --attempt "$a" --workdir "$aws" \
+    --brief-intent "$(_jget "$c" "tasks.$i.audit.intent")" --brief-spec "$(_jget "$c" "tasks.$i.audit.spec")" 2>&1) || true
   if printf '%s' "$dm" | grep -q 'DISPATCHED'; then
     sid=$(printf '%s\n' "$dm" | sed -n 's/.*session=\([^ ]*\).*/\1/p' | tail -1)
     spawn=$(printf '%s\n' "$dm" | sed -n 's/.*spawn_id=\([^ ]*\).*/\1/p' | tail -1)
     wt=$(printf '%s\n' "$dm" | sed -n 's/.*worktree=\([^ ]*\).*/\1/p' | tail -1)
   elif printf '%s' "$dm" | grep -q 'DUPLICATE_DISPATCH'; then
-    sid=$(printf '%s\n' "$dm" | sed -n 's/.*session=\([^ ]*\).*/\1/p' | tail -1); spawn=${sid##*:}
+    sid=$(printf '%s\n' "$dm" | sed -n 's/.*session=\([^ ]*\).*/\1/p' | tail -1)
+    spawn=$(_get "$(_bdir "$b")/sessions/$sid/meta" spawn_id); [ -n "$spawn" ] || spawn="${sid##*:}"
+    wt=$(_get "$(_bdir "$b")/sessions/$sid/meta" workdir)
   else
     limit=$(_jget "$c" retry_limit); [ -n "$limit" ] || limit=2
     _transition "$b" "$t" "$(_state_of "$b" "$t" new)" REWORK "auditor-dispatch-failed" "$a"
@@ -314,9 +330,24 @@ _dispatch_auditor_real() { # <batch> <task> <attempt>
   [ -n "$wt" ] || wt=$aws
   _transition "$b" "$t" "$(_state_of "$b" "$t" new)" AUDITING "auditor-dispatch" "$a" "$sid"
 
-  local awt st
+  # ACK within the ack window; then wait for COMPLETION within the full crew
+  # budget. Using the ack window for completion was the real-canary defect: a
+  # real auditor takes minutes, so it must not be judged on the ACK timeout.
+  local awt st rc
   awt=$(_jget "$c" ack_timeout_secs); [ -n "$awt" ] || awt=5
-  st=$(_real_wait_done "$b" "$sid" "$awt")
+  if _real_wait_ack "$b" "$sid" "$awt"; then
+    rc=0
+    st=$(_real_wait_done "$b" "$sid" "$CREW_WAIT") || rc=$?
+    if [ "$rc" = 1 ]; then
+      # still working: not a failure, just no progress this call. Leave the
+      # state at AUDITING so the next resume adopts the SAME crew.
+      printf '{"session_id":"%s","spawn_id":"%s","role":"auditor","task":"%s","workdir":"%s","auditor_kind":"real","state":"working"}\n' \
+        "$sid" "$spawn" "$t" "$wt" > "$rd/auditor/session.json"
+      return 1
+    fi
+  else
+    st=dead
+  fi
   if [ "$st" != "done" ]; then
     # no usable audit -> judge yields AUDIT_UNAVAILABLE, never VERIFIED_PASS
     printf '{"session_id":"%s","spawn_id":"%s","role":"auditor","task":"%s","workdir":"%s","auditor_kind":"real","state":"%s"}\n' \
@@ -438,8 +469,15 @@ _step_real() { # <batch> <task> <state> <attempt> <index> <contract> <rundir>
     EVIDENCE_PENDING)
       if [ "$(_jget "$c" "tasks.$i.audit.required")" = "false" ]; then _judge_task "$b" "$t" "$a"; return 0; fi
       _transition "$b" "$t" EVIDENCE_PENDING AUDIT_PENDING "awaiting-audit" "$a"; return 0 ;;
-    AUDIT_PENDING|AUDITING) _dispatch_auditor_real "$b" "$t" "$a"; return 0 ;;
-    VERIFIED_PASS|HOLD|CANCELLED|AUDIT_UNAVAILABLE) return 2 ;;
+    AUDIT_PENDING|AUDITING) _dispatch_auditor_real "$b" "$t" "$a"; return $? ;;
+    AUDIT_UNAVAILABLE)
+      # a mere observation-timeout is not terminal: adopt a still-live or
+      # now-completed auditor and finish the harvest. Never spawn a new crew.
+      if _auditor_alive "$t"; then
+        _transition "$b" "$t" AUDIT_UNAVAILABLE AUDITING "adopt-audit" "$a"; return 0
+      fi
+      return 2 ;;
+    VERIFIED_PASS|HOLD|CANCELLED) return 2 ;;
     *) return 0 ;;
   esac
 }

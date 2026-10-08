@@ -46,7 +46,11 @@
             "type": "object",
             "required": ["command"],
             "additionalProperties": false,
-            "properties": { "command": { "type": "array", "items": { "type": "string" }, "minItems": 1 } }
+            "properties": {
+              "command": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+              "intent": { "type": "string", "description": "Real-backend executor mission: the captain's-intent text the coordinator scaffolds into data/<id>/brief.md before a real scout spawn." },
+              "spec": { "type": "string", "description": "Real-backend executor spec text filled into the brief's Firstmate spec section." }
+            }
           },
           "audit": {
             "type": "object",
@@ -54,7 +58,9 @@
             "properties": {
               "required": { "type": "boolean", "default": true },
               "command": { "type": "array", "items": { "type": "string" }, "description": "Optional real auditor command; absent uses the built-in fake auditor (mode=test only)." },
-              "auditor_kind": { "enum": ["fake", "real"] }
+              "auditor_kind": { "enum": ["fake", "real"] },
+              "intent": { "type": "string", "description": "Real-backend auditor mission intent for the separate audit brief." },
+              "spec": { "type": "string", "description": "Real-backend auditor mission spec for the separate audit brief." }
             }
           }
         }

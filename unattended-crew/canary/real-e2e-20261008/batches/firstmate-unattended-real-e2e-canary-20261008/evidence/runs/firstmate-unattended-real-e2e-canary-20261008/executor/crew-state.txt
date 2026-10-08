@@ -1,0 +1,1 @@
+state: done · source: status-log · read-only survey complete: 244 tests/*.sh (234 suites + 10 helpers, all top-level), runner bin/fm-test-run.sh, representative bin/fm-test-run.sh tests/fm-brief.test.sh exit=0 in 9s (25/25 ok)
