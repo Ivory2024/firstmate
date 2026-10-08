@@ -1,0 +1,9 @@
+Disposable live `tasks-axi` run using copied tracked `.tasks.toml` and 32 completed backlog items.
+
+$ tasks-axi prune
+ok: prune done -> archived 2 (kept 30)
+
+Observed persisted state:
+- Active Done section: 30 rows, newest `history-32`, oldest `history-03`
+- Archive: 2 rows, `history-02` and `history-01`
+- Parsed copied config `markdown.done_keep`: 30
