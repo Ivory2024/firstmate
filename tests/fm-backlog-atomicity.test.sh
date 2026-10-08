@@ -100,6 +100,8 @@ SH
   fm_git_init_commit "$case_dir/project"
   fm_git_add_origin "$case_dir/project" "$case_dir/project.origin.git"
   git -C "$case_dir/project" worktree add --quiet -b pooled "$case_dir/wt"
+  git -C "$case_dir/project" config firstmate.baseMode local
+  git -C "$case_dir/project" config firstmate.baseRef refs/heads/main
 
   printf '%s\n' "$case_dir"
 }

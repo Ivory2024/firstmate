@@ -543,6 +543,8 @@ test_spawn_writes_orca_metadata_and_launches_harness() {
   state="$TMP_ROOT/spawn-state"
   config="$TMP_ROOT/spawn-config"
   fm_git_worktree "$proj" "$wt" "fm/$id"
+  git -C "$proj" config firstmate.baseMode local
+  git -C "$proj" config firstmate.baseRef refs/heads/main
   mkdir -p "$data/$id" "$state" "$config"
   write_spawn_brief "$data" "$id"
   touch "$state/.last-watcher-beat"
@@ -675,6 +677,8 @@ test_spawn_removes_orca_worktree_when_terminal_create_fails() {
   state="$TMP_ROOT/terminal-fail-state"
   config="$TMP_ROOT/terminal-fail-config"
   fm_git_worktree "$proj" "$wt" "fm/$id"
+  git -C "$proj" config firstmate.baseMode local
+  git -C "$proj" config firstmate.baseRef refs/heads/main
   mkdir -p "$data/$id" "$state" "$config"
   write_spawn_brief "$data" "$id"
   touch "$state/.last-watcher-beat"
@@ -708,6 +712,8 @@ test_spawn_preserves_orca_metadata_when_abort_cleanup_fails() {
   state="$TMP_ROOT/cleanup-fail-state"
   config="$TMP_ROOT/cleanup-fail-config"
   fm_git_worktree "$proj" "$wt" "fm/$id"
+  git -C "$proj" config firstmate.baseMode local
+  git -C "$proj" config firstmate.baseRef refs/heads/main
   mkdir -p "$data/$id" "$state" "$config"
   write_spawn_brief "$data" "$id"
   touch "$state/.last-watcher-beat"
@@ -742,6 +748,8 @@ test_spawn_releases_orca_resources_when_metadata_write_fails() {
   state="$TMP_ROOT/meta-fail-state"
   config="$TMP_ROOT/meta-fail-config"
   fm_git_worktree "$proj" "$wt" "fm/$id"
+  git -C "$proj" config firstmate.baseMode local
+  git -C "$proj" config firstmate.baseRef refs/heads/main
   mkdir -p "$data/$id" "$state/$id.meta" "$config"
   write_spawn_brief "$data" "$id"
   orca_case meta-fail

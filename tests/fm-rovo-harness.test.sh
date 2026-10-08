@@ -151,6 +151,8 @@ Verify launch and delivery behavior.
 EOF
   printf 'rovo\n' > "$home/config/crew-harness"
   fm_git_worktree "$proj" "$wt" "wt-$name"
+  git -C "$proj" config firstmate.baseMode local
+  git -C "$proj" config firstmate.baseRef refs/heads/main
   touch "$home/state/.last-watcher-beat"
   : > "$case_dir/launch.log"
   : > "$case_dir/pointer.log"

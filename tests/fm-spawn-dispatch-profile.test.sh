@@ -91,6 +91,8 @@ make_spawn_case() {
   fakebin=$(make_spawn_fakebin "$case_dir/fake")
   fm_test_spawn_home "$home" "$harness"
   fm_git_worktree "$proj" "$wt" "wt-$name"
+  git -C "$proj" config firstmate.baseMode local
+  git -C "$proj" config firstmate.baseRef refs/heads/main
   for id in "$@"; do
     fm_test_spawn_brief "$home" "$id"
   done
