@@ -1,21 +1,34 @@
 # OpenCode
 
-Verified on 2026-06-11 across versions 1.15.7 through 1.17.6, with busy-queue behavior re-verified on 2026-07-20 using 1.18.4.
+Harness behavior was verified on 2026-06-11 across versions 1.15.7 through 1.17.6, with busy-queue behavior re-verified on 2026-07-20 using 1.18.4.
+The worker busy-state lifecycle below describes the generated OpenCode 2 plugin.
+The task launch command was re-verified live on 2026-10-04 against the installed 2.0.18 CLI after that CLI's `run`/`mini` flag syntax changed and the old mini-detection probe stopped matching it, breaking every OpenCode dispatch; see "Interactive task launch" below for the corrected contract.
 
 ## Operating facts
 
 | Fact | Value |
 |---|---|
-| Busy state | The Firstmate-owned plugin's semantic `session.status`: `busy` and `retry` are active, `idle` is inactive, latched to the worker's own session. |
+| Busy state | The generated OpenCode 2 worker plugin uses `session.execution.started` as active and `session.execution.succeeded`, `.failed`, or `.interrupted` as inactive, latched to the worker's own session. |
 | Exit command | `/exit`. |
 | Interrupt | Double Escape; it is known to be flaky while a long shell command runs, so use `../../../bin/fm-control.sh <task-id> relaunch` for a wedged pane. |
 | Skill invocation | No separate verified form beyond normal slash-command behavior; use natural language when the exact command is uncertain. |
 | Resume | Relaunch with `--continue` to resume the most recent session for the current directory, then send the next instruction after the TUI is ready because `--prompt` does not auto-submit alongside `--continue`. |
-| Model flag | `--model <provider/model>`. |
-| Effort flag | None for Firstmate's interactive `opencode --prompt` launch; `opencode run` has `--variant`, but that is not this path. The effort instead rides the launch's `OPENCODE_CONFIG_CONTENT` JSON as the `build` agent's `variant` keyed to the resolved model, the config schema's per-model reasoning-effort field verified on 1.18.32. It is emitted only when the resolved model's provider is known to expose that effort as a variant (`anthropic/*`: high, max; `openai/*`: low, medium, high, xhigh); with no model resolved, another provider, or an effort outside its family's list, the variant is omitted and the permission-only launch is unchanged. |
-| Model discovery | Run `opencode models [provider]` to list available provider/model identifiers. |
+| Interactive task launch | Firstmate probes `opencode mini --help` for an `opencode mini` usage token on its own line (matching both `Usage: opencode mini` and OpenCode 2.0.18's `USAGE\n  opencode mini`). When `mini` is a real subcommand, the launch is `opencode mini --model <provider/model> --prompt "<brief>"`; a release without it falls back to the legacy top-level interactive form `opencode --model <provider/model> --prompt "<brief>"`. |
+| Effort flag | None for the interactive task launch; `opencode run` has `--variant`, but that is a different, non-interactive path. |
+| Model discovery | Run `opencode models` with no argument to list every available `provider/model` identifier. The legacy `opencode models <provider>` form is rejected by OpenCode v2 ("Unexpected positional argument") and prints usage text rather than a catalog, so `../../../bin/fm-spawn.sh` reads the whole catalog and matches the exact id. |
 | Trust dialog | None. |
 | Marker | None; OpenCode publishes no identity marker, so `../../../bin/fm-harness.sh` identifies it from process ancestry. |
+
+## Free model selection
+
+| Fact | Value |
+|---|---|
+| Current free catalog | OpenCode Zen listed Big Pickle (`big-pickle`), Space Bunny Free (`space-bunny-free`), LongCat 2.5 Preview Free (`longcat-2.5-preview-free`), MiMo-V2.6-Flash Free (`mimo-v2.6-flash-free`), MiMo-V2.5 Free (`mimo-v2.5-free`), Ling 3.0 Flash Fin Free (`ling-3.0-flash-fin-free`), Nemotron 3 Ultra Free (`nemotron-3-ultra-free`), Nemotron 3.5 Lightning Free (`nemotron-3.5-lightning-free`), Muse Spark 1.3 Contributor Free (`muse-spark-1.3-contributor-free`), and Jev 1.13 Free (`jev-1.13-free`) when checked on 2026-09-26. This promotional catalog can change; check the [current Zen catalog](https://opencode.ai/docs/zen/) and run `opencode models` at dispatch time. |
+| Dispatch eligibility | See [crew dispatch configuration](../../../../../docs/configuration.md#crew-dispatch-profiles-configcrew-dispatchjson) for the spawn-time availability and free-pricing checks. Free pricing does not guarantee data retention; see Data handling below. |
+| Data handling | The Zen privacy policy says providers default to zero retention and no model training, with listed exceptions. Space Bunny Free and LongCat 2.5 Preview Free are explicitly zero-retention and exclude training; Jev 1.13 Free has no listed exception to Zen's default. Big Pickle, both MiMo models, and Ling 3.0 Flash Fin Free may use collected data to improve models; Muse Spark 1.3 Contributor Free may use prompts and completions to train future Meta models; both Nemotron free models are trial-use only and must not receive personal or confidential data. For work that may contain private code or secrets, use only models covered by a current zero-retention policy; never send sensitive content to a training-use or trial-only model. Recheck the [Zen privacy terms](https://opencode.ai/docs/zen/) before dispatch. |
+| Capability checks | The Zen documentation does not specify per-model context windows, rate limits, or tool-use support. Before assigning a model to coding work, run a smoke test with non-sensitive input to verify the required context size, rate behavior, and tool calls. |
+| Candidate preference | Prefer a free model only after its coding behavior has been validated on a representative non-sensitive task; tool-integration evidence does not establish model coding quality. |
+| Default | Promotional free access can end or change. A configured Firstmate dispatch profile may pin a free model only when `fm-spawn.sh` rechecks availability and free pricing at spawn time. The health catalog gate and its warning policy are owned by [model dispatch rigor](../../../../../docs/model-dispatch-rigor.md). Recheck policy and capability before changing the pinned model. |
 
 OpenCode can auto-upgrade in the background, and the running TUI can exit mid-task.
 That behavior was observed live during an upgrade from 1.15.7 to 1.17.3.
@@ -33,12 +46,11 @@ The live Herdr guard is `FM_HERDR_SUBMIT_CONFIRM_LIVE=1 ../../../tests/fm-herdr-
 
 ## Primary integration
 
-The watch-arm plugin in `.opencode/plugins/fm-primary-watch-arm.js` supports the OpenCode 2 default plugin definition (`id` plus `setup`) and subscribes through `ctx.event.subscribe` while preserving backward compatibility for legacy callers.
-The adapter maps legacy `session.idle` and v2 execution terminal events into the normalized `QUIESCENT` signal; the contract test is `../../../../tests/fm-opencode-v2-plugin-contract.test.sh`.
+The tracked primary plugins use the OpenCode 2 default plugin definition (`id` plus `setup`) and subscribe through `ctx.event.subscribe`.
+Their adapter maps v2 `event.data` into the legacy handler event shape; the contract test is `../../../../tests/fm-opencode-v2-plugin-contract.test.sh`.
 `.opencode/plugins/fm-primary-turnend-guard.js` listens for `session.idle`.
 Throwing from `session.idle` does not block `opencode run`, so the primary adapter treats the event as passive and uses `client.session.promptAsync` to force one follow-up turn when `../../../bin/fm-turnend-guard.sh` returns 2.
 The follow-up was verified in the interactive TUI.
-In a home with `config/supervision-host` and no `config/supervision-host-off` the watch-arm plugin spawns the supervision host instead of `../../../bin/fm-watch-arm.sh`, with Claude's print mode as its headless engine; [`supervision-host.md`](../../../../../docs/supervision-host.md) owns the host.
 `opencode run` can exit before displaying a queued follow-up, so the adapter steps aside in headless mode.
 On native Windows, the operational-input adapter runs its Bash helper through `bash`; macOS and Linux invoke it directly.
 

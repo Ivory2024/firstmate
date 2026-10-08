@@ -5,7 +5,8 @@ set -u
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-out=$(node --input-type=module - "$ROOT" 2>&1 <<'EOF'
+out_file=$(mktemp "${TMPDIR:-/tmp}/fm-opencode-contract.XXXXXX") || fail "OpenCode v2 contract test could not create its output capture"
+node --input-type=module - "$ROOT" >"$out_file" 2>&1 <<'EOF'
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -260,6 +261,9 @@ async function waitFor(predicate) {
   assert.equal(predicate(), true, "expected observable event side effect");
 }
 EOF
-) || fail "OpenCode plugins failed the v2 default-export/setup contract: $out"
+node_rc=$?
+out=$(cat "$out_file")
+rm -f "$out_file"
+[ "$node_rc" -eq 0 ] || fail "OpenCode plugins failed the v2 default-export/setup contract: $out"
 [ -z "$out" ] || fail "OpenCode v2 plugin contract test printed output: $out"
 pass "OpenCode watch-arm plugin exports v2 setup definition with legacy compatibility and normalizes lifecycle terminal events"

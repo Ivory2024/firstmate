@@ -167,7 +167,7 @@ The parent then prints a `STARTUP TRUNCATED` banner on any nonzero child exit, n
 - Whether the child hit its bound or died unexpectedly with its exit status.
 
 The parent still exits 0.
-The regression evidence for both shapes is in [`docs/verification/supervision.md`](verification/supervision.md#per-task-endpoint-reads-cannot-truncate-the-digest).
+The regression evidence for both shapes is in [`docs/verification/supervision.md`](verification/supervision.md#native-session-start-delivery).
 The registered hook timeouts sit above that budget, so the harness never preempts the banner.
 
 The deferred startup stage deliberately runs in its own process group under its own deadline.
