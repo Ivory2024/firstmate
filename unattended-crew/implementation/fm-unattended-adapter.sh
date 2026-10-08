@@ -2,21 +2,28 @@
 # fm-unattended-adapter.sh - Crew Dispatch Adapter for the unattended batch
 # coordinator.
 #
-# This is the SEAM between the batch coordinator and a real worker runtime.
+# This is the SEAM between the batch coordinator and a worker runtime.
 # Firstmate's real delegation primitives are (Phase A, bin/fm-spawn.sh,
 # bin/fm-send.sh, bin/fm-control.sh, bin/fm-crew-state.sh): spawn creates an
 # isolated worktree + state/<id>.meta; steer writes a durable inbox record;
 # crew-state returns one deterministic state line. This adapter exposes the
-# same three verbs (dispatch / send / status) behind a backend switch so the
-# coordinator never hard-codes one runtime.
+# same verbs (dispatch / identity / send / status) behind a backend switch so
+# the coordinator never hard-codes one runtime.
 #
-# Backends:
+# Backends (FM_UNATTENDED_ADAPTER):
 #   fake (default)  file-backed fake session; NO worker/provider is called.
-#   real            REFUSED. Wiring the real firstmate primitives is the
-#                   approved integration step (handoff/integration-plan.md);
-#                   until that gate passes, `real` exits 9 with
-#                   INTEGRATION_HOLD so nothing can silently pretend a fake
-#                   run was a real crew.
+#   real            bridge onto firstmate's real primitives. `dispatch` calls
+#                   bin/fm-spawn.sh (scout) in an isolated worktree; `identity`
+#                   reads the authoritative endpoint from state/<id>.meta;
+#                   `send` calls bin/fm-send.sh; `status` calls
+#                   bin/fm-crew-state.sh and returns one normalized state line.
+#                   It never emits ACK on its own: the coordinator must observe
+#                   a live endpoint before it treats a dispatch as acknowledged
+#                   (spawn success alone is NOT an ACK).
+#
+# Fail-closed: a real dispatch/identity/status/send with a missing home, a
+# missing spawn id, an unreadable meta, or an unmatched identity refuses with a
+# nonzero exit instead of guessing a session.
 #
 # Session record: $UC_HOME/batches/<batch>/sessions/<sid>/meta (key=value) and
 # events.jsonl. A session is bound to exactly one (task, role, attempt); the
@@ -26,7 +33,7 @@
 # Usage:
 #   fm-unattended-adapter.sh dispatch --batch B --task T --role executor|auditor \
 #        --attempt N --workdir W [--identity ID]
-#   fm-unattended-adapter.sh identity --batch B --session S
+#   fm-unattended-adapter.sh identity --batch B --session S [--spawn-id ID]
 #   fm-unattended-adapter.sh send --batch B --task T --session S <text...>
 #   fm-unattended-adapter.sh status --batch B --session S
 #   fm-unattended-adapter.sh emit --batch B --session S <ACK|ACTIVE|COMPLETE|FAILED>
@@ -45,6 +52,13 @@ _meta_get() { # <file> <key>
 
 _refuse() { printf '%s\n' "$1" >&2; exit "${2:-1}"; }
 
+# Map bin/fm-crew-state.sh's one line to the adapter's normalized state.
+# Input:  "state: <working|parked|done|blocked|paused|failed|unknown> · source: ..."
+# Output: the bare state token.
+_normalize_crew_state() {
+  sed -n 's/^state:[[:space:]]*\([a-z-]*\).*/\1/p' | head -1
+}
+
 # Find an existing session bound to (task, role) whose state is live or complete.
 _find_binding() { # <batch> <task> <role> <attempt>
   local b=$1 t=$2 r=$3 a=$4 d s
@@ -60,12 +74,19 @@ _find_binding() { # <batch> <task> <role> <attempt>
   return 1
 }
 
-# Real backend: bridge the adapter verbs onto firstmate's existing primitives.
-# dispatch -> bin/fm-spawn.sh (scout, isolated worktree); identity -> the pane
-# target recorded in state/<id>.meta; send -> bin/fm-send.sh; status ->
-# bin/fm-crew-state.sh. This is the G1-approved integration surface. It refuses
+# ---- real backend ------------------------------------------------------------
+# Bridge the adapter verbs onto firstmate's existing primitives. It refuses
 # unless UC_FM_HOME and UC_REAL_PROJECT are set, and passes harness, model,
 # effort, and backend explicitly (never an implicit default).
+
+_real_spawn_id() { # <role> <task>
+  case "$1" in
+    executor) printf '%s\n' "${UC_REAL_EXEC_ID:-$2}";;
+    auditor)  printf '%s\n' "${UC_REAL_AUDIT_ID:-${2}-audit}";;
+    *) _refuse "real: bad role $1" 2;;
+  esac
+}
+
 _real_dispatch() { # --batch B --task T --role R --attempt N --workdir W
   local b='' t='' r='' a='' w='' spawn_id='' home='' project='' out rc window wt sd
   while [ $# -gt 0 ]; do case "$1" in
@@ -74,11 +95,7 @@ _real_dispatch() { # --batch B --task T --role R --attempt N --workdir W
   esac; done
   home=${UC_FM_HOME:?real backend needs UC_FM_HOME}
   project=${UC_REAL_PROJECT:?real backend needs UC_REAL_PROJECT}
-  case "$r" in
-    executor) spawn_id=${UC_REAL_EXEC_ID:-$t};;
-    auditor)  spawn_id=${UC_REAL_AUDIT_ID:-${t}-audit};;
-    *) _refuse "real dispatch: bad role $r" 2;;
-  esac
+  spawn_id=$(_real_spawn_id "$r" "$t")
   [ -x "$home/bin/fm-spawn.sh" ] || _refuse "real dispatch: no fm-spawn.sh at $home" 2
 
   local -a flags=()
@@ -104,16 +121,58 @@ _real_dispatch() { # --batch B --task T --role R --attempt N --workdir W
     printf 'identity=%s\n' "$window"
     printf 'workdir=%s\n' "$wt"
     printf 'spawn_id=%s\n' "$spawn_id"
+    printf 'home=%s\n' "$home"
     printf 'backend=real\n'
     printf 'created_at=%s\n' "$(_now)"
-    printf 'state=active\n'
+    printf 'state=spawned\n'
   } > "$sd/meta"
   : > "$sd/events.jsonl"
-  _emit "$b" "$window" ACK
-  _emit "$b" "$window" ACTIVE
+  printf '{"at":"%s","event":"DISPATCH","spawn_id":"%s","window":"%s"}\n' "$(_now)" "$spawn_id" "$window" >> "$sd/events.jsonl"
   echo "DISPATCHED session=$window identity=$window worktree=$wt spawn_id=$spawn_id"
 }
 
+# Real identity = the authoritative endpoint recorded in the home's meta, NOT
+# the adapter's own note. A missing or unreadable meta is a fail-closed refusal.
+_real_identity() { # --batch B --session S [--spawn-id ID]
+  local b='' s='' spawn='' meta home sd
+  while [ $# -gt 0 ]; do case "$1" in --batch) b=$2; shift 2;; --session) s=$2; shift 2;; --spawn-id) spawn=$2; shift 2;; *) _refuse "real identity: bad arg $1" 2;; esac; done
+  sd=$(_sdir "$b" "$s")
+  if [ -f "$sd/meta" ]; then
+    [ -n "$spawn" ] || spawn=$(_meta_get "$sd/meta" spawn_id)
+    home=$(_meta_get "$sd/meta" home)
+  fi
+  [ -n "$home" ] || home=${UC_FM_HOME:?real identity needs UC_FM_HOME}
+  [ -n "$spawn" ] || _refuse "real identity: no spawn id for session $s" 2
+  meta="$home/state/$spawn.meta"
+  [ -f "$meta" ] || _refuse "real identity: no meta at $meta" 2
+  local window; window=$(_meta_get "$meta" window)
+  [ -n "$window" ] || _refuse "real identity: meta has no window for $spawn" 2
+  printf '%s\n' "$window"
+}
+
+_real_status() { # --batch B --session S
+  local b='' s='' spawn='' home sd line state
+  while [ $# -gt 0 ]; do case "$1" in --batch) b=$2; shift 2;; --session) s=$2; shift 2;; *) _refuse "real status: bad arg $1" 2;; esac; done
+  sd=$(_sdir "$b" "$s")
+  [ -f "$sd/meta" ] || { echo "state=absent"; return 0; }
+  spawn=$(_meta_get "$sd/meta" spawn_id); home=$(_meta_get "$sd/meta" home)
+  [ -n "$home" ] || home=${UC_FM_HOME:?real status needs UC_FM_HOME}
+  [ -n "$spawn" ] || { echo "state=unknown reason=no-spawn-id"; return 0; }
+  [ -x "$home/bin/fm-crew-state.sh" ] || { echo "state=unknown reason=no-crew-state"; return 0; }
+  line=$("$home/bin/fm-crew-state.sh" "$spawn" 2>/dev/null || true)
+  state=$(printf '%s\n' "$line" | _normalize_crew_state)
+  printf 'state=%s task=%s role=%s spawn_id=%s workdir=%s identity=%s\n' \
+    "${state:-unknown}" "$(_meta_get "$sd/meta" task)" "$(_meta_get "$sd/meta" role)" \
+    "$spawn" "$(_meta_get "$sd/meta" workdir)" "$(_meta_get "$sd/meta" identity)"
+}
+
+_real_send() { # <spawn-id> <home> <text...>
+  local spawn=$1 home=$2; shift 2
+  [ -x "$home/bin/fm-send.sh" ] || _refuse "real send: no fm-send.sh at $home" 2
+  "$home/bin/fm-send.sh" "$spawn" "$@"; return $?
+}
+
+# ---- fake backend ------------------------------------------------------------
 cmd_dispatch() { # --batch B --task T --role R --attempt N --workdir W [--identity ID]
   if [ "$BACKEND" = real ]; then _real_dispatch "$@"; return $?; fi
   local b='' t='' r='' a='' w='' ident=''
@@ -124,7 +183,6 @@ cmd_dispatch() { # --batch B --task T --role R --attempt N --workdir W [--identi
   esac; done
   [ -n "$b" ] && [ -n "$t" ] && [ -n "$r" ] && [ -n "$a" ] || _refuse "dispatch: missing required arg" 2
   case "$r" in executor|auditor) ;; *) _refuse "dispatch: bad role $r" 2;; esac
-  if [ "$BACKEND" = real ]; then _refuse "INTEGRATION_HOLD: real worker dispatch not approved" 9; fi
 
   local existing
   if existing=$(_find_binding "$b" "$t" "$r" "$a"); then
@@ -163,13 +221,23 @@ _emit() { # <batch> <sid> <event>
   sed -i.bak "s/^state=.*/state=$(printf '%s' "$3" | tr '[:upper:]' '[:lower:]')/" "$sd/meta" && rm -f "$sd/meta.bak"
 }
 
-cmd_identity() { # --batch B --session S
-  local b='' s=''; while [ $# -gt 0 ]; do case "$1" in --batch) b=$2; shift 2;; --session) s=$2; shift 2;; *) _refuse "identity: bad arg $1" 2;; esac; done
+cmd_identity() { # --batch B --session S [--spawn-id ID]
+  if [ "$BACKEND" = real ]; then _real_identity "$@"; return $?; fi
+  local b='' s=''; while [ $# -gt 0 ]; do case "$1" in --batch) b=$2; shift 2;; --session) s=$2; shift 2;; --spawn-id) shift 2;; *) _refuse "identity: bad arg $1" 2;; esac; done
   [ -f "$(_sdir "$b" "$s")/meta" ] || _refuse "identity: no session $s" 2
   if [ "${FM_FAKE_WRONG_IDENTITY:-0}" = 1 ]; then echo "bogus-$s"; else printf '%s\n' "$s"; fi
 }
 
 cmd_send() { # --batch B --task T --session S <text...>
+  if [ "$BACKEND" = real ]; then
+    local rb='' rt='' rs='' rspawn='' rhome=''
+    while [ $# -gt 0 ]; do case "$1" in --batch) rb=$2; shift 2;; --task) rt=$2; shift 2;; --session) rs=$2; shift 2;; *) break;; esac; done
+    local rd; rd=$(_sdir "$rb" "$rs"); [ -f "$rd/meta" ] || _refuse "send: no session $rs" 2
+    [ "$(_meta_get "$rd/meta" task)" = "$rt" ] || _refuse "CROSS_TASK: session $rs not owned by $rt" 5
+    rspawn=$(_meta_get "$rd/meta" spawn_id); rhome=$(_meta_get "$rd/meta" home)
+    _real_send "$rspawn" "$rhome" "$@"
+    return $?
+  fi
   local b='' t='' s=''; while [ $# -gt 0 ]; do case "$1" in --batch) b=$2; shift 2;; --task) t=$2; shift 2;; --session) s=$2; shift 2;; *) break;; esac; done
   local sd; sd=$(_sdir "$b" "$s"); [ -f "$sd/meta" ] || _refuse "send: no session $s" 2
   local owner; owner=$(_meta_get "$sd/meta" task)
@@ -179,6 +247,7 @@ cmd_send() { # --batch B --task T --session S <text...>
 }
 
 cmd_status() { # --batch B --session S
+  if [ "$BACKEND" = real ]; then _real_status "$@"; return $?; fi
   local b='' s=''; while [ $# -gt 0 ]; do case "$1" in --batch) b=$2; shift 2;; --session) s=$2; shift 2;; *) _refuse "status: bad arg $1" 2;; esac; done
   local sd; sd=$(_sdir "$b" "$s"); [ -f "$sd/meta" ] || { echo "state=absent"; return 0; }
   printf 'state=%s task=%s role=%s workdir=%s identity=%s\n' \

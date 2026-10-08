@@ -103,6 +103,30 @@ patch-hash mismatch; and an audit verdict `PASS` from a non-fake auditor in
 `mode=production`. Otherwise: `AUDIT_UNAVAILABLE` when only the audit is missing;
 `REWORK` for a fixable executor failure; `HOLD` for every other unmet floor.
 
+## Real backend (interactive crew)
+
+With `FM_UNATTENDED_ADAPTER=real` the dispatch stage spawns a real firstmate
+crew through `bin/fm-spawn.sh` and observes it instead of running a one-shot
+command:
+
+- `DISPATCHING → ACKNOWLEDGED` requires a LIVE endpoint: `_real_wait_ack` polls
+  `bin/fm-crew-state.sh` within `ack_timeout_secs`. Spawn success alone is not an
+  ACK; a dead/absent endpoint or an expired window is `REWORK ack-timeout`.
+- `ACKNOWLEDGED → RUNNING` starts observation; `_real_wait_done` polls
+  `fm-crew-state.sh` (`done`→complete, `failed|absent|unknown`→dead, timeout→
+  still running, never a false success).
+- On `done`, the evidence collector collects the crew's durable records
+  (`state/<id>.meta`, `state/<id>.status`, `fm-crew-state.sh`, `data/<id>/
+  report.md`, worktree SHA before/after) into the same `executor/` layout the
+  judge already reads. A `done` with no report → `HOLD evidence-incomplete`.
+- The auditor is a SECOND real crew in a different worktree; its report verdict
+  becomes `auditor/findings.json` with `auditor_kind: real`. A missing verdict
+  judges to `AUDIT_UNAVAILABLE`; no audit is ever copied from the executor.
+- `mode=production` refuses the built-in `fake-auditor.sh` at the coordinator
+  AND in the judge.
+- A completed executor is not re-run to retry an audit: `REWORK` with completed
+  executor evidence returns to `AUDIT_PENDING`, capped by `retry_limit`.
+
 ## Durable handoff
 
 `handoff.md` records: baseline SHA, per-task state + attempts, active sessions

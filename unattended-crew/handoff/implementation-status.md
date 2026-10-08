@@ -10,13 +10,13 @@ worker/provider was called.
 
 | Axis | Status | Basis |
 |---|---|---|
-| Implementation | **IMPLEMENTED** | coordinator, adapter (fake + real), evidence collector, judge, fake auditor, contracts all present and executable |
-| Verification | **LOCALLY_TESTED** (30/30) + **INDEPENDENTLY_VERIFIED** (real audit, canary) | 30/30 checks green; a real separate-session auditor returned PASS and reproduced the counts; Judge `VERIFIED_PASS` |
-| Integration | **REAL_CREW_INTEGRATED** (canary) + **INTEGRATION_HOLD** (unattended real E2E) | one real Scout + one real audit ran once (G1/G2); the coordinator's real evidence/audit loop is still a documented gap |
+| Implementation | **IMPLEMENTED** | coordinator (fake + real backends), adapter (fake + real), evidence collector (`run` + `collect`), judge, fake auditor, real audit harvest, contracts, mock home all present and executable |
+| Verification | **LOCALLY_TESTED** (49/49) + **INDEPENDENTLY_VERIFIED** (real audit, prior canary only) | 49/49 checks green incl. 19 real-E2E cases; 10/10 separate local verification process. The real separate-session AI audit happened in the PRIOR canary batch; this batch ran no AI audit, so its real-E2E is not claimed independently verified |
+| Integration | **REAL_E2E_READY_FOR_CANARY** + **INTEGRATION_HOLD** (live unattended real E2E) | the real path is wired dispatch→ACK→evidence→separate auditor→judge→handoff and proven offline against the recorded fixture; the actual provider call is gated |
 
 Real canary result: `canary/canary-report.md` (verdict `CANARY_VERIFIED_PASS`).
-Cleanup/teardown of the two completed Scout sessions is an open approval.
-Not claimed: `DEPLOYED` (G4 not approved).
+Real-E2E integration detail: `handoff/real-e2e-integration-status.md`.
+Not claimed: `DEPLOYED` (G4 not approved), `REAL_E2E_VERIFIED` (no live run yet).
 
 ## What was built
 
@@ -27,7 +27,7 @@ Not claimed: `DEPLOYED` (G4 not approved).
 - `implementation/fake-auditor.sh` — separate-process, protocol-only auditor (marked fake).
 - `contracts/task-contract.schema.json`, `contracts/state-machine.md`.
 - `architecture/firstmate-integration-map.md`, `architecture/pstack-adaptation.md`.
-- Tests: `tests/coordinator.test.sh` (12), `tests/judge.test.sh` (11), `tests/restart.test.sh` (7).
+- Tests: `tests/coordinator.test.sh` (12), `tests/judge.test.sh` (11), `tests/restart.test.sh` (7), `tests/real-e2e.test.sh` (19) + `tests/mockhome/` (recorded-fixture test double) + `verification/verify-local.sh`.
 
 ## Verification evidence
 
@@ -47,6 +47,17 @@ worker, session identity mismatch, duplicate completion/wake idempotency, missin
 audit, audit conflict, forbidden write, hash mismatch, same workspace, incomplete
 tests, approval-required hold, no-safe-next-task, and cleanup-refusal while a test
 is alive.
+
+## Real-backend E2E (Phase F, this batch)
+
+The `real` backend is driven end to end with no provider call by pointing the
+adapter's real primitives at `tests/mockhome/`, a test double that replays the
+recorded canary fixture. Covered: spawn refusal, dead endpoint (no ACK), missing
+completion event, worker failure, evidence incomplete, evidence tamper → HOLD,
+auditor spawn failure (bounded retry, no executor re-run), missing audit verdict
+→ `AUDIT_UNAVAILABLE`, auditor conflict, same-workspace, coordinator SIGKILL +
+resume (adopt, no duplicate dispatch), approval-required hold, and the
+fake-auditor-in-production block on both backends.
 
 ## Restart / pickup (Phase E)
 

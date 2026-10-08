@@ -30,6 +30,12 @@ the adapter verbs onto the existing primitives, with no duplication:
 
 ## 3. Replace the fake auditor with a real out-of-session auditor
 
+**Status 2026-10-08**: the real auditor path is implemented (`_dispatch_auditor_real`
+spawns a second Scout, harvests its verdict as `auditor/findings.json` with
+`auditor_kind: real`); `mode=production` refuses the fake auditor at the
+coordinator and in the judge. The real crew dispatch itself still needs its own
+approval.
+
 - Point `audit.command` at a real worker (a second worker session, separate
   worktree and identity), returning the same `auditor/findings.json` schema
   with `auditor_kind: real`.

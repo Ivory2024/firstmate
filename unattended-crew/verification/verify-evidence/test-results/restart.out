@@ -1,0 +1,8 @@
+ok - coordinator killed while RUNNING
+ok - resume completed the task => VERIFIED_PASS
+ok - resume did not duplicate the executor session
+ok - evidence rc persisted across restart
+ok - resume of finished batch is a no-op
+ok - task parked at AUDIT_PENDING before resume
+ok - incomplete audit => AUDIT_UNAVAILABLE, never VERIFIED_PASS
+# restart.test.sh PASS=7 FAIL=0

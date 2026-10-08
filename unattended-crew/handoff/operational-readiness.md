@@ -2,6 +2,15 @@
 
 Canonical result: `canary/canary-report.md`. Final state: `CANARY_VERIFIED_PASS`.
 
+> **Update 2026-10-08 (real-E2E integration batch).** The coordinator's `real`
+> backend is now wired end to end (dispatch → ACK → evidence → separate auditor
+> → judge → handoff) and proven offline against a mock home replaying the canary
+> fixture: 49/49 suite cases + 10/10 separate local verification. No real
+> provider call was made this batch. Full detail: `handoff/real-e2e-integration-status.md`.
+> Status axes: `IMPLEMENTED` / `LOCALLY_TESTED` / `REAL_E2E_READY_FOR_CANARY` +
+> `INTEGRATION_HOLD` for a live run. G3·G4·G5 remain NOT approved, and a LIVE
+> real E2E needs its own new approval pair.
+
 ## 1. G1·G2 정확한 내용
 - G1: 실제 Firstmate Scout 1회 생성 — firstmate repo 테스트 구조 read-only 조사, 격리 worktree, 운영 설정·GitHub 쓰기 없음, dispatch profile·허용 경로·금지 작업·세션 소유권 사전 검증, 미충족 시 HOLD.
 - G2: 실제 감사 세션 1회 생성 — Executor와 다른 세션·worktree, 원본 증거 검토 + 테스트 파일 목록·실행 명령 독립 재확인, 감사 불완전 시 VERIFIED_PASS 금지.

@@ -1,6 +1,20 @@
 # Approval gates
 
+> **Update 2026-10-08 (real-E2E integration batch).** This batch added **no**
+> gate. It wired the coordinator's `real` backend end to end and proved it
+> offline with a mock firstmate home replaying the recorded canary fixture
+> (`handoff/real-e2e-integration-status.md`). It made **zero** real provider
+> calls and **zero** GitHub writes, and changed nothing outside the isolated
+> worktree branch.
+>
+> A single **LIVE** real E2E now needs its own new, minimal approval — a NEW
+> pair beyond the consumed G1/G2: **1 real Executor Scout + 1 real Auditor
+> Scout** (2 provider calls), no retry, isolated worktrees, no GitHub write, no
+> operational apply. That pair is **NOT** authorized by this batch. **G3, G4,
+> G5 remain NOT approved.**
+>
 > **Update 2026-10-08 (canary batch).** The captain gave a current, explicit,
+
 > bounded in-chat approval for this work only: **G1 and G2 approved for exactly
 > one real Scout + one real audit session each**, no retry, no GitHub write, no
 > operational apply, no shared-instruction change. Both were executed once and

@@ -1,0 +1,13 @@
+ok - normal: t1,t2 VERIFIED_PASS
+ok - dependency: t2 dispatched after t1 VERIFIED_PASS
+ok - duplicate wake: no new transition or session
+ok - no ACK => HOLD retry-exhausted
+ok - worker failure => REWORK x2 => HOLD at limit
+ok - session id mismatch => HOLD
+ok - missing audit => AUDIT_UNAVAILABLE
+ok - auditor conflict => HOLD
+ok - approval_required => HOLD approval-required
+ok - no safe next task => NONE
+ok - interrupted worker => HOLD
+ok - cleanup refused while test alive (rc=3)
+# coordinator.test.sh PASS=12 FAIL=0

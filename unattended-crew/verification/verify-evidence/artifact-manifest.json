@@ -1,0 +1,5 @@
+{"path":"verification/verify-evidence/command-log.jsonl","sha256":"7735ee3a24c9e1818d1cac9c7625618a7f38f8ed364064e4b8fc14b7d38dc395"}
+{"path":"verification/verify-evidence/test-results/coordinator.out","sha256":"d84fb3c71ab65cf3dbbe651f757113f4d71862c3bb638394111dd3768816bc9a"}
+{"path":"verification/verify-evidence/test-results/judge.out","sha256":"1872a833ea4f3986bd6cce67738068d99ef1efe244415a83355de3f419d2aea2"}
+{"path":"verification/verify-evidence/test-results/real-e2e.out","sha256":"dcd464f24b1163f4c218f5f2183f11c32451cbc83761c5162385faba0f9cc0a0"}
+{"path":"verification/verify-evidence/test-results/restart.out","sha256":"eb9c6ce9cb4f4222386f2cfa6b73979b9845595b8302f219fa9578f56ed0c514"}

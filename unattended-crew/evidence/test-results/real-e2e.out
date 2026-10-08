@@ -1,0 +1,20 @@
+ok - real: executor+auditor+judge => VERIFIED_PASS
+ok - real: auditor worktree differs from executor worktree
+ok - real: exactly two crew sessions (executor + auditor)
+ok - real: durable handoff written
+ok - real: spawn refused => HOLD (spawn-failed)
+ok - real: dead endpoint => no ACK => HOLD (ack-timeout)
+ok - real: missing completion event stays RUNNING (not VERIFIED_PASS)
+ok - real: executor failure => HOLD (worker-failed)
+ok - real: missing report => HOLD (evidence-incomplete)
+ok - real: tampered real evidence => HOLD (artifact-hash-mismatch)
+ok - real: auditor spawn refused => HOLD (auditor-dispatch-failed)
+ok - real: no audit verdict => AUDIT_UNAVAILABLE
+ok - real: auditor conflict => HOLD (audit-conflict)
+ok - real: same workspace => HOLD (auditor-executor-same-workspace)
+ok - real: resume did not re-dispatch the executor (1 dispatch)
+ok - real: resume completed via the adopted crew => VERIFIED_PASS
+ok - real: approval-required => HOLD, no safe next task
+ok - real: fake auditor in production => HOLD (fake-auditor-in-production)
+ok - production fake backend: no real audit => HOLD (fake-auditor-in-production)
+# real-e2e.test.sh PASS=19 FAIL=0

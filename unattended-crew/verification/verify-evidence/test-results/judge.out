@@ -1,0 +1,12 @@
+ok - clean test-mode => VERIFIED_PASS
+ok - nonzero exit => REWORK
+ok - missing exit code => HOLD
+ok - missing audit => AUDIT_UNAVAILABLE
+ok - forbidden write => HOLD
+ok - patch hash mismatch => HOLD
+ok - artifact hash mismatch => HOLD
+ok - same workspace => HOLD
+ok - fake auditor in production => HOLD
+ok - tests incomplete => HOLD
+ok - reused prior PASS => HOLD
+# judge.test.sh PASS=11 FAIL=0

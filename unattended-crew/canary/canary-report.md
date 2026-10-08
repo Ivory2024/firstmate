@@ -108,3 +108,14 @@ Auditor verdict: **PASS**. 별도 세션·별도 worktree에서 재계수:
 ## Phase E — 실패·복구 검증(fake, 재실행)
 
 `tests/` 30/30 재현: ACK timeout, 중복 dispatch 거부, identity 불일치, 증거 누락, auditor 미실행(AUDIT_UNAVAILABLE), auditor 충돌(HOLD), coordinator SIGKILL 후 재시작(중복 dispatch 없음), 허용되지 않은 외부 쓰기(HOLD), 승인 없는 다음 작업 차단(HOLD/approval-required). 원본 로그: `evidence/test-results/*.out`.
+
+## 정리(teardown) 기록 — 2026-10-08 (승인 후)
+
+승인 후, 소유권 재확인(ID=endpoint_task_id, worktree 일치, kind=scout, window 일치, pending inbox 0)과
+status 로그의 `done`을 확인한 뒤 공식 `bin/fm-teardown.sh`로 정리했다. PID 직접 종료·타 크루 정리·공유 파일 삭제는 하지 않았다.
+
+- Executor: `fm-teardown.sh firstmate-unattended-canary-01` 완료. worktree slot 14 풀 반환, window 제거, backlog `[x]` 닫힘.
+- Auditor: `fm-teardown.sh firstmate-unattended-canary-01-audit` 완료. worktree slot 15 풀 반환, window 제거, backlog `[x]` 닫힘.
+- teardown 자체가 worktree 내 leaked process(31944/42864, 43880/51276)를 공식 경로로 reap/force-kill 했다(직접 종료 아님).
+- 사후: `state/<id>.meta`·`.status` 제거, tmux canary window 0, 잔여 canary 프로세스 0, worktree slot HEAD=e70daed6(pooled).
+- durable 증거는 `canary/evidence/`와 `data/<id>/report.md`에 보존됨.

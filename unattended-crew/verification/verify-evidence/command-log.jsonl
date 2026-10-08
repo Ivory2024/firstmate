@@ -1,0 +1,4 @@
+{"suite":"coordinator","cmd":"bash tests/coordinator.test.sh","exit":0,"duration_s":26,"at":"2026-10-08T10:25:52Z","out":"test-results/coordinator.out"}
+{"suite":"judge","cmd":"bash tests/judge.test.sh","exit":0,"duration_s":9,"at":"2026-10-08T10:26:01Z","out":"test-results/judge.out"}
+{"suite":"restart","cmd":"bash tests/restart.test.sh","exit":0,"duration_s":13,"at":"2026-10-08T10:26:14Z","out":"test-results/restart.out"}
+{"suite":"real-e2e","cmd":"bash tests/real-e2e.test.sh","exit":0,"duration_s":48,"at":"2026-10-08T10:27:02Z","out":"test-results/real-e2e.out"}
