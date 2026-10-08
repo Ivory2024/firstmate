@@ -216,13 +216,14 @@
 #   set (its header owns the refusal). A secondmate runs in its own home and is
 #   not marked.
 #   Only after this isolation check, every fresh ship or scout requires a clean
-#   task worktree. When an origin configuration is detected, spawn fetches it,
-#   resolves the current remote default branch, and resets to its tip. When none
-#   is detected, spawn skips that remote freshness check and launches from the
-#   clean worktree's current HEAD. Relaunch reuses the recorded worktree without
-#   fetching or resetting its base. An unreachable detected origin, unresolved
-#   default branch, or non-clean worktree refuses a fresh spawn rather than
-#   risking a PR based on stale history or discarding local work.
+#   task worktree and refreshes it to the verified base pinned by
+#   fm-git-base-lib.sh. Remote mode verifies repository identity and the
+#   configured main ref; an absent or unusable remote refuses launch. The
+#   explicit firstmate.baseMode=local contract is documented in
+#   docs/configuration.md. Relaunch reuses the recorded worktree without
+#   refreshing its base. A non-clean worktree refuses rather than discarding
+#   local work. See docs/configuration.md for the complete base and publish
+#   guard contract.
 #   A slot whose only deviation is a stale submodule gitlink is refused by that
 #   same clean check, but is reported as a stale checkout naming each submodule
 #   and both pins; nothing is converged or removed, and no remedy is suggested.
