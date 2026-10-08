@@ -1,0 +1,27 @@
+{
+  "batch_id": "demo-normal",
+  "baseline_sha": "BASELINE",
+  "mode": "test",
+  "allowed_paths": [],
+  "forbidden_operations": ["github_write", "credential_change", "real_worker_call"],
+  "retry_limit": 2,
+  "ack_timeout_secs": 5,
+  "tasks": [
+    {
+      "task_id": "t1",
+      "depends_on": [],
+      "approval_required": false,
+      "required_tests": ["t1"],
+      "executor": { "command": ["bash", "-c", "echo t1 ok; exit 0"] },
+      "audit": { "required": true }
+    },
+    {
+      "task_id": "t2",
+      "depends_on": ["t1"],
+      "approval_required": false,
+      "required_tests": ["t2"],
+      "executor": { "command": ["bash", "-c", "echo t2 ok; exit 0"] },
+      "audit": { "required": true }
+    }
+  ]
+}

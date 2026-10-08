@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://firstmate/unattended-crew/task-contract.schema.json",
+  "title": "Unattended batch task contract",
+  "description": "The durable work contract the batch coordinator loads. One batch has an ordered list of tasks; the coordinator never invents work outside this list and never performs an operation listed in forbidden_operations.",
+  "type": "object",
+  "required": ["batch_id", "baseline_sha", "mode", "tasks"],
+  "additionalProperties": false,
+  "properties": {
+    "batch_id": { "type": "string", "minLength": 1 },
+    "baseline_sha": {
+      "type": "string",
+      "description": "The git SHA every task's evidence is measured against. Recorded in every state transition and in the evidence git-before/after."
+    },
+    "mode": {
+      "enum": ["test", "production"],
+      "description": "test admits the fake auditor; production refuses VERIFIED_PASS from a fake auditor."
+    },
+    "patch_sha256": {
+      "type": "string",
+      "description": "Optional expected hash of the change under validation; a mismatch between this and executor/patch-hash is a HOLD."
+    },
+    "allowed_paths": { "type": "array", "items": { "type": "string" } },
+    "forbidden_operations": {
+      "type": "array",
+      "items": {
+        "enum": ["github_write", "credential_change", "home_checkout_change", "watcher_runtime_change", "real_worker_call", "wake_drain", "backpass_change", "kill_other_session_process", "external_write"]
+      }
+    },
+    "retry_limit": { "type": "integer", "minimum": 1, "default": 2, "description": "Maximum dispatch attempts per task before HOLD (retry-exhausted)." },
+    "ack_timeout_secs": { "type": "integer", "minimum": 1, "default": 5 },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["task_id", "executor"],
+        "additionalProperties": false,
+        "properties": {
+          "task_id": { "type": "string", "minLength": 1 },
+          "depends_on": { "type": "array", "items": { "type": "string" }, "description": "Task ids that must reach VERIFIED_PASS before this task is dispatched." },
+          "approval_required": { "type": "boolean", "default": false, "description": "When true the task is held for the captain instead of dispatched." },
+          "required_tests": { "type": "array", "items": { "type": "string" }, "description": "Named tests the executor command must run; fewer executed entries than this length is a HOLD." },
+          "patch_sha256": { "type": "string" },
+          "executor": {
+            "type": "object",
+            "required": ["command"],
+            "additionalProperties": false,
+            "properties": { "command": { "type": "array", "items": { "type": "string" }, "minItems": 1 } }
+          },
+          "audit": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "required": { "type": "boolean", "default": true },
+              "command": { "type": "array", "items": { "type": "string" }, "description": "Optional real auditor command; absent uses the built-in fake auditor (mode=test only)." },
+              "auditor_kind": { "enum": ["fake", "real"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}

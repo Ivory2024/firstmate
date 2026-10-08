@@ -1,0 +1,3 @@
+{"suite":"coordinator","cmd":"bash tests/coordinator.test.sh","exit":0,"duration_s":22,"at":"2026-10-08T09:22:41Z","out":"test-results/coordinator.out"}
+{"suite":"judge","cmd":"bash tests/judge.test.sh","exit":0,"duration_s":7,"at":"2026-10-08T09:22:48Z","out":"test-results/judge.out"}
+{"suite":"restart","cmd":"bash tests/restart.test.sh","exit":0,"duration_s":11,"at":"2026-10-08T09:22:59Z","out":"test-results/restart.out"}

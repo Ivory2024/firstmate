@@ -1,0 +1,12 @@
+{
+  "auditor_kind": "independent_process",
+  "real_ai_audit": false,
+  "note": "separate process; recomputed manifest hashes and re-ran all suites. NOT a real Codex/Claude audit.",
+  "verdict": "PASS",
+  "manifest_identity_ok": true,
+  "recorded_exits_ok": true,
+  "suites_fail0_before": 3,
+  "suites_fail0_after": 3,
+  "cases_before": 30,
+  "cases_after": 30
+}
