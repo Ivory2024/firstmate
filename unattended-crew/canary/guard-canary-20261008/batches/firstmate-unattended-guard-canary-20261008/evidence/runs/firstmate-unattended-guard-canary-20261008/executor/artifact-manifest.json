@@ -1,0 +1,10 @@
+{"path":"executor/command-log.jsonl","sha256":"9cc6433ac4da7ea0ad72a361c402637f11b1a0ba3d21edc166f77bf4c2ee55e7"}
+{"path":"executor/stdout/cmd.out","sha256":"fd20e2c9d5626fae565833e28269db70adc22bf493d843375018d561a8a04f8a"}
+{"path":"executor/stderr/cmd.err","sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+{"path":"executor/rc","sha256":"9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"}
+{"path":"executor/git-before.json","sha256":"656e23886b5b5aecf09d445d8145fd78102e0ddb5e85049de4ab52097917a277"}
+{"path":"executor/git-after.json","sha256":"7fea6f5e4c027a6d34dd34272f777b3a0224db537d1b45b65f92f4d5a7b5f46f"}
+{"path":"executor/meta.txt","sha256":"c0a3a57ad869ff6aa800ec4ae583771ebbafac2974919dc0f555b7aa29720f0b"}
+{"path":"executor/status.txt","sha256":"842300d287ec774db5ebd856a0dfa5134457d61c0c8fd2dd378dd5791ec8afa4"}
+{"path":"executor/crew-state.txt","sha256":"46e0615d46ef325efde288f754521b7433ed7ebbb2ecbd21d7b98474d4a92a73"}
+{"path":"executor/report.md","sha256":"a8dc3a0436bf3a72b492277ccfda448cdc57b7d91d29916743f2862ae485315b"}

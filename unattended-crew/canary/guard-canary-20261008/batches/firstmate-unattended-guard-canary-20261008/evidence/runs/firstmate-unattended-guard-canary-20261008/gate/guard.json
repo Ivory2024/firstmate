@@ -1,0 +1,34 @@
+{
+  "verdict": "PASS",
+  "claims": [
+    {
+      "id": "test_sh",
+      "kind": "count",
+      "ok": true,
+      "claimed": 244,
+      "canonical": 244
+    },
+    {
+      "id": "test_test_sh",
+      "kind": "count",
+      "ok": true,
+      "claimed": 234,
+      "canonical": 234
+    },
+    {
+      "id": "helpers",
+      "kind": "count",
+      "ok": true,
+      "claimed": 10,
+      "canonical": 10
+    },
+    {
+      "id": "families",
+      "kind": "count",
+      "ok": true,
+      "claimed": 15,
+      "canonical": 15
+    }
+  ],
+  "reasons": []
+}

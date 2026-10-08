@@ -37,11 +37,12 @@
 | 축 | 판정 | 근거 |
 |---|---|---|
 | Implementation | **`IMPLEMENTED`** | Coordinator·adapter·evidence·judge 정상; real 경로 결함 2건 수정; pstack 안전 기능 보완 |
-| Verification | **`LOCALLY_TESTED`** | 5 suites 59/59 + 분리 로컬 검증 10/10 + drift 0. (구현 코드의 독립 AI 감사는 없음) |
+| Verification | **`LOCALLY_TESTED`** | 6 suites 78/78 (guard 17·real-e2e 24 신규 포함) + 분리 로컬 검증 11/11 + drift 0. (구현 코드의 독립 AI 감사는 P4 실제 Auditor가 수행) |
 | Integration | **`REAL_E2E_VERIFIED`** | 실제 Executor+Auditor 자동 위임, 실제 독립 감사 verdict PASS, Judge `VERIFIED_PASS` |
-| Single-run uninterrupted | **`HOLD`** | 2차 재검증: 신규 run 1회가 종료까지 무중단 도달(수동 resume/adopt 0)했으나 Executor prose off-by-one 2건 → Auditor `CONFLICT` → Judge `HOLD` (`audit-conflict`). §22 |
-| Deployment | **`NOT_DEPLOYED` / G4 HOLD** | G4 미실행 |
-| Crew cleanup | **`PASS`** | 두 Scout teardown 완료, 실행 전후 사후검증 통과(§21) |
+| Single-run uninterrupted | **`PASS`** | 신규 batch `firstmate-unattended-guard-canary-20261008`: 단일 run 무중단, 1 dispatch, resume/adopt/retry 0, Guard PASS, Auditor PASS, Judge `VERIFIED_PASS`. §23 |
+| Deployment | **`NOT_DEPLOYED` / G4 NO-GO** | 운영 home 충돌 미해결로 G4 NO-GO(§23, `g4-operational-readiness-review.md`) |
+| Crew cleanup | **`PASS`** | 선행 배치 두 Scout teardown 완료(§21); 본 배치 두 crew는 승인 밖이라 잔존(§23) |
+| Executor Evidence Guard | **`IMPLEMENTED`** | 증거 수집↔Auditor 사이 결정적 대조, 불일치 시 `evidence-guard-mismatch` HOLD. §23 |
 
 `DEPLOYED`는 선언하지 않는다(G4 미실행). `AUDIT_UNAVAILABLE`도 아니다(실제 감사 성공).
 
@@ -273,5 +274,46 @@ Executor 보고서의 산술 실수 때문에 충족되지 않았다.
   Executor 브리프 강화 또는 모델 상향이 재재검증 선행 조건이다.
 - 잔여 자원(이번 승인에 teardown 미포함): 두 window `firstmate:1`/`firstmate:2`, worktree slot 14/15,
   pending inbox 0. 후속 teardown 승인 필요(§20). 무해한 `.turn-ended` 마커는 삭제하지 않음.
+
+## 23. 통합 배치 (2026-10-08, Guard + Single-run + G4 심사)
+
+**최종: Pipeline GREEN / G4 `NO_GO`.** 8개 phase(P0~P6) 실행. 중간 captain 승인 요청 없음(사전 승인 범위).
+
+### P1 Crew teardown — `TEARDOWN_VERIFIED`
+- Executor `…single-run-canary-20261008`, Auditor `…-audit` 순차 teardown.
+- Executor는 completion gate로 1회 거부 → `fm-captain-hold.sh complete <EX> --none`(보고서 §4/§5 미결 captain call 0 attestation) → 재시도 rc=0.
+- Auditor 동일(human gate 회피 아님, gate 소유 명령). `teardown-meta.txt`: `EXEC 1→complete 0→0`, `AUD 1→complete 0→0`.
+- 사후검증: meta 제거, window는 `claude.exe`만, slot 14/15 owner 제거, inbox 0, home fingerprint 불변.
+
+### P2/P3 Evidence Guard — `IMPLEMENTED` + `LOCALLY_TESTED`
+- 신규 `implementation/fm-unattended-guard.sh`. 상세: `handoff/executor-evidence-guard.md`.
+- 근본 원인(Executor 보고서 families 14≠15, assertions 26≠25)을 **Auditor dispatch 이전에** 검출.
+- 78/78 + local 11/11, shellcheck clean. 커밋 `8eaddea1`.
+
+### P4 단일 run Live E2E — `SINGLE_RUN_UNINTERRUPTED_PASS`
+- 신규 batch `firstmate-unattended-guard-canary-20261008` (기존 ID 미재사용), 실 Executor 1 + Auditor 1, model `opencode/ling-3.1-flash-free`(무료), backend tmux.
+- 타임라인: `QUEUED 11:40:10 → DISPATCHING 11:40:14 → ACK 11:40:30 → RUNNING 11:40:30 → EVIDENCE_PENDING 11:48:13 → (Guard PASS) → AUDIT_PENDING 11:48:13 → AUDITING 11:48:28 → VERIFIED_PASS 11:54:19`. 총 ~14.2분, `RUN_EXIT=0`.
+- Guard `gate/guard.json`: `test_sh 244=244`, `test_test_sh 234=234`, `helpers 10=10`, `families 15=15` → **PASS**.
+- Auditor session `…-audit` worktree slot 15 (Executor slot 14, 분리 확인), verdict line `Verdict: PASS`, findings `{"verdict":"PASS","auditor_kind":"real"}`.
+- Judge `{"run_id":"…","verdict":"VERIFIED_PASS","reasons":[]}` (mode production).
+- 카운트: dispatch **1**, resume/adopt/retry **0**, 수동 개입 **0**, 추가 spawn **0**.
+- 원본 증거: `data/unattended-crew-orchestrator-20261008/canary/guard-canary-20261008/` (`run.log`, `run-meta.txt`, `batches/<id>/state.jsonl`, `.../evidence/runs/<id>/{executor,auditor,gate}`). Executor report sha256 `a8dc3a04…5315b`, Auditor report sha256 `a90748e5…a94ac`.
+- 안전 경계: home tracked dirty **13, fingerprint 불변**(`0c4c59e1…ddd8`); GitHub write 0; watcher/scheduler/launchd/credential/Backpass 0; wake drain 0; 비용 0.
+- **잔여 자원(이번 승인에 teardown 미포함):** Executor `firstmate:fm-firstmate-unattended-guard-canary-20261008`(slot 14), Auditor `…-audit`(slot 15), tmux window `firstmate:1`/`firstmate:2`, pending inbox 0. 후속 teardown 승인 필요.
+
+### P5 Dirty-home 분석 (읽기 전용) — DONE
+- dirty 13개(수정 9 + 신규 4) 전수 인벤토리 + 파일별 sha256 + 보존/롤백 7시나리오: `handoff/dirty-home-inventory.md`.
+- 성격: 전부 watcher/arm-plugin/quota 런타임 표면(브랜치 `fix/ci-flake-watcher-lock-hup`, 소유 UNKNOWN). **G4 충돌 위험 최고.** 백업 미생성(금지 준수).
+
+### P6 G4 심사 — `G4_NO_GO`
+- GO 조건 전부 충족 **단 하나**: 운영 적용 범위 비청정 — 운영 home이 feature 브랜치 + watcher 표면 dirty 13개로 G4 적용 표면과 충돌, **미해결**.
+- NO-GO 조건 하나 발동: 「운영 home 충돌 미해결」.
+- Pipeline 자체는 GREEN; blocker는 파이프라인이 아니라 운영 home. 상세: `handoff/g4-operational-readiness-review.md`.
+- 우선순위 blocker: (P1) 운영 home 충돌/브랜치 tangle → (P2) durable evidence root config, quota/concurrency cap + model allow-list, mounted entrypoint/rollback, (P3) 자동 teardown 규칙.
+- **G4 자동 실행 안 함.**
+
+### 승인 경계 준수
+G3 push/PR/merge 0 · G4 운영 적용 0 · G5 공용 지침 변경 0 · credential 0 · Backpass 0 · wake drain 0 · 첫 60분 무인 배치 0 · 승인 범위 밖 crew 생성 0.
+
 
 

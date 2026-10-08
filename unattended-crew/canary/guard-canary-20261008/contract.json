@@ -1,0 +1,82 @@
+{
+  "batch_id": "firstmate-unattended-guard-canary-20261008",
+  "baseline_sha": "5f4a10281937c4999138d61b945589d829c25d34",
+  "mode": "production",
+  "allowed_paths": [
+    "/Users/irene/Developer/kunchenguid_repos/firstmate/data/firstmate-unattended-guard-canary-20261008/report.md",
+    "/Users/irene/Developer/kunchenguid_repos/firstmate/state/firstmate-unattended-guard-canary-20261008.status"
+  ],
+  "forbidden_operations": [
+    "github_write",
+    "credential_change",
+    "home_checkout_change",
+    "watcher_runtime_change",
+    "real_worker_call",
+    "wake_drain",
+    "backpass_change",
+    "kill_other_session_process",
+    "external_write"
+  ],
+  "retry_limit": 1,
+  "ack_timeout_secs": 120,
+  "tasks": [
+    {
+      "task_id": "firstmate-unattended-guard-canary-20261008",
+      "depends_on": [],
+      "approval_required": false,
+      "required_tests": [
+        "guard-canary-survey"
+      ],
+      "executor": {
+        "command": [
+          "true"
+        ],
+        "intent": "Firstmate 저장소 tests/ 구조의 기계 검증 가능한 수치 4개를 읽기 전용으로 조사하라. 무인 crew orchestrator의 Evidence Guard 단일 run 검증 실행자 임무이며, 저장소 내용은 변경하지 않는다.",
+        "spec": "Read-only survey. Do not modify any tracked file; the only files you may write are your report and your status file.\n\nRun exactly these four read-only commands in your worktree and record each printed number verbatim:\n  ls tests/*.sh | wc -l\n  ls tests/*.test.sh | wc -l\n  ls tests/*.sh | grep -v '\\.test\\.sh$' | wc -l\n  bin/fm-test-run.sh --list-families | wc -l\n\nYour report MUST contain exactly these four lines, each carrying the number the command printed. Copy the printed number; do not compute it by hand or from memory:\n  StructClaim: test_sh = <n>\n  StructClaim: test_test_sh = <n>\n  StructClaim: helpers = <n>\n  StructClaim: families = <n>\n\nAdd one short method paragraph naming the four commands. Do not add any other numeric claim.",
+        "claims": [
+          {
+            "id": "test_sh",
+            "kind": "count",
+            "source": {
+              "type": "cmd",
+              "cmd": "ls tests/*.sh",
+              "reduce": "lines"
+            }
+          },
+          {
+            "id": "test_test_sh",
+            "kind": "count",
+            "source": {
+              "type": "cmd",
+              "cmd": "ls tests/*.test.sh",
+              "reduce": "lines"
+            }
+          },
+          {
+            "id": "helpers",
+            "kind": "count",
+            "source": {
+              "type": "cmd",
+              "cmd": "ls tests/*.sh | grep -v '[.]test[.]sh$'",
+              "reduce": "lines"
+            }
+          },
+          {
+            "id": "families",
+            "kind": "count",
+            "source": {
+              "type": "cmd",
+              "cmd": "bin/fm-test-run.sh --list-families",
+              "reduce": "lines"
+            }
+          }
+        ]
+      },
+      "audit": {
+        "required": true,
+        "intent": "Executor가 남긴 StructClaim 수치 4개를 별도 세션·별도 작업공간에서 독립적으로 다시 유도하여 일치 여부를 판정하라. Executor 보고서 /Users/irene/Developer/kunchenguid_repos/firstmate/data/firstmate-unattended-guard-canary-20261008/report.md.",
+        "spec": "Independent audit only. Do not modify any tracked file; the only files you may write are your report and your status file. You are a DIFFERENT session in a DIFFERENT worktree; do not read or write the executor's workspace.\n\nRe-derive independently by running these four commands in YOUR worktree:\n  ls tests/*.sh | wc -l\n  ls tests/*.test.sh | wc -l\n  ls tests/*.sh | grep -v '\\.test\\.sh$' | wc -l\n  bin/fm-test-run.sh --list-families | wc -l\n\nRead the executor report at data/firstmate-unattended-guard-canary-20261008/report.md and extract its four StructClaim lines. If and only if all four values equal your independent re-derivation, your report MUST contain the line:\n  Verdict: PASS\nOtherwise (any value differs, or a claim is missing) your report MUST contain:\n  Verdict: CONFLICT\n\nState your four numbers and the executor's four numbers. Never write Verdict: PASS unless every claim matches exactly."
+      }
+    }
+  ]
+}

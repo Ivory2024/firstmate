@@ -1,0 +1,2 @@
+working [at=1791459629]: spawned
+done [at=1791460084]: read-only tests/ structure survey complete; four verbatim counts recorded in the report
