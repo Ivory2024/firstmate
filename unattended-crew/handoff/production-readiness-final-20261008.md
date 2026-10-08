@@ -17,6 +17,7 @@
   **같은 batch를 `resume`**으로 재개해 **이미 실행 중이던 동일 Auditor를 adopt**하여
   완료했다(새 크루 생성 0). 즉 성공은 "1회 run + 결함수정 + 재관찰"의 결과다.
 - 운영 home tracked 파일 불변(13 dirty 그대로). G3/G4/G5 미실행.
+- 후속 전용 승인으로 **잔여 Executor·Auditor 두 크루를 안전 정리**했다(§21, `TEARDOWN_VERIFIED`).
 
 ## 2. 시작·종료 시각 및 실제 소요 시간
 
@@ -33,6 +34,9 @@
 | Implementation | **`IMPLEMENTED`** | Coordinator·adapter·evidence·judge 정상; real 경로 결함 2건 수정; pstack 안전 기능 보완 |
 | Verification | **`LOCALLY_TESTED`** | 5 suites 59/59 + 분리 로컬 검증 10/10 + drift 0. (구현 코드의 독립 AI 감사는 없음) |
 | Integration | **`REAL_E2E_VERIFIED`** | 실제 Executor+Auditor 자동 위임, 실제 독립 감사 verdict PASS, Judge `VERIFIED_PASS` |
+| Single-run uninterrupted | **`HOLD`** | 첫 run은 관찰타임아웃, 수정 후 resume/adopt로 완료(§1, §21) |
+| Deployment | **`NOT_DEPLOYED` / G4 HOLD** | G4 미실행 |
+| Crew cleanup | **`PASS`** | 두 Scout teardown 완료, 실행 전후 사후검증 통과(§21) |
 
 `DEPLOYED`는 선언하지 않는다(G4 미실행). `AUDIT_UNAVAILABLE`도 아니다(실제 감사 성공).
 
@@ -150,9 +154,9 @@ workspace 분리(14≠15). `VERIFIED_PASS`는 이 계약의 검증 성공일 뿐
 
 ## 14. 잔여 세션·teardown 필요 여부
 
-- 두 Scout 세션(Executor=slot 14, Auditor=slot 15)과 tmux window 2개(`firstmate:1`,`firstmate:2`)가
-  아직 살아 있다. 양쪽 pending inbox **0**.
-- **teardown은 실행하지 않았다.** 자동 teardown 금지. 별도 승인이 필요하다(§20).
+- **정리 완료.** 두 Scout(Executor slot 14, Auditor slot 15)와 tmux window 2개를
+  공식 `bin/fm-teardown.sh`로 teardown했다. 결과·사후검증은 §21.
+- teardown은 자동이 아니라 이번 전용 승인으로 실행했다. 다른 crew·pool·watcher는 건드리지 않았다.
 
 ## 15. G4 운영 적용 준비도
 
@@ -181,20 +185,56 @@ workspace 분리(14≠15). `VERIFIED_PASS`는 이 계약의 검증 성공일 뿐
 
 ## 19. 미완료 HOLD
 
-- Live canary 잔여 크루 teardown — 미승인.
+- **단일 `run` 무중단 통과 검증** — 첫 run은 `AUDIT_UNAVAILABLE` 관찰타임아웃으로 멈췄고,
+  수정 후 `resume`/adopt로 완료했다. 결함은 수정·회귀테스트 완료했으나, **새 batch에서
+  단일 `run` 한 번으로 끝까지 통과하는 재확인**은 미실행.
 - G3(GitHub push/PR)·G4(운영 적용)·G5(공유 지침 변경) — 미승인.
 - 1시간 반복 스케줄러 — G4 선행 필요.
 - OpenCode 무료 모델 health catalog — 미해소.
-- canary 첫 `run`의 관찰타임아웃 결함은 수정·회귀테스트 완료했으나, **새 batch에서
-  단일 `run` 한 번으로 끝까지 통과하는 재확인**(결함수정 반영 live 재실행)은 미실행(HOLD).
+- Crew teardown은 이번에 완료(§21). HOLD 아님.
 
 ## 20. Captain에게 필요한 다음 승인
 
-1. **잔여 2개 크루 정리(teardown) 승인**:
-   `bin/fm-teardown.sh firstmate-unattended-real-e2e-canary-20261008`,
-   `bin/fm-teardown.sh firstmate-unattended-real-e2e-canary-20261008-audit`
-   (운영 상태 변경).
-2. **(선택) 단일 `run` live 재확인**: 수정 반영 후 새 real E2E 1쌍(Executor+Auditor 각 1회)
+1. **(선택) 단일 `run` live 재확인**: 수정 반영 후 새 real E2E 1쌍(Executor+Auditor 각 1회)
    승인 시, `resume` 없이 한 번에 `VERIFIED_PASS`인지 확인.
-3. G4 운영 적용 검토 결과에 대한 go/no-go.
-4. G3(push/PR)·G5(공유 지침)는 각각 별도 승인.
+2. G4 운영 적용 검토 결과에 대한 go/no-go.
+3. G3(push/PR)·G5(공유 지침)는 각각 별도 승인.
+
+(잔여 두 crew teardown은 2026-10-08 전용 승인으로 완료 — §21.)
+
+## 21. Crew cleanup 결과 (teardown, 2026-10-08)
+
+**판정: `TEARDOWN_VERIFIED`.**
+
+- 승인 범위: Executor `firstmate-unattended-real-e2e-canary-20261008`,
+  Auditor `firstmate-unattended-real-e2e-canary-20261008-audit` 두 크루만.
+
+사전 점검(읽기 전용): 두 id 모두 `kind=scout`, `endpoint_task_id` 일치,
+worktree 가 각각 slot 14/15, `.fm-slot-owner` 소유자도 각 task/home과 일치,
+다른 meta가 slot 14/15를 참조하지 않음, pending inbox 0, status `done`, Judge
+`VERIFIED_PASS` 보존 확인.
+
+실행:
+
+| 명령 | exit | 원본 증거 |
+|---|---|---|
+| `bin/fm-teardown.sh firstmate-unattended-real-e2e-canary-20261008` | 0 | `canary/real-e2e-20261008/teardown-executor.out` |
+| `bin/fm-captain-hold.sh complete <audit> --none` (teardown의 필수 completion gate) | 0 | `.../captain-hold-inventory.out` |
+| `bin/fm-teardown.sh firstmate-unattended-real-e2e-canary-20261008-audit` | 0 | `.../teardown-auditor.out` |
+
+정직한 기록: Auditor teardown은 첫 시도에서 **completion gate로 정상 거부**(rc=1)됐다
+("has not passed the captain-call completion gate"). 강제·스크립트 수정·게이트 우회 없이,
+Auditor 보고서 §5가 스스로 inventory한 대로(캡틴 콜 0) `fm-captain-hold.sh complete --none`을
+기록한 뒤 재시도해 통과했다. Executor meta에는 이미 `decisions_reviewed=1`이 있어 게이트를 통과했다.
+
+사후 독립 검증:
+
+- 두 `state/<id>.meta`·`.status` 제거.
+- tmux: canary window 2개 제거, 무관한 window `0 claude.exe` 유지.
+- pool: slot 14/15 모두 `.fm-slot-owner` 제거, `HEAD=e70daed660f1f116c82b4fcd16e4e5d9510bd663`로 pooled 반환.
+- backlog: 두 행 `[x]` 종료.
+- 운영 home tracked dirty **13개, teardown 전후 fingerprint 동일**
+  (`0c4c59e1aeb2ac84da8351c89618eae6789004f682a14510fa79efa076edddd8`).
+- watcher·scheduler·launchd·credential·Backpass·wake queue 변경 0 (wake drain 안 함).
+- E2E 증거·보고서·Judge verdict·`c6b49b54` 커밋 모두 보존.
+
