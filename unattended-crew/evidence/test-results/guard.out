@@ -1,0 +1,18 @@
+ok - count exact (15==15) => PASS
+ok - count 14 vs canonical 15 => MISMATCH
+ok - assertion 26 vs 5 ok-lines (self-contradiction) => MISMATCH
+ok - assertion 5 vs 5 ok-lines => PASS
+ok - set exact list => PASS
+ok - set missing file => MISMATCH
+ok - set duplicate item => MISMATCH
+ok - set order difference => PASS
+ok - missing report => fail-closed (report-missing)
+ok - malformed contract => exit 2 error
+ok - no claims declared => PASS (no-claims-declared)
+ok - default StructClaim form => PASS
+ok - default StructClaim mismatch => MISMATCH
+ok - non-numeric claim => MISMATCH
+ok - canonical cmd failure => fail-closed
+ok - optional absent claim => PASS
+ok - guard is read-only on the report
+# guard.test.sh PASS=17 FAIL=0

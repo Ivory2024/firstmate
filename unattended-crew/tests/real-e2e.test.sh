@@ -200,5 +200,28 @@ run_uc run --batch b >/dev/null
   && ok "real: no brief/mission => spawn refused, HOLD (no crew)" || no "real no-brief guard (state=$(task_state b t1))"
 cleanup_real
 
+# 17. Evidence Guard integrated, claim PASSES: the real path still reaches
+#     VERIFIED_PASS (the guard is not a blanket blocker)
+new_realhome
+mkreal "$UC_HOME/c.json" 1 '[{"task_id":"t1","depends_on":[],"approval_required":false,"required_tests":["real-e2e"],"executor":{"command":["true"],"intent":"i","spec":"s","claims":[{"id":"toplevel","kind":"count","report_pattern":"Top level: ([0-9]+)","source":{"type":"cmd","cmd":"seq 1 244","reduce":"lines"}}]},"audit":{"required":true,"intent":"a","spec":"s"}}]'
+run_uc init --batch b --contract "$UC_HOME/c.json" >/dev/null
+UC_CREW_WAIT_SECS=5 run_uc run --batch b >/dev/null
+{ [ "$(task_state b t1)" = VERIFIED_PASS ] && [ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["verdict"])' "$UC_HOME/batches/b/evidence/runs/t1/gate/guard.json")" = PASS ]; } \
+  && ok "real: evidence guard claim passes => VERIFIED_PASS" || no "real guard pass (state=$(task_state b t1))"
+cleanup_real
+
+# 18. Evidence Guard blocks a false executor claim BEFORE the auditor is spent:
+#     report says '14 families', canonical is 15 => HOLD, and NO auditor crew.
+new_realhome
+mkreal "$UC_HOME/c.json" 1 '[{"task_id":"t1","depends_on":[],"approval_required":false,"required_tests":["real-e2e"],"executor":{"command":["true"],"intent":"i","spec":"s","claims":[{"id":"families","kind":"count","report_pattern":"([0-9]+) families","source":{"type":"cmd","cmd":"seq 1 15","reduce":"lines"}}]},"audit":{"required":true,"intent":"a","spec":"s"}}]'
+run_uc init --batch b --contract "$UC_HOME/c.json" >/dev/null
+UC_CREW_WAIT_SECS=5 run_uc run --batch b >/dev/null
+aud=$(ls "$UC_HOME/batches/b/sessions" 2>/dev/null | grep -c 'audit')
+{ [ "$(task_state b t1)" = HOLD ] && reason_has b t1 evidence-guard-mismatch && [ "$aud" = 0 ] \
+  && grep -q 'families:value-mismatch(14!=15)' "$UC_HOME/batches/b/evidence/runs/t1/gate/guard.json"; } \
+  && ok "real: false executor claim => HOLD (evidence-guard-mismatch), no auditor spent" \
+  || no "real guard block (state=$(task_state b t1) auditors=$aud)"
+cleanup_real
+
 echo "# real-e2e.test.sh PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

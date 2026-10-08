@@ -49,7 +49,32 @@
             "properties": {
               "command": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
               "intent": { "type": "string", "description": "Real-backend executor mission: the captain's-intent text the coordinator scaffolds into data/<id>/brief.md before a real scout spawn." },
-              "spec": { "type": "string", "description": "Real-backend executor spec text filled into the brief's Firstmate spec section." }
+              "spec": { "type": "string", "description": "Real-backend executor spec text filled into the brief's Firstmate spec section." },
+              "claims": {
+                "type": "array",
+                "description": "Executor Evidence Guard claims. Before the auditor is dispatched, each claimed value in the executor report is compared against a machine-derived canonical value (read-only); any mismatch holds the task with reason evidence-guard-mismatch. An empty or absent list is a no-op pass.",
+                "items": {
+                  "type": "object",
+                  "required": ["id", "kind"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": { "type": "string", "minLength": 1, "description": "Stable claim name, also the default StructClaim key." },
+                    "kind": { "enum": ["count", "set"], "description": "count compares one number; set compares an order-insensitive file/item list." },
+                    "report_pattern": { "type": "string", "description": "Optional ERE whose first capture group is the value the report asserts. Default for count is the structured line 'StructClaim: <id> = <n>'." },
+                    "required": { "type": "boolean", "default": true, "description": "When true, a claim the report never asserts is a mismatch (fail-closed)." },
+                    "source": {
+                      "type": "object",
+                      "required": ["type", "reduce"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "type": { "enum": ["cmd", "report"], "description": "cmd derives the canonical value from a command run in the executor worktree; report derives it from the report text itself (self-contradiction detection)." },
+                        "cmd": { "type": "string", "description": "For source.type=cmd: the read-only command whose stdout is reduced. Required when type=cmd." },
+                        "reduce": { "type": "string", "description": "lines (non-empty stripped lines list; len = count) or count_re:<ERE> (number of matching lines)." }
+                      }
+                    }
+                  }
+                }
+              }
             }
           },
           "audit": {

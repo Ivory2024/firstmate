@@ -39,6 +39,7 @@ IMPL_DIR=${UC_IMPL_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}
 ADAPTER="$IMPL_DIR/fm-unattended-adapter.sh"
 EVIDENCE="$IMPL_DIR/fm-unattended-evidence.sh"
 JUDGE="$IMPL_DIR/fm-unattended-judge.sh"
+GUARD="$IMPL_DIR/fm-unattended-guard.sh"
 FAKE_AUDITOR="$IMPL_DIR/fake-auditor.sh"
 WAIT_SECS=${UC_WAIT_SECS:-40}
 BACKEND=${FM_UNATTENDED_ADAPTER:-fake}
@@ -424,6 +425,20 @@ _judge_task() { # <batch> <task> <attempt>
   return 0
 }
 
+# Executor Evidence Guard: compare the Executor's CLAIMED structured values
+# against machine-derived canonical values BEFORE spending an auditor crew. Any
+# mismatch, un-evaluable claim, or guard error holds the task (fail-closed). A
+# contract that declares no claims is a no-op pass (compat). It writes
+# gate/guard.json and never touches the report or other evidence.
+_evidence_guard() { # <batch> <task> -> 0 pass, nonzero block
+  local b t ev rd
+  b=$1; t=$2
+  [ -x "$GUARD" ] || return 0
+  ev=$(_evroot "$b"); rd=$ev/runs/$t
+  "$GUARD" check --contract "$rd/task-contract.json" --report "$rd/executor/report.md" \
+    --workdir "$(cat "$rd/executor/wd" 2>/dev/null || echo "")" --out "$rd/gate/guard.json" >/dev/null 2>&1
+}
+
 # ---- one step of the state machine -----------------------------------------
 _advance() { # <batch> <task>
   local b t st a i c limit
@@ -468,7 +483,10 @@ _step_real() { # <batch> <task> <state> <attempt> <index> <contract> <rundir>
       esac ;;
     EVIDENCE_PENDING)
       if [ "$(_jget "$c" "tasks.$i.audit.required")" = "false" ]; then _judge_task "$b" "$t" "$a"; return 0; fi
-      _transition "$b" "$t" EVIDENCE_PENDING AUDIT_PENDING "awaiting-audit" "$a"; return 0 ;;
+      if _evidence_guard "$b" "$t"; then
+        _transition "$b" "$t" EVIDENCE_PENDING AUDIT_PENDING "awaiting-audit" "$a"; return 0
+      fi
+      _transition "$b" "$t" EVIDENCE_PENDING HOLD "evidence-guard-mismatch" "$a"; return 0 ;;
     AUDIT_PENDING|AUDITING) _dispatch_auditor_real "$b" "$t" "$a"; return $? ;;
     AUDIT_UNAVAILABLE)
       # a mere observation-timeout is not terminal: adopt a still-live or
@@ -504,7 +522,10 @@ _step() { # <batch> <task> : drive one task as far as evidence allows this call
       _transition "$b" "$t" "$st" HOLD "worker-interrupted" "$a"; return 0 ;;
     EVIDENCE_PENDING)
       if [ "$(_jget "$c" "tasks.$i.audit.required")" = "false" ]; then _judge_task "$b" "$t" "$a"; return 0; fi
-      _transition "$b" "$t" EVIDENCE_PENDING AUDIT_PENDING "awaiting-audit" "$a"; return 0 ;;
+      if _evidence_guard "$b" "$t"; then
+        _transition "$b" "$t" EVIDENCE_PENDING AUDIT_PENDING "awaiting-audit" "$a"; return 0
+      fi
+      _transition "$b" "$t" EVIDENCE_PENDING HOLD "evidence-guard-mismatch" "$a"; return 0 ;;
     AUDIT_PENDING|AUDITING) _dispatch_auditor "$b" "$t" "$a"; return 0 ;;
     VERIFIED_PASS|HOLD|CANCELLED|AUDIT_UNAVAILABLE) return 2 ;;
     *) return 0 ;;

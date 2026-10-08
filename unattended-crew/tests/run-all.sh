@@ -10,7 +10,7 @@ mkdir -p "$EVID/test-results"
 : > "$EVID/command-log.jsonl"
 export FM_UNATTENDED_ADAPTER=fake
 
-SUITES="coordinator judge restart real-e2e pr-classify"
+SUITES="coordinator judge guard restart real-e2e pr-classify"
 FAIL=0
 for s in $SUITES; do
   out="$EVID/test-results/$s.out"

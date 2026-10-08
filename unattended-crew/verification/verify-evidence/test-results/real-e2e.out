@@ -20,4 +20,6 @@ ok - real: approval-required => HOLD, no safe next task
 ok - real: fake auditor in production => HOLD (fake-auditor-in-production)
 ok - production fake backend: no real audit => HOLD (fake-auditor-in-production)
 ok - real: no brief/mission => spawn refused, HOLD (no crew)
-# real-e2e.test.sh PASS=22 FAIL=0
+ok - real: evidence guard claim passes => VERIFIED_PASS
+ok - real: false executor claim => HOLD (evidence-guard-mismatch), no auditor spent
+# real-e2e.test.sh PASS=24 FAIL=0

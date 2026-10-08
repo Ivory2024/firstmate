@@ -1,6 +1,7 @@
   # coordinator.test.sh PASS=12 FAIL=0
   # judge.test.sh PASS=11 FAIL=0
+  # guard.test.sh PASS=17 FAIL=0
   # restart.test.sh PASS=7 FAIL=0
-  # real-e2e.test.sh PASS=22 FAIL=0
+  # real-e2e.test.sh PASS=24 FAIL=0
   # pr-classify.test.sh PASS=7 FAIL=0
-# run-all: 5 suites; fail=0
+# run-all: 6 suites; fail=0

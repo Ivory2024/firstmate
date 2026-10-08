@@ -9,6 +9,7 @@ Mock vs real evidence is marked so a mock result is never read as a real one.
 |---|---|---|---|
 | Coordinator state machine (fake) | `bash tests/coordinator.test.sh` | `evidence/test-results/coordinator.out` | mock |
 | Deterministic judge floor | `bash tests/judge.test.sh` | `evidence/test-results/judge.out` | mock |
+| Executor Evidence Guard | `bash tests/guard.test.sh` | `evidence/test-results/guard.out` | mock |
 | Restart / session pickup | `bash tests/restart.test.sh` | `evidence/test-results/restart.out` | mock |
 | Real backend E2E wiring | `bash tests/real-e2e.test.sh` | `evidence/test-results/real-e2e.out` | mock home |
 | Whole suite | `bash tests/run-all.sh` | `evidence/command-log.jsonl`, `evidence/artifact-manifest.json` | mock home |
