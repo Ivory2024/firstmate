@@ -1,0 +1,2 @@
+working [at=1791452072]: spawned
+done [at=1791452530]: survey complete - 244 top-level tests/*.sh (234 *.test.sh + 10 helpers, recursive identical) plus 2 .test.py and 1 .test.mjs; runner bin/fm-test-run.sh with 14 families and CI lanes (2 parallel shards ~7min, 9 serial shards, herdr lane); measured fm-brief.test.sh 8.9s and --family afk 1m27s 3/3 pass; report at data/firstmate-unattended-canary-01/report.md

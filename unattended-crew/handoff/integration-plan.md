@@ -15,9 +15,9 @@ approved integration. Every step needs its own approval gate
 
 ## 2. Implement the `real` dispatch backend
 
-In `fm-unattended-adapter.sh`, `BACKEND=real` currently exits 9 with
-`INTEGRATION_HOLD`. The real backend must map the adapter verbs onto the existing
-primitives, with no duplication:
+In `fm-unattended-adapter.sh`, the `real` backend (`_real_dispatch`) is now
+implemented and was used for the canary (see `canary/canary-report.md`). It maps
+the adapter verbs onto the existing primitives, with no duplication:
 
 - `dispatch` → resolve dispatch profile (`bin/fm-dispatch-resolve.sh`,
   `config/crew-dispatch.json`), then `bin/fm-spawn.sh <task> <project>

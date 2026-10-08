@@ -1,0 +1,2 @@
+{ "verdict": "PASS", "auditor_kind": "real",
+  "note": "all audited counts and commands reproduce exactly; one prose discrepancy: executor report says '14 families' but actual is 15 (its own table has 15 rows). Not an audited-count mismatch." }

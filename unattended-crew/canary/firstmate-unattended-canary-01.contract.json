@@ -1,0 +1,19 @@
+{
+  "batch_id": "firstmate-unattended-canary-01",
+  "baseline_sha": "5f4a10281937c4999138d61b945589d829c25d34",
+  "mode": "test",
+  "allowed_paths": ["/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/opencode/fm-unattended-crew-20261008/canary-ws"],
+  "forbidden_operations": ["github_write", "credential_change", "home_checkout_change", "watcher_runtime_change", "real_worker_call", "wake_drain", "backpass_change", "kill_other_session_process", "external_write"],
+  "retry_limit": 1,
+  "ack_timeout_secs": 30,
+  "tasks": [
+    {
+      "task_id": "executor-survey",
+      "depends_on": [],
+      "approval_required": false,
+      "required_tests": ["test-tree-survey"],
+      "executor": { "command": ["bash", "SURVEY_SH", "REPO_DIR"] },
+      "audit": { "required": true }
+    }
+  ]
+}

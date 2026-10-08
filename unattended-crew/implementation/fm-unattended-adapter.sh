@@ -60,7 +60,62 @@ _find_binding() { # <batch> <task> <role> <attempt>
   return 1
 }
 
+# Real backend: bridge the adapter verbs onto firstmate's existing primitives.
+# dispatch -> bin/fm-spawn.sh (scout, isolated worktree); identity -> the pane
+# target recorded in state/<id>.meta; send -> bin/fm-send.sh; status ->
+# bin/fm-crew-state.sh. This is the G1-approved integration surface. It refuses
+# unless UC_FM_HOME and UC_REAL_PROJECT are set, and passes harness, model,
+# effort, and backend explicitly (never an implicit default).
+_real_dispatch() { # --batch B --task T --role R --attempt N --workdir W
+  local b='' t='' r='' a='' w='' spawn_id='' home='' project='' out rc window wt sd
+  while [ $# -gt 0 ]; do case "$1" in
+    --batch) b=$2; shift 2;; --task) t=$2; shift 2;; --role) r=$2; shift 2;;
+    --attempt) a=$2; shift 2;; --workdir) w=$2; shift 2;; *) _refuse "real dispatch: unexpected arg $1" 2;;
+  esac; done
+  home=${UC_FM_HOME:?real backend needs UC_FM_HOME}
+  project=${UC_REAL_PROJECT:?real backend needs UC_REAL_PROJECT}
+  case "$r" in
+    executor) spawn_id=${UC_REAL_EXEC_ID:-$t};;
+    auditor)  spawn_id=${UC_REAL_AUDIT_ID:-${t}-audit};;
+    *) _refuse "real dispatch: bad role $r" 2;;
+  esac
+  [ -x "$home/bin/fm-spawn.sh" ] || _refuse "real dispatch: no fm-spawn.sh at $home" 2
+
+  local -a flags=()
+  [ -n "${UC_REAL_HARNESS:-}" ] && flags+=(--harness "$UC_REAL_HARNESS")
+  [ -n "${UC_REAL_MODEL:-}" ] && flags+=(--model "$UC_REAL_MODEL")
+  [ -n "${UC_REAL_EFFORT:-}" ] && flags+=(--effort "$UC_REAL_EFFORT")
+  [ -n "${UC_REAL_BACKEND:-}" ] && flags+=(--backend "$UC_REAL_BACKEND")
+
+  out=$("$home/bin/fm-spawn.sh" "$spawn_id" "$project" --scout "${flags[@]}" 2>&1); rc=$?
+  printf '%s\n' "$out" >&2
+  [ "$rc" -eq 0 ] || { echo "SPAWN_FAILED rc=$rc spawn_id=$spawn_id"; exit 1; }
+  window=$(printf '%s\n' "$out" | sed -n 's/.*window=\([^ ]*\).*/\1/p' | tail -1)
+  wt=$(printf '%s\n' "$out" | sed -n 's/.*worktree=\([^ ]*\).*/\1/p' | tail -1)
+  [ -n "$window" ] || { echo "SPAWN_FAILED no-window spawn_id=$spawn_id"; exit 1; }
+  [ -n "$wt" ] || wt=$project
+
+  sd=$(_sdir "$b" "$window"); mkdir -p "$sd" "$w"
+  {
+    printf 'sid=%s\n' "$window"
+    printf 'task=%s\n' "$t"
+    printf 'role=%s\n' "$r"
+    printf 'attempt=%s\n' "$a"
+    printf 'identity=%s\n' "$window"
+    printf 'workdir=%s\n' "$wt"
+    printf 'spawn_id=%s\n' "$spawn_id"
+    printf 'backend=real\n'
+    printf 'created_at=%s\n' "$(_now)"
+    printf 'state=active\n'
+  } > "$sd/meta"
+  : > "$sd/events.jsonl"
+  _emit "$b" "$window" ACK
+  _emit "$b" "$window" ACTIVE
+  echo "DISPATCHED session=$window identity=$window worktree=$wt spawn_id=$spawn_id"
+}
+
 cmd_dispatch() { # --batch B --task T --role R --attempt N --workdir W [--identity ID]
+  if [ "$BACKEND" = real ]; then _real_dispatch "$@"; return $?; fi
   local b='' t='' r='' a='' w='' ident=''
   while [ $# -gt 0 ]; do case "$1" in
     --batch) b=$2; shift 2;; --task) t=$2; shift 2;; --role) r=$2; shift 2;;

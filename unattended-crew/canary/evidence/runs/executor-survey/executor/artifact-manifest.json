@@ -1,0 +1,6 @@
+{"path":"executor/command-log.jsonl","sha256":"e0cfe1c98c001e367abb6fc6566dba4c7c141175d6a072f1b04e91e650822af0"}
+{"path":"executor/stdout/cmd.out","sha256":"12379d44752f7b6a4e4994cfabb2602b35e57a46f152e1f79992cc664a15c18c"}
+{"path":"executor/stderr/cmd.err","sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+{"path":"executor/rc","sha256":"9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"}
+{"path":"executor/git-before.json","sha256":"09c65177b5e6809b64fd2f670c0519ca284856a106ed509432e7ace8075939ba"}
+{"path":"executor/git-after.json","sha256":"d7ca1e65897238fa8d828ac56bdfbb97e5f4eb7fe6ccdd252cdcd3bde0d3ec50"}

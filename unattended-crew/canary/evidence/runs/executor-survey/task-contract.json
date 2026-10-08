@@ -1,0 +1,2 @@
+{ "mode": "production", "required_tests": ["test-tree-survey"],
+  "forbidden_operations": ["github_write","credential_change","home_checkout_change","watcher_runtime_change","real_worker_call","wake_drain","backpass_change","kill_other_session_process","external_write"] }

@@ -1,0 +1,11 @@
+{
+  "repo": "/Users/irene/Developer/kunchenguid_repos/firstmate",
+  "tests_dir_files_total": 9560681,
+  "test_sh_top_level": 242,
+  "test_sh_recursive": 242,
+  "representative_runner": "bin/fm-test-run.sh",
+  "sample_command": "bash bin/fm-test-run.sh <suite>  (or: bash tests/<suite>.test.sh)",
+  "survey_duration_s": 0,
+  "writes_to_repo": 0
+}
+SURVEY_DONE repo=/Users/irene/Developer/kunchenguid_repos/firstmate top_level_tests=242 all_tests=242 bytes=9560681

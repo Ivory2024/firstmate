@@ -10,12 +10,13 @@ worker/provider was called.
 
 | Axis | Status | Basis |
 |---|---|---|
-| Implementation | **IMPLEMENTED** | coordinator, adapter, evidence collector, judge, fake auditor, contracts all present and executable |
-| Verification | **LOCALLY_TESTED** + **AUDIT_UNAVAILABLE** (real AI audit) | 30/30 checks green across 3 suites; a separate OS process re-verified; no real Codex/Claude audit ran |
-| Integration | **FAKE_BACKEND_E2E_PASS** + **INTEGRATION_HOLD** (real crew) | full fake-backend E2E passed; the `real` adapter backend refuses with `INTEGRATION_HOLD` |
+| Implementation | **IMPLEMENTED** | coordinator, adapter (fake + real), evidence collector, judge, fake auditor, contracts all present and executable |
+| Verification | **LOCALLY_TESTED** (30/30) + **INDEPENDENTLY_VERIFIED** (real audit, canary) | 30/30 checks green; a real separate-session auditor returned PASS and reproduced the counts; Judge `VERIFIED_PASS` |
+| Integration | **REAL_CREW_INTEGRATED** (canary) + **INTEGRATION_HOLD** (unattended real E2E) | one real Scout + one real audit ran once (G1/G2); the coordinator's real evidence/audit loop is still a documented gap |
 
-Not claimed: `INDEPENDENTLY_VERIFIED` (no real AI audit), `REAL_CREW_INTEGRATED`
-(no real dispatch), `DEPLOYED` (operational application is an approval gate).
+Real canary result: `canary/canary-report.md` (verdict `CANARY_VERIFIED_PASS`).
+Cleanup/teardown of the two completed Scout sessions is an open approval.
+Not claimed: `DEPLOYED` (G4 not approved).
 
 ## What was built
 

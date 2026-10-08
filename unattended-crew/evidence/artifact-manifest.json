@@ -1,4 +1,4 @@
-{"path":"evidence/command-log.jsonl","sha256":"c11d5a51b1e775ecd6dfd5f3c970051bf83f40994970f54ede6f899ad3537424"}
+{"path":"evidence/command-log.jsonl","sha256":"227698d6cff3d8ab4c711fe16933695e3c91e504d1b4c869510b02bce9b9f739"}
 {"path":"evidence/test-results/coordinator.out","sha256":"d84fb3c71ab65cf3dbbe651f757113f4d71862c3bb638394111dd3768816bc9a"}
 {"path":"evidence/test-results/judge.out","sha256":"1872a833ea4f3986bd6cce67738068d99ef1efe244415a83355de3f419d2aea2"}
 {"path":"evidence/test-results/restart.out","sha256":"eb9c6ce9cb4f4222386f2cfa6b73979b9845595b8302f219fa9578f56ed0c514"}

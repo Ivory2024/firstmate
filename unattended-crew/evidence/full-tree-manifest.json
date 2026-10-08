@@ -1,0 +1,296 @@
+{
+  "baseline_sha": "5f4a10281937c4999138d61b945589d829c25d34",
+  "branch": "fm/unattended-crew-orchestrator-20261008",
+  "files": [
+    {
+      "path": "architecture/firstmate-integration-map.md",
+      "sha256": "db5856a160882b3439e55a9b3ec851125d0a420403142f95f634f177a5fcdce3",
+      "bytes": 7418
+    },
+    {
+      "path": "architecture/pstack-adaptation.md",
+      "sha256": "a891b7acb8821ad3aa3f4ed55242f9c3e59746601f8584f8fdcafb2ad1b54d9a",
+      "bytes": 3426
+    },
+    {
+      "path": "audit/audit-status.json",
+      "sha256": "77c691b07fb91bdd5eed9c4f8ffd4adf40e79dcf2160e7cec3b0259b29e00401",
+      "bytes": 361
+    },
+    {
+      "path": "audit/audit.sh",
+      "sha256": "f86b64ceb3c56942695d6166c2bd8b7f1c5be3cad7a6a9c2552ccc07fb00ea09",
+      "bytes": 3808
+    },
+    {
+      "path": "audit/findings.md",
+      "sha256": "ad7c6e21c98fca06f69396325b64022728960b749721975f513f8f07bcb35486",
+      "bytes": 513
+    },
+    {
+      "path": "canary/canary-report.md",
+      "sha256": "d5d02ad0fc195aa30db58233e2fc346e97c57526331dc902936dc19fa77768b9",
+      "bytes": 7682
+    },
+    {
+      "path": "canary/evidence/auditor/crew-state.txt",
+      "sha256": "c6fe06088fce919099dcf804ae134209af53ea1f9d8bbe06b3bc9c23ab5583fd",
+      "bytes": 65
+    },
+    {
+      "path": "canary/evidence/auditor/meta.txt",
+      "sha256": "c971545dce8032213e373fd92e0b215415521c8f0f88042ebf28fca6640c465b",
+      "bytes": 463
+    },
+    {
+      "path": "canary/evidence/auditor/report.md",
+      "sha256": "6e82dc1f6267eab469b2e6c23398fe4123b799b45e73268e581bd90dc311cd5a",
+      "bytes": 7906
+    },
+    {
+      "path": "canary/evidence/auditor/report.sha256",
+      "sha256": "63a0406e54b995ac15abf3f0c66945dc0b644a982ce519f06397cf1ec8ce539b",
+      "bytes": 76
+    },
+    {
+      "path": "canary/evidence/auditor/status.txt",
+      "sha256": "63a2c9a14a70855eb81a58cebfa503d2507dc2428a21311ccfb7b16a8ee198ba",
+      "bytes": 603
+    },
+    {
+      "path": "canary/evidence/executor/crew-state.txt",
+      "sha256": "c9551161fe889bc907928da38ed7c38600d0aed95edc248d4350708232d7dc45",
+      "bytes": 395
+    },
+    {
+      "path": "canary/evidence/executor/meta.txt",
+      "sha256": "96fafb36561534d759132d0b1e292955e53c370588d21c50101cf72dee8c3bd9",
+      "bytes": 408
+    },
+    {
+      "path": "canary/evidence/executor/report.md",
+      "sha256": "dce1fa159403f4667f09d196c3f8bd231a995d83c3d87afdfa2f4b0eb32cb259",
+      "bytes": 10392
+    },
+    {
+      "path": "canary/evidence/executor/report.sha256",
+      "sha256": "9b38db9e8701d0f4fed8c96efda8385ec77dc215df5f544e5794f7a5f9b3dd67",
+      "bytes": 76
+    },
+    {
+      "path": "canary/evidence/executor/status.txt",
+      "sha256": "6893801ca2a0afd41810679ab91171ee8411027d2b52d6366bdf922ef3fc3be7",
+      "bytes": 413
+    },
+    {
+      "path": "canary/evidence/runs/executor-survey/auditor/findings.json",
+      "sha256": "fe45e8f106be8f77c669e82c0e839b74a87156403b86213c86cec70728c5dd45",
+      "bytes": 245
+    },
+    {
+      "path": "canary/evidence/runs/executor-survey/auditor/session.json",
+      "sha256": "0a81af7b7f1ef490d034a1a6d4b65dee8da0a51be10c5db387457fa040f1ea0b",
+      "bytes": 172
+    },
+    {
+      "path": "canary/evidence/runs/executor-survey/executor/artifact-manifest.json",
+      "sha256": "f6dd2c96ca92b645f2294b8e8fdacc2b0d61fca8c48e21545f643336ba66895d",
+      "bytes": 658
+    },
+    {
+      "path": "canary/evidence/runs/executor-survey/executor/command-log.jsonl",
+      "sha256": "e0cfe1c98c001e367abb6fc6566dba4c7c141175d6a072f1b04e91e650822af0",
+      "bytes": 305
+    },
+    {
+      "path": "canary/evidence/runs/executor-survey/executor/git-after.json",
+      "sha256": "d7ca1e65897238fa8d828ac56bdfbb97e5f4eb7fe6ccdd252cdcd3bde0d3ec50",
+      "bytes": 76
+    },
+    {
+      "path": "canary/evidence/runs/executor-survey/executor/git-before.json",
+      "sha256": "09c65177b5e6809b64fd2f670c0519ca284856a106ed509432e7ace8075939ba",
+      "bytes": 92
+    },
+    {
+      "path": "canary/evidence/runs/executor-survey/executor/pid",
+      "sha256": "3a1bf6d7a131bdb9291f2d4428e3b0db5c4be7e466fbd3d33c583ac1d6140aa9",
+      "bytes": 6
+    },
+    {
+      "path": "canary/evidence/runs/executor-survey/executor/rc",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2
+    },
+    {
+      "path": "canary/evidence/runs/executor-survey/executor/real-report.md",
+      "sha256": "dce1fa159403f4667f09d196c3f8bd231a995d83c3d87afdfa2f4b0eb32cb259",
+      "bytes": 10392
+    },
+    {
+      "path": "canary/evidence/runs/executor-survey/executor/start_epoch",
+      "sha256": "5c724deceac10cd12c1a3234580e2032d0eb9e8a06b506dcf335b25a835540ed",
+      "bytes": 11
+    },
+    {
+      "path": "canary/evidence/runs/executor-survey/executor/stderr/cmd.err",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "canary/evidence/runs/executor-survey/executor/stdout/cmd.out",
+      "sha256": "12379d44752f7b6a4e4994cfabb2602b35e57a46f152e1f79992cc664a15c18c",
+      "bytes": 462
+    },
+    {
+      "path": "canary/evidence/runs/executor-survey/executor/test-results.json",
+      "sha256": "1d1cfaff0f1ce1fa7be292f1d84ba8f09c37312c34c99189e2bfe6252267fb41",
+      "bytes": 53
+    },
+    {
+      "path": "canary/evidence/runs/executor-survey/executor/wd",
+      "sha256": "085f1c8ea96ddcc390424e8b213148fd3d714bb41b2d3a3f7c09e6da0b56ef6f",
+      "bytes": 54
+    },
+    {
+      "path": "canary/evidence/runs/executor-survey/gate/summary.md",
+      "sha256": "7d97fc71bb23c8029047c9966ff1df2f910ed95a226f859de0d3738babbe943d",
+      "bytes": 80
+    },
+    {
+      "path": "canary/evidence/runs/executor-survey/gate/verdict.json",
+      "sha256": "3c6538fd9de246291e4ce86cda238b720c85d28be223762e0b6d354b12f3abfc",
+      "bytes": 68
+    },
+    {
+      "path": "canary/evidence/runs/executor-survey/task-contract.json",
+      "sha256": "4dccfa3e1997e84e6d4dc016138344517171b17dcf83e104f70cc43d3010347a",
+      "bytes": 273
+    },
+    {
+      "path": "canary/firstmate-unattended-canary-01.contract.json",
+      "sha256": "33e42177b5fabdb0bc639f7a12c3e3a05c2e9ef6846969c776ffd1352f88a641",
+      "bytes": 795
+    },
+    {
+      "path": "canary/preflight.sh",
+      "sha256": "28d9e0517b840d6e12f22bc43d5d23b1f25b4d54c7ff467e7989081ec9d6a971",
+      "bytes": 3353
+    },
+    {
+      "path": "canary/survey.sh",
+      "sha256": "25a5b785cde640c8c013fa7603604a4510d1fc646cd0f3779b8854a556d9245a",
+      "bytes": 1536
+    },
+    {
+      "path": "contracts/state-machine.md",
+      "sha256": "f0a9429fac3c4531445a749138081af6079f91695c93ea04a0e3f333715fdaf4",
+      "bytes": 5465
+    },
+    {
+      "path": "contracts/task-contract.schema.json",
+      "sha256": "6ba06c0fd7d4b49e2190a25c043f87c124dee5a5666e649a11195992f4bc3179",
+      "bytes": 3314
+    },
+    {
+      "path": "evidence/artifact-manifest.json",
+      "sha256": "d2ee875caf1c38e76e7e574a532bfb531211e7ea3c38fb74e91d93dfd66a0480",
+      "bytes": 479
+    },
+    {
+      "path": "evidence/command-log.jsonl",
+      "sha256": "227698d6cff3d8ab4c711fe16933695e3c91e504d1b4c869510b02bce9b9f739",
+      "bytes": 428
+    },
+    {
+      "path": "evidence/test-results/coordinator.out",
+      "sha256": "d84fb3c71ab65cf3dbbe651f757113f4d71862c3bb638394111dd3768816bc9a",
+      "bytes": 520
+    },
+    {
+      "path": "evidence/test-results/judge.out",
+      "sha256": "1872a833ea4f3986bd6cce67738068d99ef1efe244415a83355de3f419d2aea2",
+      "bytes": 395
+    },
+    {
+      "path": "evidence/test-results/restart.out",
+      "sha256": "eb9c6ce9cb4f4222386f2cfa6b73979b9845595b8302f219fa9578f56ed0c514",
+      "bytes": 364
+    },
+    {
+      "path": "handoff/approval-gates.md",
+      "sha256": "31f7897acdceb772c859d0ad0a64e13f04608e800c06d229d5e43601222d3ece",
+      "bytes": 2996
+    },
+    {
+      "path": "handoff/implementation-status.md",
+      "sha256": "7a1499a5fe95d7460134bb4c9f02925477d1817af7796fd052ad312019c9339e",
+      "bytes": 3610
+    },
+    {
+      "path": "handoff/integration-plan.md",
+      "sha256": "86945ae0301d664135cdfd7ee04b6d0c4d4c84b924fca9935dd354fe45023d93",
+      "bytes": 2637
+    },
+    {
+      "path": "handoff/operational-readiness.md",
+      "sha256": "5d64bd2b742bcc79fb482afea088d375c9a3fd93bf9e70640f72c59cc2e833dc",
+      "bytes": 3210
+    },
+    {
+      "path": "implementation/fake-auditor.sh",
+      "sha256": "b21913be530a91586cb180256e04d3d86e21b2e68f5a773889bff21fb3547501",
+      "bytes": 2415
+    },
+    {
+      "path": "implementation/fm-unattended-adapter.sh",
+      "sha256": "95d4f9ae54ce997d1a2f1160d221495cbc9170598cb92ae42fdae7a4714ebc79",
+      "bytes": 9099
+    },
+    {
+      "path": "implementation/fm-unattended-evidence.sh",
+      "sha256": "cd533328dfe865b0b18e319948ec89963c06f8e6d5f7a1ef4d8d4d91acad8c19",
+      "bytes": 4520
+    },
+    {
+      "path": "implementation/fm-unattended-judge.sh",
+      "sha256": "e168b8305df7f1237c375861422ebd3ae8b6ac9d200200ce20121918b73887b9",
+      "bytes": 6444
+    },
+    {
+      "path": "implementation/fm-unattended.sh",
+      "sha256": "a281011a2a5c63faa0d11ffde781c1d5f250abd76824bd527f72750a5297254a",
+      "bytes": 16640
+    },
+    {
+      "path": "tests/coordinator.test.sh",
+      "sha256": "955040aae5e9da8f0426605c883deabb7a9544147b8ca94bd67184ceee17e5fe",
+      "bytes": 7127
+    },
+    {
+      "path": "tests/fixtures/normal.contract.json",
+      "sha256": "8ded814ca7ce7048dd0872346c7a807e21ac76604e27d63fe27d957e38aeb1e7",
+      "bytes": 720
+    },
+    {
+      "path": "tests/judge.test.sh",
+      "sha256": "1f4c5bbe568cc114033f1286b2269f3b5bc25d5ae5dad510127a34b7ca2b1cfd",
+      "bytes": 4030
+    },
+    {
+      "path": "tests/lib.sh",
+      "sha256": "f85149eb1cea2e93c065ee01f740d1ff980269fd1ef2d0e574608c3d455767fd",
+      "bytes": 1195
+    },
+    {
+      "path": "tests/restart.test.sh",
+      "sha256": "7e9e71c3eb7a8f7b092a219666963b121254cf0cd789b9bf4a15904ebe3976ea",
+      "bytes": 3396
+    },
+    {
+      "path": "tests/run-all.sh",
+      "sha256": "03c378cbbfbe53b219634ff9b8793315a0c62d53451a129cc16207c0f7c5b9ee",
+      "bytes": 1361
+    }
+  ]
+}

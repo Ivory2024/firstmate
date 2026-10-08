@@ -1,5 +1,16 @@
 # Approval gates
 
+> **Update 2026-10-08 (canary batch).** The captain gave a current, explicit,
+> bounded in-chat approval for this work only: **G1 and G2 approved for exactly
+> one real Scout + one real audit session each**, no retry, no GitHub write, no
+> operational apply, no shared-instruction change. Both were executed once and
+> closed — see `canary/canary-report.md` (Executor session
+> `firstmate:fm-firstmate-unattended-canary-01`, Auditor session
+> `firstmate:fm-firstmate-unattended-canary-01-audit`, Judge `VERIFIED_PASS`).
+> Cleanup/teardown of the two completed Scout sessions was **not** part of that
+> approval and remains an open approval. **G3, G4, G5 remain NOT approved.**
+> The text below is the original standing gate definition, preserved.
+
 Nothing below is authorized by this batch. Each gate needs an explicit,
 in-the-moment captain decision naming the concrete action.
 
@@ -11,12 +22,16 @@ in-the-moment captain decision naming the concrete action.
 - **Preconditions**: `bin/fm-spawn.sh`, `bin/fm-send.sh`, `bin/fm-crew-state.sh`
   callable; dispatch profile resolved; the task contract's `allowed_paths` and
   `forbidden_operations` enforced.
+- **Status 2026-10-08**: APPROVED (1 call) and EXECUTED; real backend implemented
+  in `implementation/fm-unattended-adapter.sh` (`_real_dispatch`); preflight GO.
 
 ## G2 — Real independent AI audit
 - **Action**: replace `fake-auditor.sh` with a real out-of-session auditor and
   run it in `mode=production`.
 - **Why**: the final audit status is `AUDIT_UNAVAILABLE` until this runs; only
   then may `INDEPENDENTLY_VERIFIED` be claimed.
+- **Status 2026-10-08**: APPROVED (1 call) and EXECUTED; real auditor Scout in a
+  separate session/worktree returned verdict PASS; Judge `VERIFIED_PASS`.
 
 ## G3 — GitHub write / PR
 - **Action**: push the branch and open a PR for the mounted implementation.
