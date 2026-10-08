@@ -171,7 +171,6 @@ async function main() {
 	try {
 		if (existsSync(progressFile)) unlinkSync(progressFile);
 	} catch (_err) {}
-
 	console.log(reqId);
 }
 

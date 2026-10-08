@@ -231,4 +231,8 @@ if ! fmx_meta_link_set "$META" "$RID" "$LINK_TS" "$FOLLOWUPS" "$REQ_PLATFORM" "$
   exit 1
 fi
 
+if [ -f "$SCRIPT_DIR/fm-discord-reaction.sh" ]; then
+  "$SCRIPT_DIR/fm-discord-reaction.sh" "$RID" claimed >/dev/null 2>&1 || true
+fi
+
 printf 'linked %s to X request %s\n' "$ID" "$RID"

@@ -5,6 +5,7 @@
  */
 import { writeFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
+import { reactToCapturedRequest } from "./fm-discord-reaction.js";
 
 const token = process.env.FM_DISCORD_BOT_TOKEN || process.env.FM_DISCORD_TOKEN;
 if (!token) {
@@ -93,7 +94,7 @@ function readDecisionNotifications() {
 // so nothing is rebound to a decision that is already answered. The keyed
 // appliers (answer-one --expect-occurrence, fm-send --resolve-key) refuse a
 // superseded key, so the capture cannot silently re-answer a settled decision.
-function persistDecisionReply(notification, msg, reqId) {
+async function persistDecisionReply(notification, msg, reqId) {
 	if (!existsSync(inboxDir)) mkdirSync(inboxDir, { recursive: true, mode: 0o700 });
 	if (!existsSync(contextDir)) mkdirSync(contextDir, { recursive: true, mode: 0o700 });
 	const inboxFile = join(inboxDir, `${reqId}.json`);
@@ -174,6 +175,7 @@ function persistDecisionReply(notification, msg, reqId) {
 	writeFileSync(temporary, JSON.stringify(updated), { mode: 0o600 });
 	renameSync(temporary, notification.path);
 	notification.record = updated;
+	await reactToCapturedRequest(stateDir, reqId, "accepted").catch(() => false);
 	return true;
 }
 
@@ -261,7 +263,7 @@ async function main() {
 					if (!authorizedUserIds.has(msg.author?.id) || notification.record.channel_id !== msg.channel_id) continue;
 					if (typeof msg.content !== "string" || !msg.content.trim()) continue;
 					const reqId = `discord-sh-${msg.id}`;
-					if (persistDecisionReply(notification, msg, reqId)) console.log(`x-mention ${reqId}`);
+					if (await persistDecisionReply(notification, msg, reqId)) console.log(`x-mention ${reqId}`);
 					continue;
 				}
 
@@ -287,6 +289,7 @@ async function main() {
 				const reqId = `discord-sh-${msg.id}`;
 				const offeredFile = join(contextDir, `${reqId}.offered.json`);
 				if (existsSync(offeredFile)) {
+					await reactToCapturedRequest(stateDir, reqId, "accepted").catch(() => false);
 					continue;
 				}
 
@@ -347,6 +350,7 @@ async function main() {
 				writeFileSync(inboxFile, JSON.stringify(payload, null, 2), { mode: 0o600 });
 				writeFileSync(contextFile, JSON.stringify(contextRecord, null, 2), { mode: 0o600 });
 				writeFileSync(offeredFile, JSON.stringify({ request_id: reqId, recorded_at: Math.floor(Date.now() / 1000) }), { mode: 0o600 });
+				await reactToCapturedRequest(stateDir, reqId, "accepted").catch(() => false);
 
 				console.log(`x-mention ${reqId}`);
 			}
