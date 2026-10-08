@@ -1,0 +1,11 @@
+window=firstmate:fm-firstmate-unattended-single-run-canary-20261008
+endpoint_task_id=firstmate-unattended-single-run-canary-20261008
+worktree=/Users/irene/.treehouse/firstmate-697ce1/14/firstmate
+project=/Users/irene/Developer/kunchenguid_repos/firstmate
+harness=opencode
+kind=scout
+tasktmp=/tmp/fm-firstmate-unattended-single-run-canary-20261008
+model=opencode/ling-3.1-flash-free
+effort=low
+busy_gen=g1791457831.64070.4484
+spawn_gen=s1791457831.58944.25222

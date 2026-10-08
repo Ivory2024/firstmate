@@ -1,0 +1,2 @@
+working [at=1791457838]: spawned
+done [at=1791458164]: read-only survey complete: tests/ has 244 top-level .sh (234 .test.sh + 10 helpers) and 3 .py, recursive counts identical, representative suite tests/fm-brief.test.sh passed exit=0 in 10.55s; report at data/firstmate-unattended-single-run-canary-20261008/report.md

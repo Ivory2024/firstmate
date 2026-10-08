@@ -1,0 +1,11 @@
+sid=firstmate:fm-firstmate-unattended-single-run-canary-20261008
+task=firstmate-unattended-single-run-canary-20261008
+role=executor
+attempt=1
+identity=firstmate:fm-firstmate-unattended-single-run-canary-20261008
+workdir=/Users/irene/.treehouse/firstmate-697ce1/14/firstmate
+spawn_id=firstmate-unattended-single-run-canary-20261008
+home=/Users/irene/Developer/kunchenguid_repos/firstmate
+backend=real
+created_at=2026-10-08T11:10:39Z
+state=spawned

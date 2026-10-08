@@ -18,6 +18,11 @@
   완료했다(새 크루 생성 0). 즉 성공은 "1회 run + 결함수정 + 재관찰"의 결과다.
 - 운영 home tracked 파일 불변(13 dirty 그대로). G3/G4/G5 미실행.
 - 후속 전용 승인으로 **잔여 Executor·Auditor 두 크루를 안전 정리**했다(§21, `TEARDOWN_VERIFIED`).
+- 이어 고유 신규 batch로 **단일 run 무중단 재검증**을 실행했다(§22). 결론: `JUDGE_HOLD`.
+  신규 run 1회가 수동 개입 없이 terminal까지 도달했으나, Auditor가 Executor 보고서의
+  prose off-by-one 2건(패밀리 14≠15, assertion 26≠25)을 독립 검증으로 잡아 `CONFLICT`를
+  반환했고 Judge가 `HOLD`(`audit-conflict`)로 정확히 거부했다. 즉 **무중단 기제는 작동**,
+  **최종 성공 판정은 HOLD**(Executor 모델의 보고서 산술 실수, Coordinator 결함 아님).
 
 ## 2. 시작·종료 시각 및 실제 소요 시간
 
@@ -34,7 +39,7 @@
 | Implementation | **`IMPLEMENTED`** | Coordinator·adapter·evidence·judge 정상; real 경로 결함 2건 수정; pstack 안전 기능 보완 |
 | Verification | **`LOCALLY_TESTED`** | 5 suites 59/59 + 분리 로컬 검증 10/10 + drift 0. (구현 코드의 독립 AI 감사는 없음) |
 | Integration | **`REAL_E2E_VERIFIED`** | 실제 Executor+Auditor 자동 위임, 실제 독립 감사 verdict PASS, Judge `VERIFIED_PASS` |
-| Single-run uninterrupted | **`HOLD`** | 첫 run은 관찰타임아웃, 수정 후 resume/adopt로 완료(§1, §21) |
+| Single-run uninterrupted | **`HOLD`** | 2차 재검증: 신규 run 1회가 종료까지 무중단 도달(수동 resume/adopt 0)했으나 Executor prose off-by-one 2건 → Auditor `CONFLICT` → Judge `HOLD` (`audit-conflict`). §22 |
 | Deployment | **`NOT_DEPLOYED` / G4 HOLD** | G4 미실행 |
 | Crew cleanup | **`PASS`** | 두 Scout teardown 완료, 실행 전후 사후검증 통과(§21) |
 
@@ -195,12 +200,14 @@ workspace 분리(14≠15). `VERIFIED_PASS`는 이 계약의 검증 성공일 뿐
 
 ## 20. Captain에게 필요한 다음 승인
 
-1. **(선택) 단일 `run` live 재확인**: 수정 반영 후 새 real E2E 1쌍(Executor+Auditor 각 1회)
-   승인 시, `resume` 없이 한 번에 `VERIFIED_PASS`인지 확인.
-2. G4 운영 적용 검토 결과에 대한 go/no-go.
-3. G3(push/PR)·G5(공유 지침)는 각각 별도 승인.
-
-(잔여 두 crew teardown은 2026-10-08 전용 승인으로 완료 — §21.)
+1. **신규 재검증 크루 2개 정리(teardown) 승인** (이번 재검증은 teardown 미포함):
+   `bin/fm-teardown.sh firstmate-unattended-single-run-canary-20261008`,
+   `bin/fm-teardown.sh firstmate-unattended-single-run-canary-20261008-audit`.
+2. **(선택) Executor 보고서 충실도 개선 후 단일 run 재재검증**: Executor brief에
+   "보고서의 개수 요약을 캡처와 대조하라"는 지시를 추가하거나 모델을 상향해 prose off-by-one을
+   없앤 뒤, 신규 batch로 단일 run `VERIFIED_PASS` 재확인.
+3. G4 운영 적용 검토 결과에 대한 go/no-go.
+4. G3(push/PR)·G5(공유 지침)는 각각 별도 승인.
 
 ## 21. Crew cleanup 결과 (teardown, 2026-10-08)
 
@@ -237,4 +244,34 @@ Auditor 보고서 §5가 스스로 inventory한 대로(캡틴 콜 0) `fm-captain
   (`0c4c59e1aeb2ac84da8351c89618eae6789004f682a14510fa79efa076edddd8`).
 - watcher·scheduler·launchd·credential·Backpass·wake queue 변경 0 (wake drain 안 함).
 - E2E 증거·보고서·Judge verdict·`c6b49b54` 커밋 모두 보존.
+
+## 22. 단일 run 무중단 재검증 (2026-10-08, 신규 batch)
+
+**판정: `JUDGE_HOLD`.** 무중단 기제는 작동했으나, 성공 게이트(Judge `VERIFIED_PASS`)가
+Executor 보고서의 산술 실수 때문에 충족되지 않았다.
+
+- 신규 고유 batch/run: `firstmate-unattended-single-run-canary-20261008` (기존 배치 ID 미재사용).
+- 시작 11:10:17Z → 종료 11:23:12Z (약 12.9분). `RUN_EXIT=0`.
+- 상태 전이: `QUEUED → DISPATCHING → ACKNOWLEDGED → RUNNING(11:10:39) →
+  EVIDENCE_PENDING(11:16:14) → AUDIT_PENDING(11:16:14) → AUDITING(11:16:30) → HOLD(11:23:12)`.
+- 실제 spawn 2회(Executor 1, Auditor 1), `new=DISPATCHING` 1회, **resume/adopt/retry 0회**, 수동 개입 0회.
+- Executor session `firstmate:fm-firstmate-unattended-single-run-canary-20261008`, worktree slot 14.
+- Auditor session `firstmate:fm-firstmate-unattended-single-run-canary-20261008-audit`, worktree slot 15 (분리 확인).
+- Auditor 독립 검증: verdict `CONFLICT`. 6개 카운트·파일 목록·lane 13·러너 인벤토리 집합 동일성·
+  대표 suite(exit 0, 25 ok)는 **정확히 재현**했다. 불일치는 Executor 보고서의 prose off-by-one 2건:
+  패밀리 "14"(실제 15), assertion "26"(실제 25) — 둘 다 Executor 자신의 캡처와 모순.
+- Judge JSON: `{"verdict":"HOLD","reasons":["audit-conflict"]}` (mode production).
+- 원본 증거: `canary/single-run-20261008/` — `run.log`, `run-meta.txt`,
+  `batches/<id>/state.jsonl`, `.../evidence/runs/<id>/{executor,auditor,gate}`.
+  Executor report sha256 `9c098b1f2d558c390672fbaf441a3f4978a9f64ee332f2cf6ecd7d7e74405bc5`,
+  Auditor report sha256 `af4f5059bd0a9ead404f42df64be765f6488edbef221c27bf621bc23c20ef261`.
+- 안전 경계: 운영 home tracked dirty **13, fingerprint 불변**(`0c4c59e1…ddd8`); GitHub write 0;
+  watcher/scheduler/launchd/credential/Backpass 변경 0; wake drain 0; 비용 0(무료 모델).
+- **해석:** Coordinator의 단일-run 무중단 자동 위임·관찰·감사·판정 기제는 정상 작동했다.
+  `HOLD`는 안전 시스템이 정상적으로 작동한 결과(독립 감사가 Executor 보고서 오류를 잡음)이며
+  Coordinator 결함이 아니다. 이전 배치와 동일한 실패 유형(prose 산술 실수)이 재발했으므로
+  Executor 브리프 강화 또는 모델 상향이 재재검증 선행 조건이다.
+- 잔여 자원(이번 승인에 teardown 미포함): 두 window `firstmate:1`/`firstmate:2`, worktree slot 14/15,
+  pending inbox 0. 후속 teardown 승인 필요(§20). 무해한 `.turn-ended` 마커는 삭제하지 않음.
+
 
