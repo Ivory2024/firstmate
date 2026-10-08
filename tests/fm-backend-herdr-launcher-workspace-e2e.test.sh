@@ -86,6 +86,8 @@ make_scratch_project() {  # <dir>
   printf '# scratch\n' > "$dir/README.md"
   git -C "$dir" add README.md
   git -C "$dir" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm initial
+  git -C "$dir" config firstmate.baseMode local
+  git -C "$dir" config firstmate.baseRef "$(git -C "$dir" symbolic-ref HEAD)"
   git clone --quiet --bare "$dir" "$dir.origin.git"
   git -C "$dir" remote add origin "file://$dir.origin.git"
 }

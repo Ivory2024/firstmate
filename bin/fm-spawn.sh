@@ -216,13 +216,14 @@
 #   set (its header owns the refusal). A secondmate runs in its own home and is
 #   not marked.
 #   Only after this isolation check, every fresh ship or scout requires a clean
-#   task worktree. When an origin configuration is detected, spawn fetches it,
-#   resolves the current remote default branch, and resets to its tip. When none
-#   is detected, spawn skips that remote freshness check and launches from the
-#   clean worktree's current HEAD. Relaunch reuses the recorded worktree without
-#   fetching or resetting its base. An unreachable detected origin, unresolved
-#   default branch, or non-clean worktree refuses a fresh spawn rather than
-#   risking a PR based on stale history or discarding local work.
+#   task worktree and refreshes it to the verified base pinned by
+#   fm-git-base-lib.sh. Remote mode verifies repository identity and the
+#   configured main ref; an absent or unusable remote refuses launch. The
+#   explicit firstmate.baseMode=local contract is documented in
+#   docs/configuration.md. Relaunch reuses the recorded worktree without
+#   refreshing its base. A non-clean worktree refuses rather than discarding
+#   local work. See docs/configuration.md for the complete base and publish
+#   guard contract.
 #   A slot whose only deviation is a stale submodule gitlink is refused by that
 #   same clean check, but is reported as a stale checkout naming each submodule
 #   and both pins; nothing is converged or removed, and no remedy is suggested.
@@ -416,6 +417,9 @@ esac
 
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
+
+# shellcheck source=bin/fm-git-base-lib.sh
+. "$SCRIPT_DIR/fm-git-base-lib.sh"
 
 # shellcheck source=bin/fm-tasks-axi-lib.sh
 . "$SCRIPT_DIR/fm-tasks-axi-lib.sh"
@@ -3030,22 +3034,8 @@ EOF
   printf '%s' "$lines" >&2
 }
 
-spawn_worktree_has_origin_config() { # <worktree>
-  # Resolved remote.origin.* variables cover Git's effective include/includeIf chain; raw headers are also detected in the worktree config and any included file Git names through another variable. Git cannot enumerate a variable-less included file, so an empty origin section that is its only content remains indistinguishable from absence and intentionally proceeds rather than reimplementing Git's config parser.
-  local worktree=$1 config origin key seen=$'\n'
-  git -C "$worktree" config --get-regexp '^remote\.origin\.' >/dev/null 2>&1 && return 0
-  while IFS=$'\t' read -r origin key; do
-    case $origin in file:*) config=${origin#file:} ;; *) continue ;; esac
-    [ -f "$config" ] || continue
-    case $seen in *$'\n'"$config"$'\n'*) continue ;; esac
-    seen+="$config"$'\n'
-    awk '/^[[:space:]]*\[[[:space:]]*[Rr][Ee][Mm][Oo][Tt][Ee][[:space:]]+"origin"[[:space:]]*\][[:space:]]*([#;].*)?$/ || /^[[:space:]]*\[[[:space:]]*[Rr][Ee][Mm][Oo][Tt][Ee]\.origin[[:space:]]*\][[:space:]]*([#;].*)?$/ { found=1 } END { exit !found }' "$config" && return 0
-  done < <(git -C "$worktree" config --list --show-origin 2>/dev/null || true)
-  return 1
-}
-
 freshen_spawn_worktree_base() { # <worktree>
-  local worktree=$1 default target expected actual status
+  local worktree=$1 status
   status=$(git -C "$worktree" -c core.quotePath=false status --porcelain) || {
     echo "error: could not inspect pooled worktree '$worktree' before refreshing its base" >&2
     return 1
@@ -3058,39 +3048,7 @@ freshen_spawn_worktree_base() { # <worktree>
     fi
     return 1
   fi
-  if ! spawn_worktree_has_origin_config "$worktree"; then
-    return 0
-  fi
-  if ! git -C "$worktree" fetch --quiet origin; then
-    echo "error: could not fetch origin for pooled worktree '$worktree'; refusing to launch from a potentially stale base" >&2
-    return 1
-  fi
-  if ! git -C "$worktree" remote set-head origin --auto >/dev/null 2>&1; then
-    echo "error: could not resolve origin's current default branch for pooled worktree '$worktree'; refusing to launch from a potentially stale base" >&2
-    return 1
-  fi
-  default=$(default_branch "$worktree") || {
-    echo "error: could not determine origin's default branch for pooled worktree '$worktree'; refusing to launch from a potentially stale base" >&2
-    return 1
-  }
-  target="origin/$default"
-  if ! git -C "$worktree" fetch --quiet origin "+refs/heads/$default:refs/remotes/origin/$default"; then
-    echo "error: could not fetch '$target' for pooled worktree '$worktree'; refusing to launch from a potentially stale base" >&2
-    return 1
-  fi
-  expected=$(git -C "$worktree" rev-parse --verify --quiet "$target^{commit}" 2>/dev/null) || {
-    echo "error: '$target' is not a commit for pooled worktree '$worktree'; refusing to launch from a potentially stale base" >&2
-    return 1
-  }
-  if ! git -C "$worktree" reset --hard "$target" >/dev/null; then
-    echo "error: could not reset pooled worktree '$worktree' to '$target'; refusing to launch from a potentially stale base" >&2
-    return 1
-  fi
-  actual=$(git -C "$worktree" rev-parse --verify --quiet HEAD 2>/dev/null || true)
-  if [ "$actual" != "$expected" ]; then
-    echo "error: pooled worktree '$worktree' is at '${actual:-unknown}', not current '$target' ('$expected'); refusing to launch" >&2
-    return 1
-  fi
+  fm_git_base_refresh_worktree "$worktree" "$PROJ_ABS"
 }
 
 herdr_projection_meta_field_exact() { # <meta> <key>

@@ -142,6 +142,8 @@ Exercise Muse dispatch.
 Verify the Muse harness behavior under test.
 EOF
   fm_git_worktree "$proj" "$wt" "fm/$id"
+  git -C "$proj" config firstmate.baseMode local
+  git -C "$proj" config firstmate.baseRef refs/heads/main
   touch "$home/state/.last-watcher-beat"
   printf '%s\n' "$case_dir|$home|$proj|$wt|$fakebin|$id"
 }

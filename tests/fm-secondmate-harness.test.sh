@@ -984,6 +984,8 @@ test_spawn_fallback_chain_and_crew_scout_unaffected() {
   wt="$w/crew-wt"
   fakebin=$(make_launch_capturing_tmux "$w/tmux-crew")
   fm_git_worktree "$proj" "$wt" "wt-crew"
+  git -C "$proj" config firstmate.baseMode local
+  git -C "$proj" config firstmate.baseRef refs/heads/main
   mkdir -p "$home/data/$id" "$home/projects" "$home/state"
   cat > "$home/data/$id/brief.md" <<'EOF'
 # Task

@@ -1,17 +1,40 @@
 #!/usr/bin/env bash
 # Regression tests for fm-spawn's pooled-worktree base refresh.
 #
-# A treehouse pool can return a clean detached worktree whose origin/main was
-# advanced after the worktree was allocated.
+# A treehouse pool can return a clean detached worktree whose verified fork
+# base advanced after the worktree was allocated.
 # These tests drive the real spawn path with a fake terminal, then prove it
-# starts the worker from the fetched origin tip, launches a clean origin-less
-# pool as-is, or stops when a configured origin is unusable.
+# starts the worker from the fetched fork tip, accepts only an explicit local
+# base contract for originless pools, or stops when source identity is unclear.
 set -u
 
 # shellcheck source=tests/fixtures.sh
 . "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
 
 TMP_ROOT=$(fm_test_tmproot fm-spawn-pool-base-freshen)
+REAL_GIT=$(command -v git)
+
+install_git_fetch_adapter() { # <fakebin>
+  local fakebin=$1
+  cat > "$fakebin/git" <<'SH'
+#!/usr/bin/env bash
+set -eu
+args=("$@")
+fetch=0
+for arg in "${args[@]}"; do
+  [ "$arg" = fetch ] && fetch=1
+done
+if [ "$fetch" = 1 ] && [ -n "${FM_TEST_GIT_FETCH_URL:-}" ]; then
+  for i in "${!args[@]}"; do
+    if [ "${args[$i]}" = https://github.com/Ivory2024/firstmate.git ]; then
+      args[$i]="file://$FM_TEST_GIT_FETCH_URL"
+    fi
+  done
+fi
+exec "$FM_TEST_REAL_GIT" "${args[@]}"
+SH
+  chmod +x "$fakebin/git"
+}
 
 make_case() {
   local name=$1 id=$2 default=${3:-main} case_dir home project origin pool publisher fakebin initial
@@ -22,6 +45,7 @@ make_case() {
   pool="$case_dir/pool"
   publisher="$case_dir/publisher"
   fakebin=$(make_spawn_fakebin "$case_dir/fake")
+  install_git_fetch_adapter "$fakebin"
 
   mkdir -p "$home/data/$id" "$home/projects" "$home/state" "$home/config"
   printf 'codex\n' > "$home/config/crew-harness"
@@ -33,7 +57,9 @@ make_case() {
   git -C "$project" add README.md
   git -C "$project" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm initial
   git clone --quiet --bare "$project" "$origin"
-  git -C "$project" remote add origin "file://$origin"
+  git -C "$project" remote add origin https://github.com/Ivory2024/firstmate.git
+  git -C "$project" config firstmate.expectedRepository Ivory2024/firstmate
+  git -C "$project" config firstmate.baseRef "refs/heads/$default"
   initial=$(git -C "$project" rev-parse HEAD)
   git -C "$project" worktree add --quiet --detach "$pool" "$initial"
 
@@ -43,11 +69,11 @@ make_case() {
   git -C "$publisher" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm advance-main
   git -C "$publisher" push --quiet origin "$default"
 
-  printf '%s\n' "$case_dir|$home|$project|$pool|$fakebin|$initial|$default"
+  printf '%s\n' "$case_dir|$home|$project|$pool|$fakebin|$initial"
 }
 
 read_case_record() {
-  IFS='|' read -r CASE_DIR HOME_DIR PROJECT_DIR POOL_DIR FAKEBIN_DIR INITIAL_SHA DEFAULT_BRANCH <<EOF
+  IFS='|' read -r CASE_DIR HOME_DIR PROJECT_DIR POOL_DIR FAKEBIN_DIR INITIAL_SHA <<EOF
 $1
 EOF
 }
@@ -55,8 +81,13 @@ EOF
 run_spawn() {
   local id=$1
   shift
-  fm_test_run_spawn "$HOME_DIR" "$POOL_DIR" "$FAKEBIN_DIR" \
+  FM_TEST_REAL_GIT="$REAL_GIT" FM_TEST_GIT_FETCH_URL="$CASE_DIR/origin.git" \
+    FM_TEST_BASE_CONTRACT=remote fm_test_run_spawn "$HOME_DIR" "$POOL_DIR" "$FAKEBIN_DIR" \
     "$id" "$PROJECT_DIR" "$@"
+}
+
+test_base_pin_path() { # <worktree>
+  printf '%s/info/fm-verified-base\n' "$(git -C "$1" rev-parse --absolute-git-dir)"
 }
 
 test_remote_seeded_home_spawns_from_treehouse_pool() {
@@ -130,7 +161,7 @@ test_linked_spawning_home_rejects_primary_before_refresh() {
       fi
       if [ -e "$HOME_DIR/state/$id.meta" ]; then
         printf 'saved task metadata:\n'; cat "$HOME_DIR/state/$id.meta"
-        printf 'worker HEAD=%s origin/main=%s\n' "$(git -C "$POOL_DIR" rev-parse HEAD)" "$(git -C "$POOL_DIR" rev-parse origin/main)"
+        printf 'worker HEAD=%s verified-fork/main=%s\n' "$(git -C "$POOL_DIR" rev-parse HEAD)" "$(git -C "$POOL_DIR" rev-parse refs/remotes/fm-verified-fork/main)"
       else
         printf 'task metadata absent\n'
       fi
@@ -140,7 +171,7 @@ test_linked_spawning_home_rejects_primary_before_refresh() {
       expect_code 0 "$status" "a genuine scout copy from a linked home should launch"$'\n'"$out"
       assert_grep "worktree=$POOL_DIR" "$HOME_DIR/state/$id.meta" \
         "spawn did not record the genuine scout copy"
-      [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$(git -C "$POOL_DIR" rev-parse origin/main)" ] \
+      [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$(git -C "$POOL_DIR" rev-parse refs/remotes/fm-verified-fork/main)" ] \
         || fail "spawn did not refresh the genuine scout copy"
     else
       [ "$status" -ne 0 ] || fail "linked spawning home accepted $returned as a disposable copy"
@@ -164,7 +195,7 @@ test_linked_spawning_home_rejects_primary_before_refresh() {
 }
 
 test_stale_pool_base_refreshes_before_branching() {
-  local rec id out status current branch_head
+  local rec id out status current branch_head pin
   id='pool-current-base-r1'
   rec=$(make_case current-base "$id")
   read_case_record "$rec"
@@ -173,13 +204,20 @@ test_stale_pool_base_refreshes_before_branching() {
   status=$?
   expect_code 0 "$status" "spawn should refresh a stale pooled worktree"
   assert_contains "$out" "spawned $id" "spawn did not report success"
-  current=$(git -C "$POOL_DIR" rev-parse origin/main)
+  current=$(git -C "$POOL_DIR" rev-parse refs/remotes/fm-verified-fork/main)
   branch_head=$(git -C "$POOL_DIR" rev-parse HEAD)
+  pin=$(test_base_pin_path "$POOL_DIR")
+  if [ "${FM_TEST_EVIDENCE:-0}" = 1 ]; then
+    printf '# observed base pin path=%s\n' "$pin"
+    if [ -f "$pin" ]; then cat "$pin"; else printf 'base pin absent\n'; fi
+  fi
   [ "$branch_head" = "$current" ] || fail "spawn left the pooled worktree on stale history"
-  [ "$branch_head" != "$INITIAL_SHA" ] || fail "fixture did not prove origin/main advanced past the pool base"
+  [ "$branch_head" != "$INITIAL_SHA" ] || fail "fixture did not prove fork main advanced past the pool base"
+  assert_contains "$(cat "$pin")" "sha=$current" "spawn did not pin the verified fork SHA"
+  assert_contains "$(cat "$pin")" 'repository=Ivory2024/firstmate' "spawn did not record the verified repository identity"
   if [ "${FM_TEST_EVIDENCE:-0}" = 1 ]; then
     printf '# observed spawn: %s\n' "$(printf '%s\n' "$out" | tail -n 1)"
-    printf '# observed base: HEAD=%s origin/main=%s advanced-main=%s\n' \
+    printf '# observed base: HEAD=%s verified-fork/main=%s advanced-main=%s\n' \
       "$branch_head" "$current" "$(cat "$POOL_DIR/advanced-main.txt")"
   fi
 
@@ -189,30 +227,184 @@ test_stale_pool_base_refreshes_before_branching() {
   status=$?
   expect_code 0 "$status" "repeating the base refresh should be idempotent"
   [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$current" ] \
-    || fail "an idempotent repeat moved the pool away from current origin/main"
+    || fail "an idempotent repeat moved the pool away from current fork main"
 
-  git -C "$POOL_DIR" checkout --quiet -b "fm/$id"
-  git -C "$POOL_DIR" diff --exit-code origin/main...HEAD >/dev/null \
-    || fail "a branch created after spawn differs from current origin/main"
+  out=$(cd "$POOL_DIR" && "$ROOT/bin/fm-publish-guard.sh" branch "fm/$id") \
+    || fail "branch creation from the pinned verified base failed: $out"
+  assert_contains "$out" "verified_base=$current" "branch helper did not report the pinned base"
+  git -C "$POOL_DIR" diff --exit-code refs/remotes/fm-verified-fork/main...HEAD >/dev/null \
+    || fail "a branch created after spawn differs from current fork main"
   assert_grep 'must survive a newly spawned branch' "$POOL_DIR/advanced-main.txt" \
     "the branch created after spawn omitted advanced-main content"
-  pass "a stale pooled worktree refreshes to current origin/main before a crew branch is created"
+  pass "a stale pooled worktree refreshes to current verified fork main before a crew branch is created"
 }
 
-test_non_main_default_branch_refreshes_before_branching() {
-  local rec id out status current branch_head
-  id='pool-current-trunk-r2'
-  rec=$(make_case current-trunk "$id" trunk)
+test_current_fork_main_passes() {
+  local rec id out status current pin
+  id='pool-current-fork-main-r1'
+  rec=$(make_case current-fork-main "$id")
   read_case_record "$rec"
+  git -C "$POOL_DIR" fetch --quiet --no-tags "file://$CASE_DIR/origin.git" refs/heads/main:refs/remotes/fm-verified-fork/main
+  git -C "$POOL_DIR" checkout --quiet --detach refs/remotes/fm-verified-fork/main
+  current=$(git -C "$POOL_DIR" rev-parse HEAD)
 
   out=$(run_spawn "$id" --mode no-mistakes --yolo off)
   status=$?
-  expect_code 0 "$status" "spawn should refresh a stale pooled worktree on a non-main default branch"
-  current=$(git -C "$POOL_DIR" rev-parse "origin/$DEFAULT_BRANCH")
-  branch_head=$(git -C "$POOL_DIR" rev-parse HEAD)
-  [ "$branch_head" = "$current" ] || fail "spawn did not refresh to current origin/$DEFAULT_BRANCH"
-  [ "$branch_head" != "$INITIAL_SHA" ] || fail "fixture did not prove origin/$DEFAULT_BRANCH advanced past the pool base"
-  pass "a stale pooled worktree resolves and refreshes a non-main default branch"
+  expect_code 0 "$status" "spawn should accept a current worktree only after verifying fork main"$'\n'"$out"
+  assert_contains "$out" "spawned $id" "spawn did not accept current verified fork main"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$current" ] \
+    || fail "verifying current fork main moved the worktree away from its verified SHA"
+  pin=$(test_base_pin_path "$POOL_DIR")
+  assert_contains "$(cat "$pin")" "sha=$current" "spawn did not pin the current fork-main SHA"
+  pass "origin pointing to the expected fork and current fork main passes identity verification"
+}
+
+test_github_url_rewrite_to_different_repository_fails_closed() {
+  local rec id out status before
+  id='pool-rewritten-repository-r1'
+  rec=$(make_case rewritten-repository "$id")
+  read_case_record "$rec"
+  git -C "$POOL_DIR" config --unset-all "url.file://$CASE_DIR/origin.git.insteadOf"
+  git -C "$POOL_DIR" config 'url.https://github.com/kunchenguid/firstmate.git.insteadOf' \
+    https://github.com/Ivory2024/firstmate.git
+  before=$(git -C "$POOL_DIR" rev-parse HEAD)
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn fetched through a rewrite to a different repository identity"
+  assert_contains "$out" "Git URL rewrite changes verified repository 'Ivory2024/firstmate'" \
+    "rewrite refusal did not identify the changed repository identity"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
+    || fail "rewritten repository refusal moved the pooled worktree"
+  pass "a GitHub URL rewrite to another repository fails before fetch"
+}
+
+test_github_url_rewrite_to_file_repository_fails_closed() {
+  local rec id out status before other publisher pin
+  id='pool-file-rewrite-r1'
+  rec=$(make_case file-rewrite "$id")
+  read_case_record "$rec"
+  other="$CASE_DIR/other.git"
+  publisher="$CASE_DIR/other-publisher"
+  git init --quiet --bare -b main "$other"
+  git init --quiet -b main "$publisher"
+  printf 'unrelated repository\n' > "$publisher/README.md"
+  git -C "$publisher" add README.md
+  git -C "$publisher" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit -qm unrelated
+  git -C "$publisher" remote add origin "file://$other"
+  git -C "$publisher" push --quiet origin main
+  git -C "$POOL_DIR" config --unset-all "url.file://$CASE_DIR/origin.git.insteadOf"
+  git -C "$POOL_DIR" config "url.file://$other.insteadOf" \
+    https://github.com/Ivory2024/firstmate.git
+  before=$(git -C "$POOL_DIR" rev-parse HEAD)
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn fetched from a file URL rewritten from the verified fork"
+  assert_contains "$out" "Git URL rewrite changes verified repository 'Ivory2024/firstmate'" \
+    "file rewrite refusal did not identify the unverified fetch destination"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
+    || fail "file rewrite refusal moved the pooled worktree"
+  pin=$(test_base_pin_path "$POOL_DIR")
+  [ ! -e "$pin" ] || fail "file rewrite refusal left a verified-base pin"
+  pass "a rewrite to a different file repository fails before fetch and pinning"
+}
+
+test_fork_identity_does_not_depend_on_remote_name() {
+  local rec id out status current
+  id='pool-named-fork-source-r1'
+  rec=$(make_case named-fork-source "$id")
+  read_case_record "$rec"
+  git -C "$POOL_DIR" fetch --quiet --no-tags "file://$CASE_DIR/origin.git" refs/heads/main:refs/remotes/fm-verified-fork/main
+  git -C "$POOL_DIR" checkout --quiet --detach refs/remotes/fm-verified-fork/main
+  current=$(git -C "$POOL_DIR" rev-parse HEAD)
+  git -C "$POOL_DIR" remote rename origin verified-source
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  expect_code 0 "$status" "a remote with the expected repository URL should pass regardless of its name"$'\n'"$out"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$current" ] \
+    || fail "remote-name-independent verification moved a current fork-main worktree"
+  assert_contains "$(cat "$(test_base_pin_path "$POOL_DIR")")" 'repository=Ivory2024/firstmate' \
+    "the pin did not record repository identity independently of the remote name"
+  pass "repository identity verifies a fork remote under a non-origin name"
+}
+
+test_wrong_head_branch_creation_refuses() {
+  local rec id out status pinned wrong
+  id='pool-wrong-head-branch-r1'
+  rec=$(make_case wrong-head-branch "$id")
+  read_case_record "$rec"
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  expect_code 0 "$status" "spawn should pin the current fork base before branch setup"
+  pinned=$(git -C "$POOL_DIR" rev-parse HEAD)
+  git -C "$POOL_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit --allow-empty -qm wrong-head
+  wrong=$(git -C "$POOL_DIR" rev-parse HEAD)
+
+  out=$(cd "$POOL_DIR" && "$ROOT/bin/fm-publish-guard.sh" branch "fm/$id" 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "branch creation accepted a HEAD different from the verified base"
+  assert_contains "$out" "HEAD=$wrong, verified base=$pinned" \
+    "branch refusal did not report the wrong HEAD and pinned base"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$wrong" ] \
+    || fail "branch refusal changed the wrong HEAD"
+  ! git -C "$POOL_DIR" show-ref --verify --quiet "refs/heads/fm/$id" \
+    || fail "branch refusal created the task branch"
+  pass "task branch creation refuses a wrong HEAD without normalizing it"
+}
+
+test_origin_upstream_plugin_migration_shape_fails_closed() {
+  local rec id out status upstream publisher upstream_sha before
+  id='pool-upstream-plugin-migration-r1'
+  rec=$(make_case upstream-plugin-migration "$id")
+  read_case_record "$rec"
+  upstream="$CASE_DIR/upstream.git"
+  publisher="$CASE_DIR/upstream-publisher"
+  git clone --quiet --bare "$PROJECT_DIR" "$upstream"
+  git clone --quiet "file://$upstream" "$publisher"
+  mkdir -p "$publisher/plugin-migration"
+  printf 'local plugin migration failure fixture\n' > "$publisher/plugin-migration/failure-shape.txt"
+  git -C "$publisher" add plugin-migration/failure-shape.txt
+  git -C "$publisher" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit -qm plugin-migration-failure-shape
+  git -C "$publisher" push --quiet origin main
+  upstream_sha=$(git -C "$publisher" rev-parse HEAD)
+  git -C "$POOL_DIR" remote set-url origin https://github.com/kunchenguid/firstmate.git
+  git -C "$POOL_DIR" config "url.file://$upstream.insteadOf" https://github.com/kunchenguid/firstmate.git
+  git -C "$POOL_DIR" fetch --quiet "file://$upstream" refs/heads/main:refs/remotes/test-upstream/main
+  git -C "$POOL_DIR" checkout --quiet --detach "$upstream_sha"
+  before=$(git -C "$POOL_DIR" rev-parse HEAD)
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "origin=upstream was accepted for a fork-identity task"
+  assert_contains "$out" "no configured remote URL resolves to expected repository 'Ivory2024/firstmate'" \
+    "refusal did not identify the expected fork identity"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
+    || fail "wrong-remote refusal rewrote the plugin-migration-shaped upstream HEAD"
+  assert_grep 'local plugin migration failure fixture' "$POOL_DIR/plugin-migration/failure-shape.txt" \
+    "wrong-remote fixture did not retain its upstream-only plugin migration file"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "wrong-remote refusal published task metadata"
+  [ "$before" = "$upstream_sha" ] || fail "wrong-remote fixture did not place HEAD at the upstream commit"
+  pass "origin pointing at upstream with an inherited plugin migration change fails closed without reset"
+}
+
+test_remote_base_other_than_fork_main_fails_closed() {
+  local rec id out status before
+  id='pool-current-trunk-r2'
+  rec=$(make_case current-trunk "$id" trunk)
+  read_case_record "$rec"
+  before=$(git -C "$POOL_DIR" rev-parse HEAD)
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn accepted a remote base ref other than fork main"
+  assert_contains "$out" "verified remote base must be refs/heads/main" \
+    "refusal did not name the required fork-main ref"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
+    || fail "a non-main remote base refusal moved the pooled worktree"
+  pass "a remote default branch other than fork main fails closed"
 }
 
 make_originless_case() {  # <name> <id>
@@ -235,10 +427,10 @@ make_originless_case() {  # <name> <id>
   initial=$(git -C "$project" rev-parse HEAD)
   git -C "$project" worktree add --quiet --detach "$pool" "$initial"
 
-  printf '%s\n' "$case_dir|$home|$project|$pool|$fakebin|$initial|main"
+  printf '%s\n' "$case_dir|$home|$project|$pool|$fakebin|$initial"
 }
 
-test_originless_pool_launches_without_a_freshness_fetch() {
+test_originless_pool_fails_closed_without_a_contract() {
   local rec id out status before
   id='pool-originless-r6'
   rec=$(make_originless_case originless "$id")
@@ -249,17 +441,65 @@ test_originless_pool_launches_without_a_freshness_fetch() {
 
   out=$(run_spawn "$id" --mode no-mistakes --yolo off)
   status=$?
-  expect_code 0 "$status" "spawn should launch a local-only pooled worktree with no origin"$'\n'"$out"
-  assert_contains "$out" "spawned $id" "spawn did not report success for the origin-less pool"
-  assert_not_contains "$out" "could not fetch origin" \
-    "spawn attempted a freshness fetch against a nonexistent origin"
-  [ ! -e "$POOL_DIR/.git/FETCH_HEAD" ] || fail "spawn fetched against a pooled worktree with no origin"
+  [ "$status" -ne 0 ] || fail "spawn succeeded without a verifiable repository identity"
+  assert_contains "$out" "no expected repository identity is configured" \
+    "spawn did not explain why the originless pool could not be verified"
+  [ ! -e "$(git -C "$POOL_DIR" rev-parse --path-format=absolute --git-path FETCH_HEAD)" ] \
+    || fail "spawn fetched against a pooled worktree with no origin"
   [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
     || fail "spawn moved HEAD on an origin-less pooled worktree that had nothing to refresh against"
-  if [ "${FM_TEST_EVIDENCE:-0}" = 1 ]; then
-    printf '# observed origin-less launch: %s\n' "$(printf '%s\n' "$out" | tail -n 1)"
-  fi
-  pass "an origin-less pooled worktree launches as-is, skipping the freshness gate"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "refused originless spawn published task metadata"
+  pass "an originless pool without an explicit local-base contract fails closed"
+}
+
+test_originless_pool_accepts_explicit_local_base_contract() {
+  local rec id out status before source_sha pin
+  id='pool-originless-local-contract-r1'
+  rec=$(make_originless_case originless-local-contract "$id")
+  read_case_record "$rec"
+  git -C "$PROJECT_DIR" config firstmate.baseMode local
+  git -C "$PROJECT_DIR" config firstmate.baseRef refs/heads/main
+  before=$(git -C "$POOL_DIR" rev-parse HEAD)
+  printf 'advance the explicitly selected local source base\n' > "$PROJECT_DIR/local-base-advance.txt"
+  git -C "$PROJECT_DIR" add local-base-advance.txt
+  git -C "$PROJECT_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit -qm local-base-advance
+  source_sha=$(git -C "$PROJECT_DIR" rev-parse refs/heads/main)
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  expect_code 0 "$status" "explicit local-base contract should support a remote-less checkout"$'\n'"$out"
+  assert_contains "$out" "spawned $id" "spawn did not report success for the explicit local-base contract"
+  pin=$(cat "$(test_base_pin_path "$POOL_DIR")")
+  assert_contains "$pin" 'mode=local' \
+    "spawn did not pin the explicit local base mode"
+  assert_contains "$pin" "sha=$source_sha" "local contract did not pin the source checkout's selected base SHA"
+  [ ! -e "$(git -C "$POOL_DIR" rev-parse --path-format=absolute --git-path FETCH_HEAD)" ] \
+    || fail "local-base contract unexpectedly fetched a remote"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$source_sha" ] \
+    || fail "local-base contract did not refresh the pool to the source checkout's selected base"
+  [ "$source_sha" != "$before" ] || fail "fixture did not prove the local source base advanced"
+  assert_grep 'advance the explicitly selected local source base' "$POOL_DIR/local-base-advance.txt" \
+    "pool omitted the advanced source-local base content"
+  pass "an originless pool refreshes only through the explicit shared-repository local-base contract"
+}
+
+test_explicit_local_base_rejects_a_different_git_repository() {
+  local rec id other out status
+  id='pool-local-contract-other-repo-r1'
+  rec=$(make_originless_case local-contract-other-repo "$id")
+  read_case_record "$rec"
+  other="$CASE_DIR/other-source"
+  git clone --quiet "$PROJECT_DIR" "$other"
+  git -C "$other" config firstmate.baseMode local
+  git -C "$other" config firstmate.baseRef refs/heads/main
+
+  out=$( ( . "$ROOT/bin/fm-git-base-lib.sh"; fm_git_base_refresh_worktree "$POOL_DIR" "$other" ) 2>&1 )
+  status=$?
+  [ "$status" -ne 0 ] || fail "local-base mode accepted a worktree from another Git repository"
+  assert_contains "$out" "explicit local-base mode requires the source checkout and pooled worktree to share one Git repository" \
+    "local contract refusal did not explain the required source identity"
+  pass "an explicit local-base contract rejects a worktree from another Git repository"
 }
 
 test_originless_dirty_pool_refuses_without_discarding_work() {
@@ -287,13 +527,14 @@ test_origin_config_without_url_refuses_pool() {
   id='pool-origin-without-url-r1'
   rec=$(make_originless_case origin-without-url "$id")
   read_case_record "$rec"
+  git -C "$PROJECT_DIR" config firstmate.expectedRepository Ivory2024/firstmate
   git -C "$POOL_DIR" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
   before=$(git -C "$POOL_DIR" rev-parse HEAD)
 
   out=$(run_spawn "$id" --mode no-mistakes --yolo off)
   status=$?
   [ "$status" -ne 0 ] || fail "spawn succeeded despite an origin configuration with no URL"
-  assert_contains "$out" "could not fetch origin" \
+  assert_contains "$out" "no configured remote URL resolves to expected repository" \
     "spawn did not refuse an origin configuration with no URL as unusable"
   [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
     || fail "spawn moved HEAD after finding an unusable origin configuration"
@@ -306,6 +547,7 @@ test_empty_origin_config_section_refuses_pool() {
   id='pool-empty-origin-section-r1'
   rec=$(make_originless_case empty-origin-section "$id")
   read_case_record "$rec"
+  git -C "$PROJECT_DIR" config firstmate.expectedRepository Ivory2024/firstmate
   config=$(git -C "$POOL_DIR" rev-parse --path-format=absolute --git-path config)
   printf '\n[remote "origin"]\n' >> "$config"
   before=$(git -C "$POOL_DIR" rev-parse HEAD)
@@ -313,7 +555,7 @@ test_empty_origin_config_section_refuses_pool() {
   out=$(run_spawn "$id" --mode no-mistakes --yolo off)
   status=$?
   [ "$status" -ne 0 ] || fail "spawn succeeded despite an empty origin configuration section"
-  assert_contains "$out" "could not fetch origin" \
+  assert_contains "$out" "no configured remote URL resolves to expected repository" \
     "spawn did not refuse an empty origin configuration section as unusable"
   [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
     || fail "spawn moved HEAD after finding an empty origin configuration section"
@@ -321,11 +563,12 @@ test_empty_origin_config_section_refuses_pool() {
   pass "an empty origin configuration section refuses the pooled worktree"
 }
 
-test_empty_only_included_origin_config_section_launches_pool() {
+test_empty_only_included_origin_config_section_fails_closed() {
   local rec id out status before config included
   id='pool-empty-only-included-origin-section-r1'
   rec=$(make_originless_case empty-only-included-origin-section "$id")
   read_case_record "$rec"
+  git -C "$PROJECT_DIR" config firstmate.expectedRepository Ivory2024/firstmate
   config=$(git -C "$POOL_DIR" rev-parse --path-format=absolute --git-path config)
   included=$(dirname "$config")/empty-origin.inc
   printf '[remote "origin"]\n' > "$included"
@@ -334,20 +577,20 @@ test_empty_only_included_origin_config_section_launches_pool() {
 
   out=$(run_spawn "$id" --mode no-mistakes --yolo off)
   status=$?
-  expect_code 0 "$status" "spawn should proceed when an included empty origin section is not enumerable"$'\n'"$out"
-  assert_contains "$out" "spawned $id" "spawn did not report success for the undetectable included section"
-  assert_not_contains "$out" "could not fetch origin" \
-    "spawn treated an undetectable included empty section as a configured origin"
+  [ "$status" -ne 0 ] || fail "spawn succeeded despite having no URL for the expected repository"
+  assert_contains "$out" "no configured remote URL resolves to expected repository" \
+    "spawn did not fail closed on an included empty remote section"
   [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
     || fail "spawn moved HEAD despite treating the included empty section as origin-less"
-  pass "an empty-only included origin section documents the accepted detection boundary"
+  pass "an included empty remote section cannot bypass repository identity verification"
 }
 
-test_inactive_conditional_origin_include_launches_pool() {
+test_inactive_conditional_origin_include_fails_closed() {
   local rec id out status before config included
   id='pool-inactive-origin-include-r1'
   rec=$(make_originless_case inactive-origin-include "$id")
   read_case_record "$rec"
+  git -C "$PROJECT_DIR" config firstmate.expectedRepository Ivory2024/firstmate
   config=$(git -C "$POOL_DIR" rev-parse --path-format=absolute --git-path config)
   included=$(dirname "$config")/inactive-origin.inc
   printf '[fm-test]\n\tmarker = true\n[remote "origin"]\n' > "$included"
@@ -356,11 +599,12 @@ test_inactive_conditional_origin_include_launches_pool() {
 
   out=$(run_spawn "$id" --mode no-mistakes --yolo off)
   status=$?
-  expect_code 0 "$status" "spawn should ignore an inactive conditional origin include"$'\n'"$out"
-  assert_contains "$out" "spawned $id" "spawn did not report success with an inactive origin include"
+  [ "$status" -ne 0 ] || fail "spawn succeeded without an active remote for the expected repository"
+  assert_contains "$out" "no configured remote URL resolves to expected repository" \
+    "spawn did not fail closed when only an inactive conditional remote was present"
   [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
-    || fail "spawn moved HEAD despite having no effective origin"
-  pass "an inactive conditional origin include leaves the pooled worktree origin-less"
+    || fail "spawn moved HEAD despite missing the expected remote URL"
+  pass "an inactive conditional include cannot stand in for a verified repository URL"
 }
 
 test_unreachable_origin_refuses_stale_pool_base() {
@@ -368,20 +612,22 @@ test_unreachable_origin_refuses_stale_pool_base() {
   id='pool-unreachable-origin-r2'
   rec=$(make_case unreachable-origin "$id")
   read_case_record "$rec"
-  git -C "$POOL_DIR" remote set-url origin "file://$CASE_DIR/missing-origin.git"
+  git -C "$POOL_DIR" config --unset-all "url.file://$CASE_DIR/origin.git.insteadOf"
+  git -C "$POOL_DIR" config "url.file://$CASE_DIR/missing-origin.git.insteadOf" \
+    https://github.com/Ivory2024/firstmate.git
   before=$(git -C "$POOL_DIR" rev-parse HEAD)
 
   out=$(run_spawn "$id" --mode no-mistakes --yolo off)
   status=$?
   [ "$status" -ne 0 ] || fail "spawn succeeded despite an unreachable origin"
-  assert_contains "$out" "could not fetch origin" \
-    "spawn did not clearly refuse an unreachable origin"
+  assert_contains "$out" "Git URL rewrite changes verified repository 'Ivory2024/firstmate'" \
+    "spawn did not refuse an unverified rewritten fetch destination"
   after=$(git -C "$POOL_DIR" rev-parse HEAD)
   [ "$after" = "$before" ] || fail "spawn changed the pooled worktree after origin became unreachable"
   if [ "${FM_TEST_EVIDENCE:-0}" = 1 ]; then
-    printf '# observed unreachable-origin refusal: %s\n' "$(printf '%s\n' "$out" | tail -n 1)"
+    printf '# observed unreachable-repository refusal: %s\n' "$(printf '%s\n' "$out" | tail -n 1)"
   fi
-  pass "an unreachable origin refuses a potentially stale pooled worktree"
+  pass "an unreachable expected repository refuses a potentially stale pooled worktree"
 }
 
 test_direct_pr_and_scout_refresh_before_launch() {
@@ -397,9 +643,9 @@ test_direct_pr_and_scout_refresh_before_launch() {
     fi
     status=$?
     expect_code 0 "$status" "$contract spawn should refresh a stale pooled worktree"
-    current=$(git -C "$POOL_DIR" rev-parse origin/main)
+    current=$(git -C "$POOL_DIR" rev-parse refs/remotes/fm-verified-fork/main)
     [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$current" ] \
-      || fail "$contract spawn did not start at current origin/main"
+    || fail "$contract spawn did not start at current verified fork main"
     assert_grep 'must survive a newly spawned branch' "$POOL_DIR/advanced-main.txt" \
       "$contract spawn omitted advanced-main content"
     if [ "${FM_TEST_EVIDENCE:-0}" = 1 ]; then
@@ -432,25 +678,25 @@ test_dirty_pool_refuses_without_discarding_work() {
   pass "a dirty pooled worktree is refused without discarding its local work"
 }
 
-test_unresolved_remote_default_refuses_pool() {
+test_missing_fork_main_ref_refuses_pool() {
   local rec id out status before
   id='pool-unresolved-default-r5'
   rec=$(make_case unresolved-default "$id")
   read_case_record "$rec"
-  git --git-dir="$CASE_DIR/origin.git" symbolic-ref HEAD refs/heads/missing-default
+  git --git-dir="$CASE_DIR/origin.git" update-ref -d refs/heads/main
   before=$(git -C "$POOL_DIR" rev-parse HEAD)
 
   out=$(run_spawn "$id" --mode no-mistakes --yolo off)
   status=$?
-  [ "$status" -ne 0 ] || fail "spawn succeeded despite an unresolved remote default branch"
-  assert_contains "$out" "could not resolve origin's current default branch" \
-    "spawn did not clearly refuse an unresolved remote default branch"
+  [ "$status" -ne 0 ] || fail "spawn succeeded despite a missing verified fork main ref"
+  assert_contains "$out" "could not fetch 'refs/heads/main' from verified repository" \
+    "spawn did not clearly refuse a missing fork main ref"
   [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
-    || fail "spawn moved HEAD after failing to resolve the remote default branch"
+    || fail "spawn moved HEAD after failing to fetch fork main"
   if [ "${FM_TEST_EVIDENCE:-0}" = 1 ]; then
-    printf '# observed unresolved-default refusal: %s\n' "$(printf '%s\n' "$out" | tail -n 1)"
+    printf '# observed missing-fork-main refusal: %s\n' "$(printf '%s\n' "$out" | tail -n 1)"
   fi
-  pass "an unresolved remote default branch refuses the pooled worktree"
+  pass "a missing fork main ref refuses the pooled worktree"
 }
 
 # A slot left on a stale submodule pin is the field failure this diagnosis exists
@@ -469,6 +715,7 @@ make_submodule_case() {  # <name> <id>
   publisher="$case_dir/publisher"
   sub="$case_dir/sub-origin"
   fakebin=$(make_spawn_fakebin "$case_dir/fake")
+  install_git_fetch_adapter "$fakebin"
 
   mkdir -p "$home/data/$id" "$home/projects" "$home/state" "$home/config"
   printf 'codex\n' > "$home/config/crew-harness"
@@ -492,7 +739,9 @@ make_submodule_case() {  # <name> <id>
     submodule --quiet add "file://$sub" ui
   git -C "$project" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm initial
   git clone --quiet --bare "$project" "$origin"
-  git -C "$project" remote add origin "file://$origin"
+  git -C "$project" remote add origin https://github.com/Ivory2024/firstmate.git
+  git -C "$project" config firstmate.expectedRepository Ivory2024/firstmate
+  git -C "$project" config firstmate.baseRef refs/heads/main
   git -C "$project" worktree add --quiet --detach "$pool" HEAD
   git -C "$pool" -c protocol.file.allow=always submodule --quiet update --init
 
@@ -536,6 +785,9 @@ test_stale_submodule_pin_explains_itself() {
   rec=$(make_submodule_case stale-pin "$id")
   read_submodule_case "$rec"
   strand_submodule_pin_via_spawn 'pool-stale-pin-seed-r7'
+  git -C "$POOL_DIR" update-ref refs/heads/fm-test-base "$ADVANCED_SHA"
+  git -C "$POOL_DIR" config firstmate.baseMode local
+  git -C "$POOL_DIR" config firstmate.baseRef refs/heads/fm-test-base
   git -C "$POOL_DIR" remote remove origin
   before=$(git -C "$POOL_DIR" rev-parse HEAD)
   before_sub=$(git -C "$POOL_DIR/ui" rev-parse HEAD)
@@ -735,8 +987,8 @@ test_pool_slot_claim_follows_the_spawn_outcome() {
   out=$(run_spawn "$id" --mode no-mistakes --yolo off)
   status=$?
   [ "$status" -ne 0 ] || fail "spawn succeeded despite an unusable origin on the slot"
-  assert_contains "$out" "could not fetch origin" \
-    "the aborted spawn did not refuse on its unusable origin"
+  assert_contains "$out" "no expected repository identity is configured" \
+    "the aborted spawn did not refuse on its unverifiable repository identity"
   [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "the aborted spawn published task metadata"
   [ ! -e "$SLOT_CLAIM" ] && [ ! -L "$SLOT_CLAIM" ] \
     || fail "the aborted spawn left a slot claim naming a task with no record: $(cat "$SLOT_CLAIM")"
@@ -747,17 +999,25 @@ test_remote_seeded_home_spawns_from_treehouse_pool
 test_pool_slot_claim_follows_the_spawn_outcome
 test_linked_spawning_home_rejects_primary_before_refresh
 test_stale_pool_base_refreshes_before_branching
-test_non_main_default_branch_refreshes_before_branching
+test_current_fork_main_passes
+test_github_url_rewrite_to_different_repository_fails_closed
+test_github_url_rewrite_to_file_repository_fails_closed
+test_fork_identity_does_not_depend_on_remote_name
+test_remote_base_other_than_fork_main_fails_closed
 test_direct_pr_and_scout_refresh_before_launch
 test_dirty_pool_refuses_without_discarding_work
-test_unresolved_remote_default_refuses_pool
+test_missing_fork_main_ref_refuses_pool
 test_unreachable_origin_refuses_stale_pool_base
-test_originless_pool_launches_without_a_freshness_fetch
+test_originless_pool_fails_closed_without_a_contract
+test_originless_pool_accepts_explicit_local_base_contract
+test_explicit_local_base_rejects_a_different_git_repository
+test_wrong_head_branch_creation_refuses
+test_origin_upstream_plugin_migration_shape_fails_closed
 test_originless_dirty_pool_refuses_without_discarding_work
 test_origin_config_without_url_refuses_pool
 test_empty_origin_config_section_refuses_pool
-test_empty_only_included_origin_config_section_launches_pool
-test_inactive_conditional_origin_include_launches_pool
+test_empty_only_included_origin_config_section_fails_closed
+test_inactive_conditional_origin_include_fails_closed
 test_stale_submodule_pin_explains_itself
 test_unpushed_submodule_commit_is_still_uncommitted_work
 test_work_inside_submodule_is_still_uncommitted_work

@@ -2,6 +2,18 @@
 
 The files and environment variables you set to operate firstmate.
 
+## Verified spawn base and publish guard
+
+Before a ship or scout launch, `bin/fm-spawn.sh` resolves a configured remote URL by repository identity, requires the expected repository and `refs/heads/main`, fetches that ref, safely refreshes the clean pooled worktree to its SHA, and pins the verified SHA in the worktree's private Git metadata. It does not trust a remote's name or its default branch. `bin/fm-brief.sh` directs the worker to create its task branch with `bin/fm-publish-guard.sh branch <name>`, which requires a detached `HEAD` equal to that pin.
+
+The source checkout's Git config controls the contract:
+
+- `firstmate.expectedRepository=owner/repository` names the expected repository identity. The Firstmate repository defaults to `Ivory2024/firstmate`; other projects must configure their own expected owner and repository.
+- `firstmate.baseRef=refs/heads/main` is the remote base ref. Remote mode rejects other refs, including a remote's non-main default branch.
+- `firstmate.baseMode=remote` is the default. `firstmate.baseMode=local` explicitly opts into a remote-less linked-worktree shape; the source checkout and pool must share one Git common directory, `firstmate.baseRef` must resolve in the source checkout, and that commit must be available in the pool. The pool refreshes to that source SHA. A task that will publish must also set `firstmate.expectedRepository` so the guard can query the correct repository.
+
+After committing and before pushing or starting a publication pipeline, create the private manifest at `$(git rev-parse --absolute-git-dir)/info/fm-publish-scope`. This path is task-worktree-local. Each path row is `<glob><TAB><max-diff-bytes>`; include exactly one `@total<TAB><max-total-diff-bytes>` row. Choose patterns and byte budgets from the task's expected scope. `bin/fm-publish-guard.sh check` requires the pinned base to be the exact merge base, the branch start to equal the pin, no unexpected side-parent commits, every changed path to match the allowlist, each path and the total diff to fit its byte budget, and no existing open PR for the task branch in the expected repository. It fails closed with observed values and does not repair the branch. Explicit byte budgets permit legitimate large changes without a file-count threshold.
+
 ## Orchestrator behavior (AGENTS.md)
 
 The shared orchestrator behavior lives in [`AGENTS.md`](../AGENTS.md) - edit it like any prompt when the fleet is empty, or dispatch shared-repo edits to a crewmate while tasks are in flight.

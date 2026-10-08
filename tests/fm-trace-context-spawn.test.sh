@@ -110,6 +110,8 @@ make_spawn_case() {
   printf '%s\n' "$$" > "$home/state/.lock"
   printf '%s off\n' "$$" > "$home/state/.trace-context-effective"
   fm_git_worktree "$proj" "$wt" "wt-$name"
+  git -C "$proj" config firstmate.baseMode local
+  git -C "$proj" config firstmate.baseRef refs/heads/main
   touch "$home/state/.last-watcher-beat"
   id=$name-z1
   mkdir -p "$home/data/$id"
@@ -241,6 +243,8 @@ run_two_level() {
   wproj="$base/wproj"
   wwt="$base/wwt"
   fm_git_worktree "$wproj" "$wwt" "wt-$name"
+  git -C "$wproj" config firstmate.baseMode local
+  git -C "$wproj" config firstmate.baseRef refs/heads/main
   mkdir -p "$sm/state" "$sm/projects" "$sm/data/$worker_id"
   write_ship_brief "$sm/data/$worker_id/brief.md" "$worker_id"
   touch "$sm/state/.last-watcher-beat"
@@ -544,7 +548,11 @@ test_two_routed_tasks_through_one_secondmate_root_distinct_traces() {
   proj_a="$base/proj-a"; wt_a="$base/wt-a"
   proj_b="$base/proj-b"; wt_b="$base/wt-b"
   fm_git_worktree "$proj_a" "$wt_a" wt-routed-a
+  git -C "$proj_a" config firstmate.baseMode local
+  git -C "$proj_a" config firstmate.baseRef refs/heads/main
   fm_git_worktree "$proj_b" "$wt_b" wt-routed-b
+  git -C "$proj_b" config firstmate.baseMode local
+  git -C "$proj_b" config firstmate.baseRef refs/heads/main
   mkdir -p "$sm/data/$id_a" "$sm/data/$id_b"
   write_ship_brief "$sm/data/$id_a/brief.md" "$id_a"
   write_ship_brief "$sm/data/$id_b/brief.md" "$id_b"

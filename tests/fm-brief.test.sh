@@ -213,7 +213,15 @@ test_ship_modes_generate_clean_briefs() {
     assert_grep "{FIRSTMATE_SPEC}" "$brief" "$id: brief missing the {FIRSTMATE_SPEC} placeholder"
     assert_grep "## Captain's intent" "$brief" "$id: brief missing Captain's intent subsection"
     assert_grep "## Firstmate spec" "$brief" "$id: brief missing Firstmate spec subsection"
+    assert_grep "fm-publish-guard.sh\" branch fm/$id" "$brief" \
+      "$id: branch creation must assert the spawn-pinned verified base"
     if [ "$mode" = direct-PR ] || [ "$mode" = no-mistakes ]; then
+      assert_grep "private scope manifest" "$brief" \
+        "$id: publication must carry an explicit task-scope allowlist"
+      assert_grep "not blocked by file count" "$brief" \
+        "$id: publish guard must allow legitimate large scoped changes"
+      assert_grep "fm-publish-guard.sh\" check" "$brief" \
+        "$id: publish guard must run before publication"
       # shellcheck disable=SC2016  # literal placeholders are expected in the generated brief
       assert_grep 'gh-axi pr edit <number> --title "<createdAt year>-<number>: <original title>"' "$brief" \
         "$id: new PR title must receive its opening year and forge-assigned number"
@@ -271,8 +279,10 @@ test_ship_mode_is_explicit_not_registry() {
   brief="$home/data/brief-explicit-a5/brief.md"
   grep -qx "Delivery contract: mode=no-mistakes" "$brief" \
     || fail "registered direct-PR posture overrode the explicit --mode"
-  assert_grep "After committing, immediately invoke" "$brief" \
+  assert_grep "After committing and after the publish guard passes, immediately invoke" "$brief" \
     "explicit no-mistakes brief must start the pipeline immediately after commit"
+  assert_grep "PUBLISH_GUARD: PASS" "$brief" \
+    "explicit no-mistakes brief must require the publish guard before pipeline publication"
   assert_grep "The task is complete only at the CI-green return point below" "$brief" \
     "explicit no-mistakes brief must not treat commit as task completion"
   assert_grep "when \`herdr\` is absent from \`PATH\` and this repository's \`.github/workflows/ci.yml\` defines a \`Behavior tests (Herdr)\` lane" "$brief" \

@@ -156,6 +156,8 @@ test_spawn_refuses_and_admits() {
   fakebin=$(make_spawn_fakebin "$TMP/spawn-fake")
   wt="$TMP/spawn-wt"
   git -C "$proj" worktree add -q --detach "$wt" >/dev/null 2>&1
+  git -C "$proj" config firstmate.baseMode local
+  git -C "$proj" config firstmate.baseRef refs/heads/main
 
   # env-marker refuse: neutral cwd, marker set.
   out=$(run_spawn "$NORMAL_CWD" "$home" spawn-envmark "$proj" "$wt" "$fakebin" NO_MISTAKES_GATE=1); rc=$?

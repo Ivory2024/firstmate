@@ -82,6 +82,8 @@ make_settle_case() {
   mkdir -p "$home/data" "$home/projects" "$home/state" "$home/config"
   printf 'codex\n' > "$home/config/crew-harness"
   fm_git_worktree "$proj" "$wt" "wt-$name"
+  git -C "$proj" config firstmate.baseMode local
+  git -C "$proj" config firstmate.baseRef refs/heads/main
   fm_git_init_commit "$stale"
   mkdir -p "$home/data/$id"
   cat > "$home/data/$id/brief.md" <<EOF
@@ -174,6 +176,8 @@ make_primary_case() {
   fakebin=$(make_settle_fakebin "$case_dir/fake")
   fm_test_spawn_home "$home" codex
   fm_git_worktree "$primary" "$proj" "mate-$name"
+  git -C "$proj" config firstmate.baseMode local
+  git -C "$proj" config firstmate.baseRef refs/heads/main
   git -C "$primary" worktree add --quiet -b "slot-$name" "$wt"
   fm_test_spawn_brief "$home" "$id" "Exercise primary-checkout transient detection for $id."
   printf '%s\n' "$case_dir|$home|$proj|$wt|$primary|$fakebin|$countfile|$stale_reads"

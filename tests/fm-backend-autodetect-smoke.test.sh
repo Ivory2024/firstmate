@@ -111,6 +111,8 @@ git -C "$PROJ" init -q
 printf '# scratch\n' > "$PROJ/README.md"
 git -C "$PROJ" add README.md
 git -C "$PROJ" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm initial
+git -C "$PROJ" config firstmate.baseMode local
+git -C "$PROJ" config firstmate.baseRef "$(git -C "$PROJ" symbolic-ref HEAD)"
 git clone --quiet --bare "$PROJ" "$PROJ.origin.git"
 git -C "$PROJ" remote add origin "file://$PROJ.origin.git"
 
