@@ -1,4 +1,4 @@
-{"path":"verification/verify-evidence/command-log.jsonl","sha256":"fb58fc794a365adf2b578e9e5db4bfaa08eb5745faecb7168beef6fc9a5bb0a6"}
+{"path":"verification/verify-evidence/command-log.jsonl","sha256":"9108c0b84888c522379981238cd4b6cbb9066c2ca75baf0d1e35aa91bef58eca"}
 {"path":"verification/verify-evidence/test-results/coordinator.out","sha256":"d84fb3c71ab65cf3dbbe651f757113f4d71862c3bb638394111dd3768816bc9a"}
 {"path":"verification/verify-evidence/test-results/guard.out","sha256":"7d03bfca4a36ef014ecbbb111a33426caed1d64986cdb315facdbce299950550"}
 {"path":"verification/verify-evidence/test-results/judge.out","sha256":"1872a833ea4f3986bd6cce67738068d99ef1efe244415a83355de3f419d2aea2"}
