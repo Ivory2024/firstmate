@@ -1,0 +1,31 @@
+Switched to a new branch 'fm/task'
+ok - correct base with scoped delta passes the publish guard
+Switched to a new branch 'fm/task'
+ok - linked worktrees keep independent verified-base pins
+Switched to a new branch 'fm/task'
+ok - a 120-path inherited plugin-migration-shaped diff is refused by task scope
+Switched to a new branch 'fm/task'
+ok - the byte-budget guard rejects an oversized scoped file
+Switched to a new branch 'fm/task'
+ok - pathspec-magic filename is measured literally
+Switched to a new branch 'fm/task'
+ok - a side-parent inherited commit is rejected with observed commit counts
+Switched to a new branch 'fm/task'
+ok - a fast-forwarded newer source base is rejected without local main
+Switched to a new branch 'fm/task'
+ok - remote ownership check rejects fast-forward with local main absent
+Switched to a new branch 'fm/task'
+ok - a newline filename remains one path through scope validation
+Switched to a new branch 'fm/task'
+ok - an existing open PR for the task branch is refused before publication
+Switched to a new branch 'fm/task'
+ok - a malformed gh-axi count fails closed
+Switched to a new branch 'fm/task'
+ok - a 120-path scoped recovery change passes explicit byte budgets
+Switched to a new branch 'fm/task'
+ok - bare zero count and empty PR list pass validation
+Switched to a new branch 'fm/task'
+ok - an invalid empty-list envelope fails closed
+Switched to a new branch 'fm/task'
+ok - a malformed PR table row fails closed
+# all fm-publish-guard tests passed
