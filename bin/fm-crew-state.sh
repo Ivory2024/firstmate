@@ -185,10 +185,13 @@ FM_CREW_STATE_RUNS_LIMIT=${FM_CREW_STATE_RUNS_LIMIT:-200}
 case "$FM_CREW_STATE_RUNS_LIMIT" in ''|*[!0-9]*) FM_CREW_STATE_RUNS_LIMIT=200 ;; esac
 SEP=' · '
 
-# Emit the one canonical line and exit 0. Detail is optional.
-emit() {  # <state> <source> [detail]
+# Emit the one canonical line and exit 0. Detail and an optional blocker TYPE are
+# appended only when supplied, so a record with no blocker metadata keeps its
+# exact previous output (backward compatible).
+emit() {  # <state> <source> [detail] [blocker-type]
   local line="state: $1${SEP}source: $2"
   [ -n "${3:-}" ] && line="$line${SEP}$3"
+  [ -n "${4:-}" ] && line="$line${SEP}blocker=$4"
   printf '%s\n' "$line"
   exit 0
 }
@@ -1142,7 +1145,7 @@ if [ "$HAVE_RUN" = 1 ]; then
       if [ "$LOG_VERB" = blocked ] \
         && [ "$(status_line_verb "$LOG_LATEST")" = blocked ] \
         && log_reports_daemon_socket_down "$LOG_LATEST"; then
-        emit blocked status-log "$(status_line_note "$LOG_LATEST")${SEP}daemon socket down despite attributed run record"
+        emit blocked status-log "$(status_line_note "$LOG_LATEST")${SEP}daemon socket down despite attributed run record" "$(fm_status_line_blocker "$LOG_LATEST")"
       fi
       # An UNVERIFIED record cannot close an open decision. The crew observed
       # its gate or its blocker first hand; a record the dead instrument left
