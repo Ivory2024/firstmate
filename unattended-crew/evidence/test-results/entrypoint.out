@@ -1,0 +1,15 @@
+ok - wrapper: refuses a non-captain role
+ok - wrapper: pass-through run => VERIFIED_PASS
+ok - install: explicit file list names wrapper + coordinator
+ok - install: manifest with per-file hashes; verify passes
+ok - installed entrypoint: resolves mounted coordinator + siblings
+ok - uninstall: removes owned files and manifest
+ok - uninstall: idempotent second run is a no-op
+ok - no-overwrite: unowned existing target refused, unchanged, no manifest
+ok - install: idempotent re-install stays valid
+ok - uninstall: preserves a user-modified file, removes the rest
+ok - partial install: injected failure rolls back every file
+ok - rehearse: install -> verify -> unmount -> clean PASS
+ok - install: refuses unsafe root /
+ok - install: requires an explicit --root
+# entrypoint.test.sh PASS=14 FAIL=0

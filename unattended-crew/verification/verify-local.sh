@@ -24,7 +24,7 @@ ck() { # <label> <0|1>
 UC_EVIDENCE_DIR="$EVID" bash "$UC_ROOT/tests/run-all.sh" > "$OUT/run-all.out" 2>&1; run_rc=$?
 ck "full suite exit 0" "$run_rc"
 total_p=0; total_f=0
-for s in coordinator judge guard restart real-e2e; do
+for s in coordinator judge guard restart real-e2e pr-classify evidence-root quota entrypoint autoteardown; do
   line=$(grep -E "^# $s.test.sh PASS=" "$EVID/test-results/$s.out" 2>/dev/null | tail -1)
   p=$(printf '%s' "$line" | sed -n 's/.*PASS=\([0-9]*\).*/\1/p')
   f=$(printf '%s' "$line" | sed -n 's/.*FAIL=\([0-9]*\).*/\1/p')

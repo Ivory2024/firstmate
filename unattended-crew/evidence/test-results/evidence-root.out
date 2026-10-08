@@ -1,0 +1,12 @@
+ok - no config: default canary path used and recorded empty
+ok - restart re-reads the same evidence, no re-run
+ok - explicit root: per-batch dir, marker, evidence recorded
+ok - explicit root: per-batch dir mode 0700
+ok - restart: recorded root re-read with env unset
+ok - config evidence_root: honored and recorded
+ok - path escape ('..' segment) refused
+ok - collision with a different batch refused
+ok - file-as-root refused
+ok - missing evidence root with --no-create refused
+ok - bad batch id ('..') refused
+# evidence-root.test.sh PASS=11 FAIL=0

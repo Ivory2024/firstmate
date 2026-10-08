@@ -1,7 +1,11 @@
-{"path":"evidence/command-log.jsonl","sha256":"ff979efbf02fb6751d9a364c4e064b9cd1e91499064968f9a19143d28e79392a"}
+{"path":"evidence/command-log.jsonl","sha256":"0059dc5bf4e1005725d63b294afba12d834c751695202b850257c3b4a443a991"}
+{"path":"evidence/test-results/autoteardown.out","sha256":"8f3fb4508bf89eb3a5d81495cbd2dcc527e5e05a4dcd3ca927abd57316d3e85d"}
 {"path":"evidence/test-results/coordinator.out","sha256":"d84fb3c71ab65cf3dbbe651f757113f4d71862c3bb638394111dd3768816bc9a"}
+{"path":"evidence/test-results/entrypoint.out","sha256":"08881bba95767025e8743807535fb257e68ce73cb256c308c838d5d95f228ea1"}
+{"path":"evidence/test-results/evidence-root.out","sha256":"ef6479b9dff37639651d36bc1f0842421aa50cc570bb1f648d94649cc5872d33"}
 {"path":"evidence/test-results/guard.out","sha256":"7d03bfca4a36ef014ecbbb111a33426caed1d64986cdb315facdbce299950550"}
 {"path":"evidence/test-results/judge.out","sha256":"1872a833ea4f3986bd6cce67738068d99ef1efe244415a83355de3f419d2aea2"}
 {"path":"evidence/test-results/pr-classify.out","sha256":"34d7ece8ee5ce9645e27b31adf9c9084a3547b7340258409ee99213d525a8608"}
+{"path":"evidence/test-results/quota.out","sha256":"390ba0b34ac00c4ef28ce2c1f1a2d03dafd64c7e16729c8bd51836f335257f1d"}
 {"path":"evidence/test-results/real-e2e.out","sha256":"a4e6bd8c222acf66cb468034e88f2f39ab23ee1819445fc3d3d8818671afb866"}
 {"path":"evidence/test-results/restart.out","sha256":"eb9c6ce9cb4f4222386f2cfa6b73979b9845595b8302f219fa9578f56ed0c514"}

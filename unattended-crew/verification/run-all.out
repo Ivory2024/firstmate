@@ -4,4 +4,8 @@
   # restart.test.sh PASS=7 FAIL=0
   # real-e2e.test.sh PASS=24 FAIL=0
   # pr-classify.test.sh PASS=7 FAIL=0
-# run-all: 6 suites; fail=0
+  # evidence-root.test.sh PASS=11 FAIL=0
+  # quota.test.sh PASS=13 FAIL=0
+  # entrypoint.test.sh PASS=14 FAIL=0
+  # autoteardown.test.sh PASS=11 FAIL=0
+# run-all: 10 suites; fail=0

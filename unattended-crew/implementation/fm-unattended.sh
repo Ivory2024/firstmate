@@ -40,6 +40,8 @@ ADAPTER="$IMPL_DIR/fm-unattended-adapter.sh"
 EVIDENCE="$IMPL_DIR/fm-unattended-evidence.sh"
 JUDGE="$IMPL_DIR/fm-unattended-judge.sh"
 GUARD="$IMPL_DIR/fm-unattended-guard.sh"
+CONFIG="$IMPL_DIR/fm-unattended-config.sh"
+QUOTA="$IMPL_DIR/fm-unattended-quota.sh"
 FAKE_AUDITOR="$IMPL_DIR/fake-auditor.sh"
 WAIT_SECS=${UC_WAIT_SECS:-40}
 BACKEND=${FM_UNATTENDED_ADAPTER:-fake}
@@ -47,7 +49,29 @@ CREW_WAIT=${UC_CREW_WAIT_SECS:-30}
 
 _now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 _bdir() { printf '%s/batches/%s\n' "$UC_HOME" "$1"; }
-_evroot() { printf '%s/batches/%s/evidence\n' "$UC_HOME" "$1"; }
+# The evidence root is a durable, configurable value. At init the coordinator
+# records the resolved root in batch.meta so a later resume re-reads the SAME
+# evidence after a restart; when no root was configured the historic
+# canary-compatible path is used unchanged.
+_evroot() { # <batch>
+  local recorded live
+  recorded=$(_get "$(_bdir "$1")/batch.meta" evidence_root)
+  if [ -n "$recorded" ]; then printf '%s\n' "$recorded"; return 0; fi
+  if live=$(_resolve_evidence_root "$1") && [ -n "$live" ]; then printf '%s\n' "$live"; return 0; fi
+  printf '%s/batches/%s/evidence\n' "$UC_HOME" "$1"
+}
+
+# Resolve an explicit durable evidence root from env or config. Prints the
+# per-batch dir and returns 0 only when a non-default root is configured;
+# returns 1 (prints nothing) to signal "use the compatibility default". Creates
+# nothing itself beyond what the config resolver owns.
+_resolve_evidence_root() { # <batch>
+  [ -x "$CONFIG" ] || return 1
+  local cfgp; cfgp=$("$CONFIG" config-path 2>/dev/null)
+  [ -n "${UC_EVIDENCE_ROOT:-}" ] || { [ -n "$cfgp" ] && [ -f "$cfgp" ]; } || return 1
+  "$CONFIG" evidence-root --batch "$1" --home "$UC_HOME" 2>/dev/null || return 1
+  return 0
+}
 _tdir() { printf '%s/batches/%s/tasks\n' "$UC_HOME" "$1"; }
 _get() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -1; }
 
@@ -157,6 +181,9 @@ _transition() { # <batch> <task> <prev> <new> <reason> [attempt] [session] [evid
   printf 'at=%s run_id=%s task_id=%s attempt=%s session=%s role=%s baseline_sha=%s prev=%s new=%s reason=%s evidence=%s\n' \
     "$(_now)" "$b" "$t" "$attempt" "$session" "" "${UC_BASELINE_SHA:-}" "$prev" "$new" "$reason" "$ev" >> "$sl"
   _set_state "$b" "$t" "$new"
+  # A HOLD is terminal for the window: latch the batch so no further dispatch
+  # happens on any later run/resume until the captain clears it.
+  [ "$new" = HOLD ] && : > "$(_bdir "$b")/.batch-held"
   printf '  [%s] %s -> %s (%s)\n' "$t" "$prev" "$new" "$reason"
 }
 
@@ -253,6 +280,11 @@ _dispatch_executor_real() { # <batch> <task> <attempt>
   if [ -f "$rd/executor/rc" ]; then _transition "$b" "$t" "$(_state_of "$b" "$t" new)" RUNNING "adopt-completed-run" "$a"; return 0; fi
 
   _transition "$b" "$t" "$(_state_of "$b" "$t" new)" DISPATCHING "dispatch-executor" "$a"
+  local qmsg
+  if ! qmsg=$(_quota_gate "$b" executor); then
+    mkdir -p "$rd/gate"; printf '%s\n' "$qmsg" > "$rd/gate/quota-block.txt" 2>/dev/null || true
+    _transition "$b" "$t" DISPATCHING HOLD "quota-blocked" "$a"; return 0
+  fi
   dm=$(UC_HOME="$UC_HOME" "$ADAPTER" dispatch --batch "$b" --task "$t" --role executor --attempt "$a" --workdir "$ws" \
     --brief-intent "$(_jget "$c" "tasks.$i.executor.intent")" --brief-spec "$(_jget "$c" "tasks.$i.executor.spec")" 2>&1) || true
   if ! printf '%s' "$dm" | grep -q 'DISPATCHED'; then
@@ -310,6 +342,12 @@ _dispatch_auditor_real() { # <batch> <task> <attempt>
   local -a acmd; mapfile -t -d '' acmd < <(_jarray_nul "$c" "tasks.$i.audit.command")
   if [ "${#acmd[@]}" -gt 0 ] && printf '%s\n' "${acmd[*]}" | grep -q 'fake-auditor.sh'; then
     _transition "$b" "$t" "$(_state_of "$b" "$t" new)" HOLD "fake-auditor-in-production" "$a"; return 0
+  fi
+
+  local qmsg
+  if ! qmsg=$(_quota_gate "$b" auditor); then
+    mkdir -p "$rd/gate"; printf '%s\n' "$qmsg" > "$rd/gate/quota-block.txt" 2>/dev/null || true
+    _transition "$b" "$t" "$(_state_of "$b" "$t" new)" HOLD "quota-blocked" "$a"; return 0
   fi
 
   dm=$(UC_HOME="$UC_HOME" "$ADAPTER" dispatch --batch "$b" --task "$t" --role auditor --attempt "$a" --workdir "$aws" \
@@ -422,7 +460,34 @@ _judge_task() { # <batch> <task> <attempt>
   verdict=$(printf '%s' "$out" | sed -n 's/^VERDICT=//;s/ .*//p')
   prev=$(_state_of "$b" "$t" new)
   _transition "$b" "$t" "$prev" "$verdict" "judge" "$a" "" "$rd/gate/verdict.json"
+  _quota_release "$b"
   return 0
+}
+
+# ---- quota / concurrency gate ----------------------------------------------
+# Enforcement is opt-in: it activates when UC_QUOTA_ENFORCE=1 or a config file is
+# present. With no config the historic (uncapped) behaviour is preserved, so the
+# offline suites are unaffected. Once active, unknown quota is a HOLD.
+_quota_enforced() {
+  [ "${UC_QUOTA_ENFORCE:-0}" = 1 ] && return 0
+  [ -x "$CONFIG" ] || return 1
+  [ -f "$("$CONFIG" config-path 2>/dev/null)" ] && return 0
+  return 1
+}
+
+_quota_gate() { # <batch> <role> -> 0 allow / 3 block; prints the reason
+  _quota_enforced || return 0
+  [ -x "$QUOTA" ] || return 0
+  local out
+  if ! out=$("$QUOTA" check-model --model "${UC_REAL_MODEL:-}" 2>&1); then printf '%s\n' "$out"; return 3; fi
+  if ! out=$("$QUOTA" reserve --batch "$1" --role "$2" --home "$UC_HOME" 2>&1); then printf '%s\n' "$out"; return 3; fi
+  return 0
+}
+
+_quota_release() { # <batch>
+  _quota_enforced || return 0
+  [ -x "$QUOTA" ] || return 0
+  "$QUOTA" release --batch "$1" --home "$UC_HOME" >/dev/null 2>&1 || true
 }
 
 # Executor Evidence Guard: compare the Executor's CLAIMED structured values
@@ -474,6 +539,7 @@ _step_real() { # <batch> <task> <state> <attempt> <index> <contract> <rundir>
       res=$(_real_wait_done "$b" "$sid" "$CREW_WAIT"); rc=$?
       case "$rc" in
         0) if _real_collect_executor "$b" "$t"; then
+             _quota_release "$b"
              _transition "$b" "$t" "$st" EVIDENCE_PENDING "evidence-collected" "$a"; return 0
            else
              _transition "$b" "$t" "$st" HOLD "evidence-incomplete" "$a"; return 0
@@ -537,6 +603,7 @@ _drive() { # <batch>
   b=$1; c=$(_bdir "$b")/contract.json
   n=$(_jlen "$c" "tasks")
   for _ in $(seq 1 60); do
+    [ -f "$(_bdir "$b")/.batch-held" ] && break
     changed=0
     for (( i=0; i<n; i++ )); do
       t=$(_jget "$c" "tasks.$i.task_id")
@@ -551,14 +618,18 @@ _drive() { # <batch>
 
 # ---- CLI --------------------------------------------------------------------
 cmd_init() {
-  local b cf bd n i t baseline
+  local b cf bd n i t baseline er
   b=""; cf=""
   while [ $# -gt 0 ]; do case "$1" in --batch) b=$2; shift 2;; --contract) cf=$2; shift 2;; *) echo "bad arg $1" >&2; exit 2;; esac; done
   [ -n "$b" ] && [ -f "$cf" ] || { echo "init: need --batch and a valid --contract" >&2; exit 2; }
-  bd=$(_bdir "$b"); mkdir -p "$bd" "$(_tdir "$b")" "$bd/sessions" "$bd/evidence/runs"
+  # Resolve an explicit durable evidence root before writing batch.meta so a
+  # later restart re-reads the same evidence. Absent config => default path.
+  er=$(_resolve_evidence_root "$b" 2>/dev/null) || er=""
+  bd=$(_bdir "$b"); mkdir -p "$bd" "$(_tdir "$b")" "$bd/sessions"
   cp "$cf" "$bd/contract.json"
   baseline=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("baseline_sha",""))' "$cf")
-  printf 'batch_id=%s\nbaseline_sha=%s\ncreated_at=%s\n' "$b" "$baseline" "$(_now)" > "$bd/batch.meta"
+  printf 'batch_id=%s\nbaseline_sha=%s\ncreated_at=%s\nevidence_root=%s\n' "$b" "$baseline" "$(_now)" "$er" > "$bd/batch.meta"
+  mkdir -p "${er:-$bd/evidence}/runs"
   : > "$bd/state.jsonl"
   n=$(_jlen "$bd/contract.json" "tasks")
   for (( i=0; i<n; i++ )); do t=$(_jget "$bd/contract.json" "tasks.$i.task_id"); _transition "$b" "$t" "" QUEUED "batch-init" 0; done
@@ -584,6 +655,7 @@ cmd_status() {
   c=$(_bdir "$b")/contract.json
   n=$(_jlen "$c" "tasks")
   echo "batch=$b"
+  [ -f "$(_bdir "$b")/.batch-held" ] && echo "  batch-held: HOLD latch set (no further dispatch)"
   for (( i=0; i<n; i++ )); do t=$(_jget "$c" "tasks.$i.task_id"); printf '  %s: %s (attempts=%s)\n' "$t" "$(_state_of "$b" "$t" new)" "$(_attempts "$b" "$t")"; done
 }
 

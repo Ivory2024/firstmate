@@ -1,0 +1,14 @@
+ok - check-model: free model allowed
+ok - check-model: unapproved paid model blocked
+ok - check-model: unknown (empty) model => HOLD
+ok - check-model: paid approved when allow_paid_models
+ok - reserve: provider-call cap enforced (2nd blocked)
+ok - release: frees a concurrent slot
+ok - reserve: concurrency cap enforced
+ok - reserve: unknown cap => fail-closed HOLD
+ok - quota cap: auditor blocked before spawn => HOLD quota-blocked (1 crew)
+ok - HOLD latch: no further dispatch after HOLD
+ok - quota within budget: VERIFIED_PASS
+ok - paid model: blocked before spawn => HOLD, no crew
+ok - unknown quota: fail-closed HOLD before spawn
+# quota.test.sh PASS=13 FAIL=0

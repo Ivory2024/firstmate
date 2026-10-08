@@ -16,6 +16,10 @@ Mock vs real evidence is marked so a mock result is never read as a real one.
 | Separate local verification | `bash verification/verify-local.sh` | `verification/local-check.json` | local process |
 | Decision trail view | `bash verification/decision-trail.sh <batch-dir>` | stdout table | derived |
 | PR read-only classifier | `bash tests/pr-classify.test.sh` | `evidence/test-results/pr-classify.out` | fixture |
+| Durable evidence root config | `bash tests/evidence-root.test.sh` | `evidence/test-results/evidence-root.out` | mock |
+| Quota / concurrency cap | `bash tests/quota.test.sh` | `evidence/test-results/quota.out` | mock home |
+| Mounted entrypoint + rollback | `bash tests/entrypoint.test.sh` | `evidence/test-results/entrypoint.out` | temp dir |
+| Auto-teardown policy | `bash tests/autoteardown.test.sh` | `evidence/test-results/autoteardown.out` | fixture |
 | Live real E2E canary | `bash tests/run-all.sh` then the recorded local-check | `canary/real-e2e-20261008/` + final report | **real** |
 
 Rules:

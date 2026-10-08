@@ -1,0 +1,13 @@
+DISABLED reason=autoteardown-not-enabled
+ok - autoteardown: disabled unless explicitly enabled
+ok - autoteardown: all six conditions => OK
+ok - autoteardown: non-terminal state refused
+ok - autoteardown: missing evidence refused
+ok - autoteardown: non-verified verdict refused
+ok - autoteardown: pending inbox refused
+ok - autoteardown: open captain call refused
+ok - autoteardown: unverified session ownership refused
+ok - autoteardown: missing session refused
+ok - autoteardown: other active work refused
+ok - autoteardown: plan lists eligible terminal tasks
+# autoteardown.test.sh PASS=11 FAIL=0

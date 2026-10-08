@@ -1,6 +1,10 @@
-{"suite":"coordinator","cmd":"bash tests/coordinator.test.sh","exit":0,"duration_s":23,"at":"2026-10-08T11:57:19Z","out":"test-results/coordinator.out"}
-{"suite":"judge","cmd":"bash tests/judge.test.sh","exit":0,"duration_s":7,"at":"2026-10-08T11:57:26Z","out":"test-results/judge.out"}
-{"suite":"guard","cmd":"bash tests/guard.test.sh","exit":0,"duration_s":1,"at":"2026-10-08T11:57:27Z","out":"test-results/guard.out"}
-{"suite":"restart","cmd":"bash tests/restart.test.sh","exit":0,"duration_s":12,"at":"2026-10-08T11:57:39Z","out":"test-results/restart.out"}
-{"suite":"real-e2e","cmd":"bash tests/real-e2e.test.sh","exit":0,"duration_s":100,"at":"2026-10-08T11:59:19Z","out":"test-results/real-e2e.out"}
-{"suite":"pr-classify","cmd":"bash tests/pr-classify.test.sh","exit":0,"duration_s":0,"at":"2026-10-08T11:59:19Z","out":"test-results/pr-classify.out"}
+{"suite":"coordinator","cmd":"bash tests/coordinator.test.sh","exit":0,"duration_s":25,"at":"2026-10-08T12:54:26Z","out":"test-results/coordinator.out"}
+{"suite":"judge","cmd":"bash tests/judge.test.sh","exit":0,"duration_s":6,"at":"2026-10-08T12:54:32Z","out":"test-results/judge.out"}
+{"suite":"guard","cmd":"bash tests/guard.test.sh","exit":0,"duration_s":1,"at":"2026-10-08T12:54:33Z","out":"test-results/guard.out"}
+{"suite":"restart","cmd":"bash tests/restart.test.sh","exit":0,"duration_s":12,"at":"2026-10-08T12:54:45Z","out":"test-results/restart.out"}
+{"suite":"real-e2e","cmd":"bash tests/real-e2e.test.sh","exit":0,"duration_s":105,"at":"2026-10-08T12:56:30Z","out":"test-results/real-e2e.out"}
+{"suite":"pr-classify","cmd":"bash tests/pr-classify.test.sh","exit":0,"duration_s":0,"at":"2026-10-08T12:56:30Z","out":"test-results/pr-classify.out"}
+{"suite":"evidence-root","cmd":"bash tests/evidence-root.test.sh","exit":0,"duration_s":16,"at":"2026-10-08T12:56:46Z","out":"test-results/evidence-root.out"}
+{"suite":"quota","cmd":"bash tests/quota.test.sh","exit":0,"duration_s":11,"at":"2026-10-08T12:56:57Z","out":"test-results/quota.out"}
+{"suite":"entrypoint","cmd":"bash tests/entrypoint.test.sh","exit":0,"duration_s":10,"at":"2026-10-08T12:57:07Z","out":"test-results/entrypoint.out"}
+{"suite":"autoteardown","cmd":"bash tests/autoteardown.test.sh","exit":0,"duration_s":1,"at":"2026-10-08T12:57:08Z","out":"test-results/autoteardown.out"}
