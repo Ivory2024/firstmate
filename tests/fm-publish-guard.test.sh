@@ -218,13 +218,13 @@ test_fast_forwarded_base_commits_are_rejected() {
 }
 
 test_remote_fast_forward_rejected_without_local_main() {
-  local out status remote publisher current_ref
+  local out status fork_remote_dir publisher current_ref
   new_case remote-fast-forward
   write_scope 'recovery/*.txt' 1000 10000
-  remote="$TMP_ROOT/remote-fast-forward.git"
+  fork_remote_dir="$TMP_ROOT/remote-fast-forward.git"
   publisher="$TMP_ROOT/remote-fast-forward-publisher"
-  git clone --quiet --bare "$TEST_REPO" "$remote"
-  git clone --quiet "file://$remote" "$publisher"
+  git clone --quiet --bare "$TEST_REPO" "$fork_remote_dir"
+  git clone --quiet "file://$fork_remote_dir" "$publisher"
   git -C "$publisher" checkout --quiet -B main refs/remotes/origin/main
   mkdir -p "$publisher/recovery"
   printf 'upstream change\n' > "$publisher/recovery/upstream.txt"
@@ -234,7 +234,7 @@ test_remote_fast_forward_rejected_without_local_main() {
   git -C "$publisher" push --quiet origin main
   git -C "$publisher" fetch --quiet origin main
   current_ref=$(git -C "$publisher" rev-parse origin/main)
-  git -C "$TEST_REPO" fetch --quiet "file://$remote" refs/heads/main:refs/remotes/test-current/main
+  git -C "$TEST_REPO" fetch --quiet "file://$fork_remote_dir" refs/heads/main:refs/remotes/test-current/main
   git -C "$TEST_REPO" checkout --quiet fm/task
   git -C "$TEST_REPO" merge --quiet --ff-only refs/remotes/test-current/main
   git -C "$TEST_REPO" branch -D main >/dev/null
@@ -247,7 +247,7 @@ test_remote_fast_forward_rejected_without_local_main() {
     FM_GIT_BASE_SHA=$TEST_BASE
     fm_git_base_write_branch_pin "$TEST_REPO" fm/task "$TEST_BASE"
   ) || fail "could not record remote-mode branch identity in the fixture"
-  FM_TEST_GIT_FETCH_URL=$remote
+  FM_TEST_GIT_FETCH_URL=$fork_remote_dir
   export FM_TEST_GIT_FETCH_URL
   out=$(run_guard); status=$?
   [ "$status" -ne 0 ] || fail "a remote fast-forward passed without a local main ref"
