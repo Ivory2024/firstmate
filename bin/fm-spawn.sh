@@ -4211,10 +4211,13 @@ export default {
           if (sessionID === activeSession) {
             activeSession = null;
             await busyEvent("idle", "execution-ended");
+            // The turn-end NOTIFICATION touch is scoped to the SAME latched
+            // session: an unrelated session's execution-end must never touch
+            // this task's turn-ended (Package D-R2 root cause).
+            await new Promise((resolve) => {
+              execFile("touch", ["$TURNEND"], () => resolve());
+            });
           }
-          await new Promise((resolve) => {
-            execFile("touch", ["$TURNEND"], () => resolve());
-          });
         }
       } catch {
       }

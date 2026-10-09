@@ -3441,7 +3441,12 @@ elif [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
     fi
   fi
   # Remove our hook file so a reused pool worktree cannot fire signals for a dead task.
+  # Package D-R2/D-R3: opencode generates fm-busy-state.js (turn-end NOTIFICATION
+  # touch) and fm-opencode-permission.js into the worktree; both MUST be removed
+  # or a reused pool worktree fires a stale task's signals. fm-turn-end.js is a
+  # legacy name kept for older worktrees.
   rm -f "$WT/.claude/settings.local.json" "$WT/.opencode/plugins/fm-turn-end.js" \
+    "$WT/.opencode/plugins/fm-busy-state.js" "$WT/.opencode/plugins/fm-opencode-permission.js" \
     "$WT/.fm-grok-turnend" "$WT/.fm-kimi-turnend"
   # Kills remaining processes in the worktree (including the agent), resets, returns
   # to pool. treehouse resolves the pool from the working directory, so run it from
