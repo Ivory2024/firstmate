@@ -1156,6 +1156,24 @@ case "$PROVIDER" in
     require_current_away_authority || away_status=$?
     [ "$away_status" -eq 0 ] || exit "$away_status"
     refuse_github_queue_while_away || exit 2
+    # Gate 0: risk-governed merge. FAIL-CLOSED — unless the policy engine returns
+    # ALLOW for this exact head, the merge is refused. Default risk is UNKNOWN
+    # (-> HOLD), so an unconfigured caller can never merge silently.
+    FM_POLICY="$SELF_DIR/fm-merge-policy.sh"
+    if [ -x "$FM_POLICY" ]; then
+      policy_out=$("$FM_POLICY" merge-eligible \
+        --risk "${FM_MERGE_RISK:-UNKNOWN}" --ci "${FM_MERGE_CI:-unknown}" \
+        --review "${FM_MERGE_REVIEW:-unknown}" --head-match yes \
+        --protected "${FM_MERGE_PROTECTED:-no}" --unresolved "${FM_MERGE_UNRESOLVED:-yes}" \
+        --scope "${FM_MERGE_SCOPE:-none}" \
+        ${FM_MERGE_APPROVED_PR:+--approved-pr "$FM_MERGE_APPROVED_PR"} \
+        ${FM_MERGE_APPROVED_SHA:+--approved-sha "$FM_MERGE_APPROVED_SHA"} \
+        --head-sha "$FM_PR_MERGE_HEAD" \
+        ${FM_MERGE_APPROVAL_RECORD:+--approval-record "$FM_MERGE_APPROVAL_RECORD"} 2>/dev/null)
+      [ "$policy_out" = MERGE_ELIGIBLE ] || { echo "REFUSED: merge policy gate ($policy_out)" >&2; exit 1; }
+    else
+      echo "REFUSED: merge policy engine missing at $FM_POLICY (fail-closed)" >&2; exit 1
+    fi
     merge_status=0
     merge_output=$(gh pr merge "$PR_NUMBER" --repo "$PR_OWNER/$PR_REPO" \
       --match-head-commit "$FM_PR_MERGE_HEAD" \
