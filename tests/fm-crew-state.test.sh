@@ -929,6 +929,33 @@ test_genuine_daemon_down_reports_blocked() {
   pass "genuine daemon-down blocked line still reports blocked"
 }
 
+# The command tower must emit a TYPED blocker, not merely echo the crew's prose:
+# with no explicit [blocker=] tag, fm-crew-state derives the type from the cause
+# text through bin/fm-blocker-classify-lib.sh. A provider quota cause is
+# PROVIDER_BLOCKED; a disk-quota cause is INFRA_BLOCKED (the shared word "quota"
+# must not steal the infrastructure failure). An explicit tag stays authoritative.
+test_blocked_cause_is_classified_by_command_tower() {
+  reset_fakes
+  local d out
+  d=$(new_case blocked-classified)
+  mkdir -p "$d/wt"
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/mate.meta" "window=fm:fm-mate" "worktree=$d/wt" "kind=secondmate" "harness=claude"
+  arm_idle_record "$d/state" mate
+  printf 'blocked: You have hit your usage limit; try again at 2:08 PM\n' > "$d/state/mate.status"
+  out=$(run_crew_state "$d" mate)
+  assert_contains "$out" "state: blocked" "provider quota blocker reads blocked"
+  assert_contains "$out" "blocker=PROVIDER_BLOCKED" "command tower classifies a provider quota cause"
+  printf 'blocked: disk quota exceeded while fetching the cache\n' > "$d/state/mate.status"
+  out=$(run_crew_state "$d" mate)
+  assert_contains "$out" "state: blocked" "disk quota blocker reads blocked"
+  assert_contains "$out" "blocker=INFRA_BLOCKED" "disk quota is infrastructure, not provider quota"
+  printf 'blocked [blocker=REVIEW_BLOCKED]: the reviewer said changes requested\n' > "$d/state/mate.status"
+  out=$(run_crew_state "$d" mate)
+  assert_contains "$out" "blocker=REVIEW_BLOCKED" "an explicit blocker tag wins over text"
+  pass "the command tower emits a typed blocker for a blocked crew"
+}
+
 # (c) genuine parked run + needs-decision log AGREE -> parked, NOT superseded
 test_genuine_parked_not_superseded() {
   reset_fakes
@@ -4798,6 +4825,7 @@ test_socket_refusal_over_terminal_run_reports_blocked
 test_socket_refusal_override_expires_when_the_crew_moves_on
 test_ordinary_blocked_over_live_run_keeps_plain_superseded
 test_genuine_daemon_down_reports_blocked
+test_blocked_cause_is_classified_by_command_tower
 test_secondmate_open_block_survives_unrelated_append
 test_newest_open_decision_supplies_the_reported_detail
 test_single_owner_terminal_declaration_supersedes_stale_decision

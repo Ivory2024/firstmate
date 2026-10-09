@@ -595,13 +595,40 @@ _fm_decision_slug_ok() {  # <slug>
 # worker-written stamp cannot move it: a readable time like [at=10:30] carries
 # colons that would otherwise end the head mid-tag and hand the caller a note
 # and a key sliced out of the timestamp. The line's own bytes are never altered.
+# Byte index of the first colon that sits OUTSIDE every `[...]` token, or
+# non-zero when the line has no such colon. Metadata tokens before the
+# head/note separator may themselves contain colons - a documented
+# `[retry-after=2026-10-08T05:08:05Z]` is the canonical case - and taking the
+# first raw colon would slice the note in half. Brackets nest for safety; a
+# stray `]` never drives depth below zero.
+_fm_status_unbracketed_colon() {  # <line> <out-var> -> 0 when found
+  local s=$1 i=0 depth=0 c len=${#1}
+  while [ "$i" -lt "$len" ]; do
+    c=${s:i:1}
+    case "$c" in
+      '[') depth=$((depth + 1)) ;;
+      ']') [ "$depth" -gt 0 ] && depth=$((depth - 1)) ;;
+      ':')
+        if [ "$depth" -eq 0 ]; then
+          printf -v "$2" '%s' "$i"
+          return 0
+        fi
+        ;;
+    esac
+    i=$((i + 1))
+  done
+  return 1
+}
+
 status_line_note() {  # <status-line> -> text after the first colon, trimmed
-  local n k unstamped
+  local n k unstamped idx
   _fm_status_unstamped "$1" unstamped
-  case "$unstamped" in
-    *:*) n=${unstamped#*:}; n=${n#"${n%%[![:space:]]*}"} ;;
-    *) printf '%s' "$unstamped"; return 0 ;;
-  esac
+  if _fm_status_unbracketed_colon "$unstamped" idx; then
+    n=${unstamped:$((idx + 1))}
+    n=${n#"${n%%[![:space:]]*}"}
+  else
+    printf '%s' "$unstamped"; return 0
+  fi
   # A note-head token that states this line's key (no before-colon token, valid
   # slug) is key metadata, not note text: strip it so both stated-key positions
   # yield the same note.

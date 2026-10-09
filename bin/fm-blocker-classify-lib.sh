@@ -24,6 +24,12 @@
 #       prints one policy token: none|limited|wait|manual
 #   fm_blocker_retry_after <cause-text>
 #       prints an ISO-8601 UTC reset time when the text carries one, else empty
+#
+# The production caller is bin/fm-crew-state.sh: when a crew's `blocked:` line is
+# the current state and carries no explicit [blocker=] tag, the command tower
+# derives the TYPE here and appends `blocker=<TYPE>` to its canonical state line.
+# That reader is also what makes the disk-quota and retry-after rules below
+# load-bearing rather than dead library code.
 
 # shellcheck disable=SC2034  # public vocabulary; also read by bin/fm-classify-lib.sh
 FM_BLOCKER_TYPES='CODE_BLOCKED INFRA_BLOCKED PROVIDER_BLOCKED REVIEW_BLOCKED UNKNOWN_BLOCKED'
@@ -77,6 +83,11 @@ _fm_blocker_from_text() {
     # Provider rate limit is transient and is checked before quota.
     *"rate limit"*|*"rate-limit"*)
       printf 'PROVIDER_BLOCKED\trate_limit' ;;
+    # Disk/filesystem exhaustion is INFRASTRUCTURE, never a provider quota hit,
+    # even though its message contains the word "quota" ("disk quota exceeded").
+    # Checked before the provider-quota rule so the shared word cannot steal it.
+    *"disk quota"*|*"disk space"*|*"filesystem quota"*|*"file system full"*)
+      printf 'INFRA_BLOCKED\tdisk' ;;
     # Provider quota / usage limit / outage.
     *"usage limit"*|*"quota"*|*"exceeded its invocation budget"*|*"try again at"*)
       printf 'PROVIDER_BLOCKED\tquota_exhausted' ;;
@@ -151,9 +162,12 @@ fm_blocker_retry_policy() {
   esac
 }
 
-# fm_blocker_retry_after <cause-text>  -> "H:MM" / "H:MM AM|PM" or empty
+# fm_blocker_retry_after <cause-text>  -> ISO-8601 UTC timestamp, or empty
+# Only a fully-qualified UTC timestamp is a reset time the scheduler can use:
+# the same text may carry a bare clock ("try again at 14:08") whose timezone is
+# unknown, and guessing UTC from it would silently schedule the wrong instant.
 fm_blocker_retry_after() {
   printf '%s' "$1" \
-    | sed -n 's/.*try again at \([0-9][0-9]*:[0-9][0-9]\([[:space:]][APap][Mm]\)\{0,1\}\).*/\1/p' \
+    | sed -n 's/.*\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z\).*/\1/p' \
     | head -1
 }

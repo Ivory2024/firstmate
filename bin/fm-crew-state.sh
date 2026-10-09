@@ -242,6 +242,25 @@ map_log_state() {  # <line>
 LOG_LINE=$(status_current_line "$LOG" "$KIND")
 LOG_VERB=$(status_line_verb "$LOG_LINE")
 
+# blocker_tag_for_line: the canonical state line carries a typed blocker suffix.
+# An explicit [blocker=<TYPE>] tag (or an unrecognized one, which the reader
+# folds to UNKNOWN_BLOCKED) is authoritative; otherwise the command tower
+# derives the TYPE from the cause text through the taxonomy owner in
+# bin/fm-blocker-classify-lib.sh, so a crew that only wrote free prose still
+# reaches the supervisor with a typed blocker. fm_blocker_classify always emits
+# a TYPE, so a nonempty blocked note always yields a suffix.
+blocker_tag_for_line() {  # <status-line> -> TYPE
+  local line=$1 tag note stage row
+  tag=$(fm_status_line_blocker "$line")
+  [ -n "$tag" ] && { printf '%s' "$tag"; return 0; }
+  note=$(status_line_note "$line")
+  [ -n "$note" ] || return 0
+  stage=$(fm_status_line_stage "$line")
+  [ -n "$stage" ] || stage=unknown
+  row=$(fm_blocker_classify "$stage" "$note")
+  printf '%s' "${row%%$'\t'*}"
+}
+
 # --- remote secondmate: the true source is the remote endpoint ---------------
 # A remote mate's recorded worktree and backend target live on its own host, so
 # the local worktree probe above and the local pane reads below would misreport
@@ -1145,7 +1164,7 @@ if [ "$HAVE_RUN" = 1 ]; then
       if [ "$LOG_VERB" = blocked ] \
         && [ "$(status_line_verb "$LOG_LATEST")" = blocked ] \
         && log_reports_daemon_socket_down "$LOG_LATEST"; then
-        emit blocked status-log "$(status_line_note "$LOG_LATEST")${SEP}daemon socket down despite attributed run record" "$(fm_status_line_blocker "$LOG_LATEST")"
+        emit blocked status-log "$(status_line_note "$LOG_LATEST")${SEP}daemon socket down despite attributed run record" "$(blocker_tag_for_line "$LOG_LATEST")"
       fi
       # An UNVERIFIED record cannot close an open decision. The crew observed
       # its gate or its blocker first hand; a record the dead instrument left
@@ -1153,7 +1172,11 @@ if [ "$HAVE_RUN" = 1 ]; then
       # record is reported as the reason rather than replacing it.
       LOG_TIP_STATE=$(map_log_state "$LOG_LINE")
       if [ -n "$RUN_DEAD_DAEMON" ]; then
-        emit "$LOG_TIP_STATE" status-log "$(status_line_note "$LOG_LINE")${SEP}${RUN_DEAD_DAEMON}${SELECTED_RUN_ID:+${SEP}run: $SELECTED_RUN_ID}"
+        if [ "$LOG_TIP_STATE" = blocked ]; then
+          emit blocked status-log "$(status_line_note "$LOG_LINE")${SEP}${RUN_DEAD_DAEMON}${SELECTED_RUN_ID:+${SEP}run: $SELECTED_RUN_ID}" "$(blocker_tag_for_line "$LOG_LINE")"
+        else
+          emit "$LOG_TIP_STATE" status-log "$(status_line_note "$LOG_LINE")${SEP}${RUN_DEAD_DAEMON}${SELECTED_RUN_ID:+${SEP}run: $SELECTED_RUN_ID}"
+        fi
       fi
       if [ "$RUN_STATE" != parked ]; then
         if [ "$RUN_STATE" = working ]; then
@@ -1267,7 +1290,11 @@ fi
 if [ -n "$LOG_VERB" ]; then
   LOG_STATE=$(map_log_state "$LOG_LINE")
   if [ "$LOG_STATE" != unknown ]; then
-    emit "$LOG_STATE" status-log "$(status_line_note "$LOG_LINE")"
+    if [ "$LOG_STATE" = blocked ]; then
+      emit blocked status-log "$(status_line_note "$LOG_LINE")" "$(blocker_tag_for_line "$LOG_LINE")"
+    else
+      emit "$LOG_STATE" status-log "$(status_line_note "$LOG_LINE")"
+    fi
   fi
 fi
 
