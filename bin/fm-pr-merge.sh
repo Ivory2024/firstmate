@@ -1163,9 +1163,10 @@ case "$PROVIDER" in
     if [ ! -x "$FM_POLICY" ]; then
       echo "REFUSED: merge policy engine missing at $FM_POLICY (fail-closed)" >&2; exit 1
     fi
-    fm_changed=$(gh pr diff "$PR_NUMBER" --repo "$PR_OWNER/$PR_REPO" --name-only 2>/dev/null) || {
+    mapfile -t fm_files < <(gh pr diff "$PR_NUMBER" --repo "$PR_OWNER/$PR_REPO" --name-only 2>/dev/null) || {
       echo "REFUSED: cannot read PR diff for policy (fail-closed)" >&2; exit 1; }
-    fm_risk=$("$FM_POLICY" classify-risk $fm_changed 2>/dev/null); [ -n "$fm_risk" ] || fm_risk=HIGH
+    [ "${#fm_files[@]}" -gt 0 ] || { echo "REFUSED: empty PR diff (fail-closed)" >&2; exit 1; }
+    fm_risk=$("$FM_POLICY" classify-risk "${fm_files[@]}" 2>/dev/null); [ -n "$fm_risk" ] || fm_risk=HIGH
     fm_protected=no
     case "$fm_risk" in HIGH) fm_protected=yes;; esac
     # independence: an impl model may not be the sole reviewer (from task meta).
