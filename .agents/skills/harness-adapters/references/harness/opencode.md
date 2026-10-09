@@ -8,7 +8,7 @@ The task launch command was re-verified live on 2026-10-04 against the installed
 
 | Fact | Value |
 |---|---|
-| Busy state | The generated OpenCode 2 worker plugin uses `session.execution.started` as active and `session.execution.succeeded`, `.failed`, or `.interrupted` as inactive, latched to the worker's own session. |
+| Busy state | The generated `fm-busy-state.js` OpenCode 2 worker plugin latches `session.execution.started` to the worker's session and uses that same session's `session.execution.succeeded`, `.failed`, or `.interrupted` event as inactive. Only that latched session's end event touches the task's turn-end notification marker; unrelated session events leave both the marker and latched busy state unchanged. |
 | Exit command | `/exit`. |
 | Interrupt | Double Escape; it is known to be flaky while a long shell command runs, so use `../../../bin/fm-control.sh <task-id> relaunch` for a wedged pane. |
 | Skill invocation | No separate verified form beyond normal slash-command behavior; use natural language when the exact command is uncertain. |
@@ -33,6 +33,9 @@ The task launch command was re-verified live on 2026-10-04 against the installed
 OpenCode can auto-upgrade in the background, and the running TUI can exit mid-task.
 That behavior was observed live during an upgrade from 1.15.7 to 1.17.3.
 If the pane shows the exit banner, use the verified resume path above.
+
+Crewmate and scout launches generate `fm-busy-state.js` and `fm-opencode-permission.js` in the task worktree.
+The ordinary shared-worktree return path removes both generated plugins before returning the worktree to the pool.
 
 ## Busy-queued Enter
 

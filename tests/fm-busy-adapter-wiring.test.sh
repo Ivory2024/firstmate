@@ -243,7 +243,7 @@ test_opencode_plugin_semantic_lifecycle() {
   out=$(drive_oc_plugin "$plugin" \
     "$(oc_started ses2)" \
     "$(oc_ended ses_other succeeded)") || fail "other-session end drive failed: $out"
-  [ -f "$state/$id.turn-ended" ] || fail "the marker touch must stay a notification for every session's execution end"
+  [ ! -e "$state/$id.turn-ended" ] || fail "an unrelated session's end must not touch the notification marker"
   out=$(classify opencode "$id" "$state")
   [ "$out" = "busy opencode-plugin" ] || fail "another session's end must not clear the latched busy, got '$out'"
   pass "opencode plugin classifies from the session.execution lifecycle, scoped to the latched worker session"
