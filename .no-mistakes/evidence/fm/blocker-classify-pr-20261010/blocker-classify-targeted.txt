@@ -1,0 +1,3 @@
+Baseline (fixture omits fm-blocker-classify-lib.sh): failed as expected: broken-branch settlement exposed generic “could not reconcile unread supervision outcomes into main” instead of synthetic generator failure.
+
+Changed target scenario (fixture copies fm-blocker-classify-lib.sh): ok - branch default-on eligibility (task-scoped, heartbeat, legacy flag ignored) binds and a broken branch rejects to watcher fallback.
