@@ -15,21 +15,15 @@
 #     review is NOT REVIEW_BLOCKED).
 #   - A provider AUTH failure is NOT quota: it is UNKNOWN (needs a human).
 #   - The word "review" in a message is not evidence of a review finding.
-#   - The RETRY policy is computed separately from the TYPE.
-#
+# #
 # Public functions:
 #   fm_blocker_classify <stage> <cause-text> [<structured-code>]
-#       prints one tab-separated row: <TYPE>\t<subcause>\t<retry_policy>
-#   fm_blocker_retry_policy <TYPE> <subcause>
-#       prints one policy token: none|limited|wait|manual
-#   fm_blocker_retry_after <cause-text>
-#       prints an ISO-8601 UTC reset time when the text carries one, else empty
+#       prints one tab-separated row: <TYPE>\t<subcause>
 #
 # The production caller is bin/fm-crew-state.sh: when a crew's `blocked:` line is
 # the current state and carries no explicit [blocker=] tag, the command tower
 # derives the TYPE here and appends `blocker=<TYPE>` to its canonical state line.
-# That reader is also what makes the disk-quota and retry-after rules below
-# load-bearing rather than dead library code.
+# The classifier keeps the tower output typed while preserving its existing text.
 
 # shellcheck disable=SC2034  # public vocabulary; also read by bin/fm-classify-lib.sh
 FM_BLOCKER_TYPES='CODE_BLOCKED INFRA_BLOCKED PROVIDER_BLOCKED REVIEW_BLOCKED UNKNOWN_BLOCKED'
@@ -106,14 +100,14 @@ fm_blocker_classify() {
   # shellcheck disable=SC2034  # stage is part of the contract; the type is deliberately stage-independent
   local stage=$1 cause=$2 code=${3:-}
   local text_code='' from_text='' from_code=''
-  local type sub policy text_type
+  local type sub text_type
   text_code=$(printf '%s' "$cause" | tr '[:upper:]' '[:lower:]')
 
   if [ -n "$code" ]; then
     from_code=$(_fm_blocker_from_code "$(_fm_blocker_lc "$code")")
     if [ -z "$from_code" ]; then
       # A structured code we do not recognize: do not guess from text.
-      printf 'UNKNOWN_BLOCKED\tunknown_code\tnone\n'
+      printf 'UNKNOWN_BLOCKED\tunknown_code\n'
       return 0
     fi
     from_text=$(_fm_blocker_from_text "$text_code")
@@ -122,7 +116,7 @@ fm_blocker_classify() {
       code_type=${from_code%%$'\t'*}
       if [ "$text_type" != "$code_type" ]; then
         # Structured evidence and text conflict -> safe UNKNOWN.
-        printf 'UNKNOWN_BLOCKED\tconflicting_evidence\tnone\n'
+        printf 'UNKNOWN_BLOCKED\tconflicting_evidence\n'
         return 0
       fi
     fi
@@ -131,7 +125,7 @@ fm_blocker_classify() {
   else
     from_text=$(_fm_blocker_from_text "$text_code")
     if [ -z "$from_text" ]; then
-      printf 'UNKNOWN_BLOCKED\tno_evidence\tnone\n'
+      printf 'UNKNOWN_BLOCKED\tno_evidence\n'
       return 0
     fi
     type=${from_text%%$'\t'*}
@@ -139,35 +133,5 @@ fm_blocker_classify() {
   fi
 
   fm_blocker_is_type "$type" || type=UNKNOWN_BLOCKED
-  policy=$(fm_blocker_retry_policy "$type" "$sub")
-  printf '%s\t%s\t%s\n' "$type" "$sub" "$policy"
-}
-
-# fm_blocker_retry_policy <TYPE> <subcause>
-fm_blocker_retry_policy() {
-  case "$1" in
-    CODE_BLOCKED|REVIEW_BLOCKED) printf 'none' ;;
-    INFRA_BLOCKED)               printf 'limited' ;;
-    PROVIDER_BLOCKED)
-      case "$2" in
-        rate_limit) printf 'limited' ;;
-        *)          printf 'wait' ;;
-      esac ;;
-    UNKNOWN_BLOCKED)
-      case "$2" in
-        provider_auth|provider_payment) printf 'manual' ;;
-        *)                              printf 'manual' ;;
-      esac ;;
-    *) printf 'manual' ;;
-  esac
-}
-
-# fm_blocker_retry_after <cause-text>  -> ISO-8601 UTC timestamp, or empty
-# Only a fully-qualified UTC timestamp is a reset time the scheduler can use:
-# the same text may carry a bare clock ("try again at 14:08") whose timezone is
-# unknown, and guessing UTC from it would silently schedule the wrong instant.
-fm_blocker_retry_after() {
-  printf '%s' "$1" \
-    | sed -n 's/.*\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z\).*/\1/p' \
-    | head -1
+  printf '%s\t%s\n' "$type" "$sub"
 }

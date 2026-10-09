@@ -2704,6 +2704,11 @@ test_remote_alive_with_log_uses_status_log() {
   assert_contains "$out" "source: status-log" "alive remote mate reads current activity from the routed log"
   assert_contains "$out" "remote endpoint alive on remote-mac" "the remote liveness read should be visible"
   assert_not_contains "$out" "worktree gone" "a healthy remote mate must never read as torn down"
+  printf 'blocked: You have hit your usage limit\n' > "$d/state/rsm.status"
+  out=$(FM_FAKE_REMOTE_STATE_OUT=alive FM_FAKE_SSH_RC=0 run_remote_crew_state "$d" rsm); rc=$?
+  expect_code 0 "$rc" "remote alive blocked status exits 0"
+  assert_contains "$out" "state: blocked" "remote alive endpoint preserves blocked status"
+  assert_contains "$out" "blocker=PROVIDER_BLOCKED" "remote alive blocked status is typed"
   pass "fm-crew-state remote: alive endpoint falls through to the routed status log"
 }
 
