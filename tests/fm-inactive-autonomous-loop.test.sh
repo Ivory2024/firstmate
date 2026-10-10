@@ -19,6 +19,7 @@ rm "$root/bin/fm-autonomous-loop.sh"
 cat > "$root/bin/fm-autonomous-loop.sh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${FM_AUTONOMOUS_LOG:?}"
+[ -z "${FM_AUTONOMOUS_SLEEP:-}" ] || sleep "$FM_AUTONOMOUS_SLEEP"
 exit "${FM_AUTONOMOUS_RC:-0}"
 SH
 chmod +x "$root/bin/fm-autonomous-loop.sh"
@@ -43,5 +44,13 @@ assert_equals "reconcile" "$(cat "$TMP_ROOT/reconcile.log")" \
   "regular scan did not invoke autonomous reconciliation"
 assert_equals "" "$(cat "$TMP_ROOT/stdout" "$TMP_ROOT/stderr")" \
   "quiet scan emitted autonomous reconciliation output"
+
+if FM_AUTONOMOUS_SLEEP=3 run_scan >"$TMP_ROOT/stdout" 2>"$TMP_ROOT/stderr"; then
+  :
+else
+  fail "slow autonomous reconciliation aborted the scan"
+fi
+assert_equals "" "$(cat "$TMP_ROOT/stdout" "$TMP_ROOT/stderr")" \
+  "timed-out autonomous reconciliation emitted output"
 
 pass "fm-inactive-autonomous-loop"
