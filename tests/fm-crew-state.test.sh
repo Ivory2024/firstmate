@@ -2753,6 +2753,39 @@ test_remote_dead_reports_remote_verdict() {
   pass "fm-crew-state remote: the remote host's own dead verdict is reported truthfully"
 }
 
+# Endpoint-fail arms of the blocker contract: when the remote endpoint is dead
+# or unreachable the state line is `unknown`, never `blocked`, so the tower must
+# not guess a blocker TYPE from the routed log's cause text. Typing happens only
+# where a blocked result is actually reported (the alive arm above).
+test_remote_dead_with_blocked_log_guesses_no_blocker_type() {
+  reset_fakes
+  local d out rc
+  d=$(setup_remote_case remote-dead-blocked-log)
+  make_fakebin "$d" >/dev/null
+  printf 'blocked [at=1780000000]: provider outage on the remote quota adapter\n' > "$d/state/rsm.status"
+  out=$(FM_FAKE_REMOTE_STATE_OUT=dead FM_FAKE_SSH_RC=0 run_remote_crew_state "$d" rsm); rc=$?
+  expect_code 0 "$rc" "remote dead with blocked log exits 0"
+  assert_contains "$out" "state: unknown" "a dead endpoint reads unknown, never blocked"
+  assert_contains "$out" "remote endpoint dead on remote-mac" "the remote verdict is still reported"
+  assert_not_contains "$out" "blocker=" "a dead endpoint must never carry a guessed blocker type"
+  assert_not_contains "$out" "PROVIDER_BLOCKED" "endpoint failure must not be typed from cause text"
+  pass "fm-crew-state remote: endpoint failure emits unknown with no blocker type"
+}
+
+test_remote_unreachable_with_blocked_log_guesses_no_blocker_type() {
+  reset_fakes
+  local d out rc
+  d=$(setup_remote_case remote-unreachable-blocked-log)
+  make_fakebin "$d" >/dev/null
+  printf 'blocked [at=1780000000]: provider outage on the remote quota adapter\n' > "$d/state/rsm.status"
+  out=$(FM_FAKE_SSH_RC=255 run_remote_crew_state "$d" rsm); rc=$?
+  expect_code 0 "$rc" "remote unreachable with blocked log exits 0"
+  assert_contains "$out" "unknown-remote" "an unreachable host reads unknown-remote"
+  assert_not_contains "$out" "blocker=" "an unreachable endpoint must never carry a guessed blocker type"
+  assert_not_contains "$out" "PROVIDER_BLOCKED" "transport failure must not be typed from cause text"
+  pass "fm-crew-state remote: unreachable endpoint emits unknown with no blocker type"
+}
+
 test_missing_meta() {
   reset_fakes
   local d; d=$(new_case nometa)
@@ -4904,6 +4937,8 @@ test_remote_alive_with_log_uses_status_log
 test_remote_alive_idle_is_healthy_not_gone
 test_remote_unreachable_is_unknown_remote_not_dead
 test_remote_dead_reports_remote_verdict
+test_remote_dead_with_blocked_log_guesses_no_blocker_type
+test_remote_unreachable_with_blocked_log_guesses_no_blocker_type
 test_missing_meta
 test_provably_working_via_runs_list_fallback
 test_not_provably_working_when_stopped
