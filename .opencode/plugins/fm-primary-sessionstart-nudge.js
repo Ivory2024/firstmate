@@ -47,10 +47,8 @@ export default {
     void (async () => {
       try {
         for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
-          // OpenCode 2.0.18 has no `session.created`; the session-start signal is
-          // `session.instructions.updated` (fires once at session start).
-          if (event?.type !== "session.instructions.updated") continue;
-          const sessionID = event.data?.sessionID ?? event.data?.info?.id ?? event.properties?.info?.id ?? event.properties?.sessionID;
+          if (event?.type !== "session.created") continue;
+          const sessionID = event.data?.info?.id;
           if (!sessionID || handledSessions.has(sessionID)) continue;
           const r = await root();
           if (!r) continue;
