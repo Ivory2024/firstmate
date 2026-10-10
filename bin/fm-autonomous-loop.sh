@@ -47,6 +47,11 @@ AUTO_RESUME_BASE_BACKOFF=${FM_AUTO_RESUME_BASE_BACKOFF:-30}
 AUTO_RESUME_MAX_BACKOFF=${FM_AUTO_RESUME_MAX_BACKOFF:-1800}
 AUTO_RESUME_JITTER_PCT=${FM_AUTO_RESUME_JITTER_PCT:-25}
 STALLED_THRESHOLD_SECS=${FM_STALLED_THRESHOLD_SECS:-900}
+# Treehouse's own root contract: `treehouse --root` overrides TREEHOUSE_ROOT,
+# which overrides the config file (bin/fm-claude-trust.sh records the same
+# precedence). Read the environment value rather than hard-coding one
+# operator's home, and default to the documented pool location.
+TREEHOUSE_ROOT=${TREEHOUSE_ROOT:-${HOME:-}/.treehouse}
 
 mkdir -p "$LIFECYCLE_DIR" "$LANE_QUEUE_DIR" "$LIFECYCLE_LOCK_DIR"
 
@@ -571,6 +576,19 @@ is_terminal() {  # <state>
   case "$1" in DONE|FAILED) return 0 ;; *) return 1 ;; esac
 }
 
+# One classify_task call per task. Sets TASK_STATE and TASK_DETAIL to the same
+# "state" and "detail" fields callers previously cut out of two separate
+# classify_task invocations, so each task is classified once per pass.
+TASK_STATE=
+TASK_DETAIL=
+read_task_state() {  # <task-id>
+  local crew rest
+  crew=$(classify_task "$1") || return 1
+  rest=${crew#* }
+  TASK_STATE=${crew%% *}
+  TASK_DETAIL=${rest#* }
+}
+
 is_lane_occupying_state() {  # <state>
   case "$1" in ASSIGNED|RUNNING|TESTING|REVIEWING|FIXING|RETESTING|READY_FOR_MERGE|MERGE_VERIFIED|DEPLOYMENT_GATE) return 0 ;; *) return 1 ;; esac
 }
@@ -761,8 +779,9 @@ auto_resume_task() {  # <task-id>
   id=$1
 
   lifecycle_state=$(lifecycle_read "$id" current_step)
-  external_state=$(classify_task "$id" | cut -d' ' -f1)
-  detail=$(classify_task "$id" | cut -d' ' -f3-)
+  read_task_state "$id"
+  external_state=$TASK_STATE
+  detail=$TASK_DETAIL
 
   # Don't resume if lifecycle is in a legitimate hold state
   if is_legitimate_hold "$id" "$lifecycle_state" "$detail"; then
@@ -1097,7 +1116,8 @@ advance_lane() {  # <lane>
 # ============================================================================
 
 reconcile_orphans() {
-  local marker task_id
+  local marker task_id meta m_wt pool wt
+  local referenced_worktrees=''
 
   # Inventory: .subsuper-seen-status-* markers for tasks whose meta no longer exists
   echo "=== Orphan Inventory ==="
@@ -1109,25 +1129,29 @@ reconcile_orphans() {
     fi
   done
 
+  # Collect every worktree the task metas reference once, so the pool inventory
+  # below compares each slot against this set instead of re-grepping every meta
+  # for every slot. Entries are newline-framed so a value can never match
+  # partially, and the comparison itself is unchanged.
+  for meta in "$STATE"/*.meta; do
+    [ -f "$meta" ] || continue
+    m_wt=$(grep '^worktree=' "$meta" 2>/dev/null | cut -d= -f2- | tail -1)
+    [ -n "$m_wt" ] || continue
+    referenced_worktrees="${referenced_worktrees}${m_wt}"$'\n'
+  done
+
   # Inventory: worktrees without meta (treehouse pool slots)
-  if [ -d "/Users/irene/.treehouse" ]; then
+  if [ -d "$TREEHOUSE_ROOT" ]; then
     echo "=== Treehouse Pool Inventory ==="
-    for pool in /Users/irene/.treehouse/firstmate-*/; do
+    for pool in "$TREEHOUSE_ROOT"/firstmate-*/; do
       [ -d "$pool" ] || continue
       for wt in "$pool"/*/; do
         [ -d "$wt" ] || continue
         # Check if any meta references this worktree
-        local referenced
-        referenced=0
-        for meta in "$STATE"/*.meta; do
-          [ -f "$meta" ] || continue
-          local m_wt
-          m_wt=$(grep '^worktree=' "$meta" 2>/dev/null | cut -d= -f2- | tail -1)
-          [ "$m_wt" = "$wt" ] && referenced=1 && break
-        done
-        if [ "$referenced" -eq 0 ]; then
-          echo "  UNREFERENCED worktree: $wt"
-        fi
+        case $'\n'"$referenced_worktrees" in
+          *$'\n'"$wt"$'\n'*) ;;
+          *) echo "  UNREFERENCED worktree: $wt" ;;
+        esac
       done
     done
   fi
@@ -1218,9 +1242,9 @@ cmd_reconcile() {  # [--startup]
     [ -f "$meta" ] || continue
     local id
     id=$(basename "$meta" .meta)
-    local state detail
-    state=$(classify_task "$id" | cut -d' ' -f1)
-    detail=$(classify_task "$id" | cut -d' ' -f3-)
+    local state
+    read_task_state "$id"
+    state=$TASK_STATE
     sync_lifecycle_with_external "$id" "$state"
   done
 
@@ -1241,8 +1265,9 @@ cmd_reconcile() {  # [--startup]
     local id
     id=$(basename "$meta" .meta)
     local state detail
-    state=$(classify_task "$id" | cut -d' ' -f1)
-    detail=$(classify_task "$id" | cut -d' ' -f3-)
+    read_task_state "$id"
+    state=$TASK_STATE
+    detail=$TASK_DETAIL
 
     # Get updated lifecycle state (already synced above)
     local lifecycle_state
@@ -1278,8 +1303,9 @@ cmd_scan_stalled() {
     [ "$kind" = "secondmate" ] && continue
 
     local state detail
-    state=$(classify_task "$id" | cut -d' ' -f1)
-    detail=$(classify_task "$id" | cut -d' ' -f3-)
+    read_task_state "$id"
+    state=$TASK_STATE
+    detail=$TASK_DETAIL
 
     if is_stalled "$id" "$state" "$detail"; then
       append_evidence "$id" "STALLED detected: all observables exceed threshold. State: $state, Detail: $detail"
