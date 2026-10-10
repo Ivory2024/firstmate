@@ -105,7 +105,7 @@ assert_equals 1 "$(wc -l < "$TMP_ROOT/spawn.log" | tr -d '[:space:]')" \
   "a duplicate lane reconciliation spawned the task twice"
 
 for lifecycle_state in READY ASSIGNED RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD ESCALATED; do
-  for external_state in done failed; do
+  for external_state in "done" failed; do
     id="${lifecycle_state,,}-$external_state"
     write_task "$id" "terminal-$id" "$lifecycle_state"
   done
