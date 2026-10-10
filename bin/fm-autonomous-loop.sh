@@ -971,6 +971,14 @@ task_meta_value() {  # <task-id> <field>
   sed -n "s/^$2=//p" "$STATE/$1.meta" | head -1
 }
 
+# The reconcile owns the TASK lifecycle registry, and a persistent secondmate is
+# not a backlog task: cmd_scan_stalled already excludes it. Classifying one also
+# costs a remote round trip, which must never ride the single budget the
+# watcher's poll shares between the inactive scan and this reconcile.
+is_secondmate_meta() {  # <meta>
+  [ "$(grep '^kind=' "$1" 2>/dev/null | cut -d= -f2- | tail -1)" = secondmate ]
+}
+
 # Diagnostic state for lane queue
 lane_diagnostic() {  # <lane> -> prints diagnostic info
   local lane
@@ -1231,6 +1239,7 @@ cmd_reconcile() {  # [--startup]
   # Ensure lifecycle records for all tasks (with migration)
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] || continue
+    is_secondmate_meta "$meta" && continue
     local id
     id=$(basename "$meta" .meta)
     ensure_lifecycle "$id"
@@ -1242,6 +1251,7 @@ cmd_reconcile() {  # [--startup]
   echo "=== Syncing lifecycle states with external states ==="
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] || continue
+    is_secondmate_meta "$meta" && continue
     local id
     id=$(basename "$meta" .meta)
     local state
@@ -1264,6 +1274,7 @@ cmd_reconcile() {  # [--startup]
   # Auto-resume interrupted tasks (P0-1)
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] || continue
+    is_secondmate_meta "$meta" && continue
     local id
     id=$(basename "$meta" .meta)
     local state detail
