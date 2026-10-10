@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
+import { QUIESCENT_EVENTS } from "./lib/fm-opencode-events.js";
 
 // OpenCode 2.0.18 turn-end guard. Shape: `export default { id, setup(ctx) }`.
 // The 1.x ctx fields are gone: working dir is `ctx.location.directory`, the old
@@ -10,17 +11,6 @@ import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
 // is still shared through globalThis so this guard defers to a live arm.
 
 const COORDINATOR_KEY = "__firstmateOpenCodeWatchArm";
-
-// OpenCode 2.0.18 publishes no `session.idle` event; a turn/quiescent boundary
-// is the execution lifecycle end. Mirror lib/fm-opencode-lifecycle-adapter.js.
-const QUIESCENT_EVENTS = new Set([
-  "session.idle",
-  "session.execution.succeeded",
-  "session.execution.failed",
-  "session.execution.interrupted",
-  "session.execution.cancelled",
-  "session.execution.canceled",
-]);
 
 let skipNextIdle = false;
 
@@ -81,6 +71,7 @@ export default {
     void (async () => {
       try {
         for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+          if (event?.location?.directory !== ctx.location?.directory) continue;
           if (!QUIESCENT_EVENTS.has(event?.type)) continue;
 
           if (skipNextIdle) {

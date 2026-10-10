@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
+import { QUIESCENT_EVENTS } from "./lib/fm-opencode-events.js";
 
 // Supervision host: a home opted in with config/supervision-host
 // (docs/configuration.md "Supervision host" owns the gate, which
@@ -16,16 +17,6 @@ import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
 // startup. On a home that does not run the host nothing below changes.
 const COORDINATOR_KEY = "__firstmateOpenCodeWatchArm";
 
-// OpenCode 2.0.18 has no `session.idle`; a quiescent boundary is the execution
-// lifecycle end (see lib/fm-opencode-lifecycle-adapter.js).
-const QUIESCENT_EVENTS = new Set([
-  "session.idle",
-  "session.execution.succeeded",
-  "session.execution.failed",
-  "session.execution.interrupted",
-  "session.execution.cancelled",
-  "session.execution.canceled",
-]);
 // 35s on Windows so the budget stays above arm's MSYS confirm default (30s in
 // bin/fm-watch-arm.sh): a slow but successful Git Bash cold start must not be
 // SIGTERMed mid-confirmation. Conditioned on win32 so other platforms keep 12s.
@@ -597,6 +588,7 @@ export default {
         };
 
         for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+          if (event?.location?.directory !== ctx.location?.directory) continue;
           if (!QUIESCENT_EVENTS.has(event?.type)) continue;
           const sessionID = event.data?.sessionID ?? event.properties?.sessionID;
           if (!sessionID) continue;

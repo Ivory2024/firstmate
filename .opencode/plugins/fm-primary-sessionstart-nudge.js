@@ -47,6 +47,7 @@ export default {
     void (async () => {
       try {
         for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+          if (event?.location?.directory !== ctx.location?.directory) continue;
           if (event?.type !== "session.created") continue;
           const sessionID = event.data?.info?.id;
           if (!sessionID || handledSessions.has(sessionID)) continue;
