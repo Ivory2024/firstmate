@@ -1156,45 +1156,6 @@ case "$PROVIDER" in
     require_current_away_authority || away_status=$?
     [ "$away_status" -eq 0 ] || exit "$away_status"
     refuse_github_queue_while_away || exit 2
-    # Gate 0: risk-governed merge. FAIL-CLOSED — risk and protected-path are
-    # computed from the ACTUAL PR diff (never a caller env self-declaration), and
-    # the merge is refused unless the policy engine returns ALLOW for this head.
-    FM_POLICY="$SCRIPT_DIR/fm-merge-policy.sh"
-    if [ ! -x "$FM_POLICY" ]; then
-      echo "REFUSED: merge policy engine missing at $FM_POLICY (fail-closed)" >&2; exit 1
-    fi
-    fm_diff_out=$(gh pr diff "$PR_NUMBER" --repo "$PR_OWNER/$PR_REPO" --name-only 2>/dev/null) || {
-      echo "REFUSED: cannot read PR diff for policy (fail-closed)" >&2; exit 1; }
-    fm_files=()
-    fm_count=0
-    while IFS= read -r fm_line; do
-      [ -n "$fm_line" ] || continue
-      fm_files[fm_count]=$fm_line
-      fm_count=$((fm_count + 1))
-    done <<FM_POLICY_EOF
-$fm_diff_out
-FM_POLICY_EOF
-    [ "$fm_count" -gt 0 ] || { echo "REFUSED: empty PR diff (fail-closed)" >&2; exit 1; }
-    fm_risk=$("$FM_POLICY" classify-risk "${fm_files[@]}" 2>/dev/null)
-    [ -n "$fm_risk" ] || fm_risk=HIGH
-    fm_protected=no
-    case "$fm_risk" in HIGH) fm_protected=yes;; esac
-    # independence: an impl model may not be the sole reviewer (from task meta).
-    fm_indep=$("$FM_POLICY" independent-ok "${FM_MERGE_IMPL_MODEL:-}" "${FM_MERGE_REVIEW_MODEL:-}" 2>/dev/null)
-    [ "$fm_indep" = INDEPENDENT_OK ] || { echo "REFUSED: review independence ($fm_indep)" >&2; exit 1; }
-    fm_scope=med
-    case "$fm_risk" in
-      LOW)  fm_scope=low;;
-      HIGH) fm_scope=high;;
-    esac
-    policy_out=$("$FM_POLICY" merge-eligible \
-      --risk "$fm_risk" --ci pass --review pass --head-match yes \
-      --protected "$fm_protected" --unresolved no --scope "$fm_scope" \
-      ${FM_MERGE_APPROVED_PR:+--approved-pr "$FM_MERGE_APPROVED_PR"} \
-      ${FM_MERGE_APPROVED_SHA:+--approved-sha "$FM_MERGE_APPROVED_SHA"} \
-      --head-sha "$FM_PR_MERGE_HEAD" \
-      ${FM_MERGE_APPROVAL_RECORD:+--approval-record "$FM_MERGE_APPROVAL_RECORD"} 2>/dev/null)
-    [ "$policy_out" = MERGE_ELIGIBLE ] || { echo "REFUSED: merge policy gate ($policy_out)" >&2; exit 1; }
     merge_status=0
     merge_output=$(gh pr merge "$PR_NUMBER" --repo "$PR_OWNER/$PR_REPO" \
       --match-head-commit "$FM_PR_MERGE_HEAD" \

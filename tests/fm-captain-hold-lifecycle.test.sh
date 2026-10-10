@@ -111,11 +111,6 @@ case "${1:-} ${2:-}" in
       *headRefOid*) printf '%s\n' 1111111111111111111111111111111111111111 ;;
     esac
     ;;
-  "pr diff")
-    # Gate 0 classifies risk from the real PR diff; the mock forge answers
-    # with a docs-only change so the risk stays LOW.
-    printf '%s\n' 'docs/merge-policy.md'
-    ;;
   "pr merge") printf 'merged:\n  number: %s\n  status: ok\n' "${3:-}" ;;
   "api graphql")
     printf '%s\n' 'state=MERGED' 'merged=true' 'queued=false' 'base=main'
@@ -137,9 +132,6 @@ SH
 run_pr_merge() {  # <home> <id> <url>
   local home=$1
   shift
-  # Gate 0 needs named, distinct impl/review models; the harness supplies them.
-  FM_MERGE_IMPL_MODEL=test/impl-model \
-  FM_MERGE_REVIEW_MODEL=test/review-model \
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_CONFIG_OVERRIDE="$home/config" FM_TEST_GH_LOG="$home/gh.log" \

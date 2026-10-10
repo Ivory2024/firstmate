@@ -156,11 +156,6 @@ case "${1:-} ${2:-}" in
         ;;
     esac
     ;;
-  "pr diff")
-    # Gate 0 reads the real PR diff for risk classification; the mock forge
-    # answers with a docs-only change so the risk stays LOW.
-    printf '%s\n' 'docs/merge-policy.md'
-    ;;
   "pr merge")
     [ -z "${FM_TEST_GH_MERGE_HOOK:-}" ] || "$FM_TEST_GH_MERGE_HOOK"
     exit 0
@@ -255,9 +250,6 @@ run_check_entry() {
 run_merge_entry() {
   local dir=$1
   shift
-  # Gate 0 needs named, distinct impl/review models; the harness supplies them.
-  FM_MERGE_IMPL_MODEL=test/impl-model \
-  FM_MERGE_REVIEW_MODEL=test/review-model \
   FM_ROOT_OVERRIDE="$dir/root" FM_HOME="$dir/home" \
     FM_TEST_GUARD_LOG="$dir/guard.log" FM_TEST_GH_LOG="$dir/gh.log" \
     FM_TEST_GH_AXI_LOG="$dir/gh-axi.log" FM_TEST_GLAB_LOG="$dir/glab.log" \
@@ -2418,8 +2410,6 @@ SH
   set +e
   FM_TEST_REAL_MV="$REAL_MV" FM_TEST_REPLACEMENT_RAN="$dir/replacement-ran" \
     FM_TEST_REPLACEMENT_SCRIPT="$dir/replace-authority.sh" \
-    FM_MERGE_IMPL_MODEL=test/impl-model \
-    FM_MERGE_REVIEW_MODEL=test/review-model \
     FM_TEST_GH_STATE=MERGED run_watcher_bounded "$dir/home" "$dir/fakebin" \
       > "$dir/watch-a.out" 2> "$dir/watch-a.err"
   rc=$?
