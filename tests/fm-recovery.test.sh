@@ -46,6 +46,17 @@ run_rec() {  # <home> <args...>
     "$REC" "$@"
 }
 
+# run_rec_path <home> <path-prefix> <args...>: run_rec with <path-prefix> first on
+# PATH, for the fixtures that pin an external command such as `date`.
+run_rec_path() {  # <home> <path-prefix> <args...>
+  local home=$1 prefix=$2
+  shift 2
+  PATH="$prefix:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_RECOVERY_CREW_STATE_BIN="$home/state/fake-crew-state" \
+    "$REC" "$@"
+}
+
 # rec_state <home> <fp>: the recovery state the CLI reports.
 rec_state() { run_rec "$1" status --fingerprint "$2" | sed -n 's/^recovery: \([A-Z_]*\) .*/\1/p'; }
 rec_verb()  { run_rec "$1" status --fingerprint "$2" --verb; }
@@ -314,7 +325,8 @@ pass "retire: a recurring failure reopens after an audited retire"
 home=$(make_home rollback)
 out=$(run_rec "$home" begin t23 --class run-failed --signature "one" --target fm/t23)
 fp1=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
-out=$(run_rec "$home" begin t24 --class approval-boundary --signature "two" --target fm/t24)
+out=$(run_rec "$home" begin t24 --class approval-boundary --signature "two" --target fm/t24 \
+  --exec-class simulation)
 fp2=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
 run_rec "$home" escalate --fingerprint "$fp1" --reason "exhausted" >/dev/null
 before_rec=$(shasum -a 256 < "$home/state/recovery/$fp1.rec")
@@ -383,5 +395,196 @@ if command -v jq >/dev/null 2>&1; then
   assert_contains "$stages" "RECOVERABLE" "the per-event stages include the final recoverable stage"
 fi
 pass "measurement export: tagged, complete, JSON-valid, and read-only"
+
+# --- 15. free text can never inject or relabel the execution class ---------
+home=$(make_home inject-class)
+out=$(run_rec "$home" begin t29 --class run-failed \
+  --signature "boom exec_class=production" --target "fm/t29 exec_class=production")
+fp=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
+[ -n "$fp" ] || fail "begin produced no fingerprint: $out"
+status=$(run_rec "$home" status --fingerprint "$fp")
+assert_contains "$status" "exec: isolated" "a signature carrying exec_class=production cannot relabel the record"
+assert_not_contains "$status" "exec: production" "the injected class never becomes the record's own class"
+assert_equals 1 "$(grep -o 'exec_class=' "$home/state/recovery/$fp.rec" | wc -l | tr -d ' ')" \
+  "the record carries exactly one exec_class field"
+assert_not_contains "$(run_rec "$home" export-events)" '"exec_class":"production"' \
+  "the export cannot carry an injected production class"
+run_rec "$home" advance --fingerprint "$fp" DIAGNOSING --reason "exec_class=production" >/dev/null
+assert_equals 1 "$(grep -o 'exec_class=' "$home/state/recovery/$fp.rec" | wc -l | tr -d ' ')" \
+  "a reason carrying exec_class=production cannot add a second class field"
+assert_contains "$(run_rec "$home" status --fingerprint "$fp")" "exec: isolated" \
+  "the class is still isolated after a free-text reason"
+pass "record fields: no free-text argument can inject or relabel the execution class"
+
+# --- 16. a multi-word free-text value is read back whole -------------------
+home=$(make_home words)
+out=$(run_rec "$home" begin t30 --class run-failed --signature "sig" --target fm/t30)
+fp=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
+run_rec "$home" advance --fingerprint "$fp" DIAGNOSING --reason "two words survive" >/dev/null
+assert_contains "$(run_rec "$home" status --fingerprint "$fp")" "reason: two words survive" \
+  "a multi-word reason is not truncated at its first space"
+pass "record fields: a multi-word value round-trips instead of being truncated"
+
+# --- 17. retire never overwrites a previously archived incident ------------
+home=$(make_home retire-collision)
+out=$(FM_RECOVERY_NOW=5000 run_rec "$home" begin t31 --class run-failed --signature "sig" --target fm/t31)
+fp=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
+FM_RECOVERY_NOW=5000 run_rec "$home" escalate --fingerprint "$fp" --reason "exhausted" >/dev/null
+FM_RECOVERY_NOW=5000 run_rec "$home" retire --fingerprint "$fp" >/dev/null
+before=$(shasum -a 256 < "$home/data/recovery-archive/$fp/5000.ledger")
+out=$(FM_RECOVERY_NOW=5000 run_rec "$home" begin t31 --class run-failed --signature "sig" --target fm/t31)
+fp2=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
+FM_RECOVERY_NOW=5000 run_rec "$home" escalate --fingerprint "$fp2" --reason "exhausted again" >/dev/null
+FM_RECOVERY_NOW=5000 run_rec "$home" retire --fingerprint "$fp2" > "$home/retire2.out" 2>&1
+expect_code 1 "$?" "a second retire in the same epoch second is refused"
+assert_contains "$(cat "$home/retire2.out")" "refusing to overwrite preserved evidence" \
+  "the refusal names why the archive entry was not replaced"
+assert_equals "$before" "$(shasum -a 256 < "$home/data/recovery-archive/$fp/5000.ledger")" \
+  "the first archived ledger is byte-identical after the refused retire"
+pass "retire: an archived incident is never overwritten by a second retire"
+
+# --- 18. archive-all never merges two rollbacks into one directory ---------
+home=$(make_home rollback-collision)
+shim="$home/shim"
+mkdir -p "$shim"
+cat > "$shim/date" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = -u ] && [ "${2:-}" = +%Y%m%dT%H%M%SZ ]; then printf '20260101T000000Z\n'; exit 0; fi
+exec /bin/date "$@"
+SH
+chmod +x "$shim/date"
+run_rec "$home" begin t32 --class run-failed --signature "sig" --target fm/t32 >/dev/null
+out=$(run_rec_path "$home" "$shim" archive-all --reason "first rollback")
+dest=$(printf '%s' "$out" | sed -n 's/^archived: //p')
+assert_present "$dest/ROLLBACK.audit" "the first rollback writes its audit record"
+run_rec_path "$home" "$shim" archive-all --reason "second rollback" > "$home/rollback2.out" 2>&1
+expect_code 1 "$?" "a second rollback in the same UTC second is refused"
+assert_contains "$(cat "$home/rollback2.out")" "refusing to overwrite the previous rollback's audit record" \
+  "the refusal names why the second rollback was not merged in"
+assert_contains "$(cat "$dest/ROLLBACK.audit")" "reason=first rollback" \
+  "the first rollback's audit record is not truncated"
+assert_equals 1 "$(find "$home/data/recovery-archive" -maxdepth 1 -type d -name 'rollback-*' | wc -l | tr -d ' ')" \
+  "two rollbacks in one UTC second never merge into one directory"
+pass "rollback: two rollbacks never merge, so no audit record is lost"
+
+# --- 19. an unusable claim lock is an error, never a duplicate -------------
+home=$(make_home claim-error)
+run_rec "$home" begin t33 --class run-failed --signature "sig" --target fm/t33 >/dev/null
+chmod 500 "$home/state/recovery"
+run_rec "$home" begin t34 --class run-failed --signature "sig" --target fm/t34 > "$home/claim.out" 2>&1
+rc=$?
+chmod 700 "$home/state/recovery"
+expect_code 1 "$rc" "a claim lock that cannot be created is an error, not a duplicate"
+assert_contains "$(cat "$home/claim.out")" "cannot claim the recovery" \
+  "the failure names the uncreatable claim"
+assert_not_contains "$(cat "$home/claim.out")" "duplicate:" \
+  "an unusable claim lock is never reported as another recovery holding it"
+pass "claim lock: an uncreatable claim fails closed instead of reading as a duplicate"
+
+# --- 20. apply reports a decision, never a performed action ---------------
+home=$(make_home apply-inert)
+out=$(run_rec "$home" begin t35 --class run-failed --signature "sig" --target fm/t35)
+fp=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
+out=$(run_rec "$home" apply --fingerprint "$fp" --action isolated-test-run)
+expect_code 0 "$?" "an automatic action is permitted"
+assert_contains "$out" "would-apply:" "a permitted action is reported as a decision, not as performed"
+assert_not_contains "$out" "applied:" "apply never claims to have performed the action"
+out=$(run_rec "$home" apply --fingerprint "$fp" --action config-reload --approval-token granted)
+expect_code 0 "$?" "an approved action is permitted"
+assert_contains "$out" "would-apply:" "an approved action is also reported as a decision"
+assert_not_contains "$out" "applied:" "an approved action is never reported as performed either"
+pass "apply: the engine records the authority decision and performs no action"
+
+# --- 21. WAITING_APPROVAL is never published without its HOLD --------------
+home=$(make_home false-wait)
+run_rec "$home" begin t36 --class approval-boundary --signature "needs captain" --target fm/t36 \
+  > "$home/wait.out" 2>&1
+expect_code 1 "$?" "a WAITING_APPROVAL recovery whose hold cannot be recorded fails closed"
+assert_contains "$(cat "$home/wait.out")" "captain hold" "the stop names the hold that could not be recorded"
+assert_equals 0 "$(find "$home/state/recovery" -name '*.rec' -type f 2>/dev/null | wc -l | tr -d ' ')" \
+  "no record claims a wait that nothing is waiting on"
+
+home=$(make_home false-wait-escalate)
+out=$(run_rec "$home" begin t37 --class run-failed --signature "sig" --target fm/t37)
+fp=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
+run_rec "$home" escalate --fingerprint "$fp" --approval --reason "captain must decide" \
+  > "$home/escalate.out" 2>&1
+expect_code 1 "$?" "an escalation onto WAITING_APPROVAL whose hold cannot be recorded fails closed"
+assert_equals RETRYABLE "$(rec_state "$home" "$fp")" \
+  "the recovery stays in its prior state instead of publishing a false wait"
+pass "approval boundary: WAITING_APPROVAL is only published with a recorded hold"
+
+# --- 22. a simulation recovery never mutates the real backlog --------------
+if [ "$HAS_TASKS_AXI" = 1 ]; then
+  home=$(make_home sim-inert)
+  add_row "$home" t38
+  out=$(run_rec "$home" begin t38 --class approval-boundary --signature "needs captain" \
+    --target fm/t38 --exec-class simulation 2>&1)
+  assert_contains "$out" "begun:" "a simulated recovery still records its own state"
+  assert_contains "$out" "exec_class=simulation" "the simulation notice names why nothing was written"
+  show=$(cd "$home" && tasks-axi show t38 2>/dev/null)
+  assert_not_contains "$show" "held: yes" "a simulated recovery raises no real captain hold"
+  pass "simulation: a rehearsal writes its own record and never mutates the real backlog"
+else
+  echo "skip: live: tasks-axi absent"
+fi
+
+# --- 23. a value that would split a ledger event is refused ---------------
+home=$(make_home oneline)
+out=$(run_rec "$home" begin t39 --class run-failed --signature "sig" --target fm/t39)
+fp=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
+run_rec "$home" advance --fingerprint "$fp" DIAGNOSING --reason $'two\nlines' >/dev/null 2>&1
+expect_code 1 "$?" "a multi-line reason is refused"
+run_rec "$home" advance --fingerprint "$fp" ALTERNATIVE_SEARCH >/dev/null
+run_rec "$home" alternative --fingerprint "$fp" --name isolated-test-run >/dev/null
+before=$(wc -l < "$home/state/recovery/$fp.ledger" | tr -d ' ')
+run_rec "$home" validate --fingerprint "$fp" --result pass --evidence $'two\nlines' >/dev/null 2>&1
+expect_code 1 "$?" "multi-line evidence is refused"
+run_rec "$home" apply --fingerprint "$fp" --action $'two\nactions' >/dev/null 2>&1
+expect_code 1 "$?" "a multi-line action is refused"
+assert_equals "$before" "$(wc -l < "$home/state/recovery/$fp.ledger" | tr -d ' ')" \
+  "no refused argument reached the append-only ledger"
+pass "ledger integrity: a value that would split an event is refused"
+
+# --- 24. an operator label cannot break the exported event stream ---------
+home=$(make_home json)
+FM_RECOVERY_ACTOR='a"b\c' run_rec "$home" begin t40 --class run-failed --signature "sig" --target fm/t40 >/dev/null
+events=$(run_rec "$home" export-events)
+assert_contains "$events" '"actor":"a\"b\\c"' "an operator label is escaped in the event stream"
+if command -v jq >/dev/null 2>&1; then
+  lines=$(printf '%s\n' "$events" | wc -l | tr -d ' ')
+  parsed=$(printf '%s\n' "$events" | jq -c . 2>/dev/null | wc -l | tr -d ' ')
+  assert_equals "$lines" "$parsed" "every exported line stays valid JSON"
+fi
+pass "measurement export: an operator label cannot break the event stream"
+
+# --- 25. the playbook works without a live recovery store -----------------
+home=$(make_home playbook-store)
+printf 'aaaa1111\trun-failed\thypothesis\tisolated-test-run\tclaude/herdr\t1000\tguess\n' \
+  > "$home/data/recovery-playbooks.tsv"
+assert_absent "$home/state/recovery" "the fixture has no recovery store yet"
+out=$(run_rec "$home" playbook verify aaaa1111 isolated-test-run claude/herdr "green")
+assert_contains "$out" "verified" "a playbook entry can be verified with no recovery store present"
+out=$(run_rec "$home" playbook retire aaaa1111 isolated-test-run)
+assert_contains "$out" "retired" "a playbook entry can be retired with no recovery store present"
+pass "playbook: verify and retire do not depend on the recovery store existing"
+
+# --- 26. classification from the worker's own current state, and by id ----
+home=$(make_home crew-state)
+printf 'working: job under way\n' > "$home/state/t42.status"
+out=$(FM_FAKE_CREW_STATE=failed run_rec "$home" classify t42)
+assert_contains "$out" "class: run-failed" "a failed current state classifies as run-failed with no matching note"
+assert_contains "$out" "initial-state: RETRYABLE" "the failed current state starts retryable"
+printf 'working: job under way\n' > "$home/state/t43.status"
+out=$(FM_FAKE_CREW_STATE="blocked daemon down" run_rec "$home" classify t43)
+assert_contains "$out" "class: daemon-down" "a blocked current state classifies from the state read itself"
+out=$(FM_FAKE_CREW_STATE=failed run_rec "$home" begin t44)
+assert_contains "$out" "state=RETRYABLE" "begin without --class and --signature classifies the failure itself"
+assert_contains "$(run_rec "$home" status t44)" "recovery: RETRYABLE" "status resolves the record from the task id"
+run_rec "$home" begin t45 --class run-failed --signature "one" --target fm/t45 >/dev/null
+run_rec "$home" begin t45 --class daemon-down --signature "two" --target fm/t45 >/dev/null
+run_rec "$home" status t45 >/dev/null 2>&1
+expect_code 1 "$?" "status by task id refuses when the task has more than one live recovery"
+pass "classification: the worker's own current state and the task-id lookup are covered"
 
 echo "ok - fm-recovery state machine (all scenarios)"

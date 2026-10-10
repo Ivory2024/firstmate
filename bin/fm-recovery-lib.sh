@@ -309,24 +309,59 @@ fm_recovery_bound() {  # <name>
 # One line, atomically replaced, one file per fingerprint:
 #   state/recovery/<fingerprint>.rec
 # Fields are space-separated key=value, so a reader is a field lookup rather
-# than a positional parse. The append-only ledger beside it is
-# state/recovery/<fingerprint>.ledger.
+# than a positional parse. Every value is escaped on write and unescaped on
+# read (`fm_recovery_record_encode`/`fm_recovery_record_decode`), so a value
+# that itself contains a space, an `=`, or a newline round-trips instead of
+# being truncated at its first space or read back as a second field. That is
+# also what keeps a free-text argument from injecting a record field: an
+# `exec_class=production` inside a signature, target, reason, or alternative
+# name is stored as data, never as the record's own class. The append-only
+# ledger beside it is state/recovery/<fingerprint>.ledger.
 
 fm_recovery_record_keys() { printf '%s\n' 'state task class fingerprint target signature attempts alternatives same_cause_retries started updated lease_actor lease_pid lease_epoch reason exec_class'; }
+
+# The record format's one escaping rule. `%` is escaped first on the way in and
+# restored last on the way out, so no encoded sequence can be re-interpreted.
+fm_recovery_record_encode() {  # <text> -> one space-free, `=`-free token
+  local text=${1:-}
+  text=${text//%/%25}
+  text=${text//$'\n'/%0A}
+  text=${text//$'\r'/%0D}
+  text=${text//$'\t'/%09}
+  text=${text// /%20}
+  text=${text//=/%3D}
+  printf '%s' "$text"
+}
+
+fm_recovery_record_decode() {  # <token> -> <text>
+  local text=${1:-}
+  text=${text//%3D/=}
+  text=${text//%20/ }
+  text=${text//%09/$'\t'}
+  text=${text//%0D/$'\r'}
+  text=${text//%0A/$'\n'}
+  text=${text//%25/%}
+  printf '%s' "$text"
+}
 
 fm_recovery_record_field() {  # <record-text> <key>
   local text=${1:-} key=${2:-} token
   for token in $text; do
     case "$token" in
-      "$key"=*) printf '%s\n' "${token#*=}"; return 0 ;;
+      "$key"=*) fm_recovery_record_decode "${token#*=}"; printf '\n'; return 0 ;;
     esac
   done
   return 1
 }
 
 fm_recovery_record_format() {  # <state> <task> <class> <fingerprint> <target> <signature> <attempts> <alternatives> <same_cause_retries> <started> <updated> <lease_actor> <lease_pid> <lease_epoch> <reason> <exec_class>
-  printf 'state=%s task=%s class=%s fingerprint=%s target=%s signature=%s attempts=%s alternatives=%s same_cause_retries=%s started=%s updated=%s lease_actor=%s lease_pid=%s lease_epoch=%s reason=%s exec_class=%s\n' \
-    "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11}" "${12}" "${13}" "${14}" "${15}" "${16}"
+  local i=0 key value line=''
+  for key in $(fm_recovery_record_keys); do
+    i=$((i + 1))
+    value=${!i}
+    line="$line$key=$(fm_recovery_record_encode "$value") "
+  done
+  printf '%s\n' "${line% }"
 }
 
 # --- execution class --------------------------------------------------------
@@ -336,7 +371,12 @@ fm_recovery_record_format() {  # <state> <task> <class> <fingerprint> <target> <
 # is. This engine only ever produces `simulation` or `isolated`; `production`
 # is refused here and is assigned by the separately approved control plane that
 # activates the capability, so no argument to this script can relabel test
-# output as operational output.
+# output as operational output. The class is a record field the engine writes,
+# never a value derived from free text: the record's escaping rule (above) means
+# an `exec_class=production` inside a signature, target, reason, or alternative
+# name stays data and can never become the record's own class. A `simulation`
+# recovery is also inert in effect, not only in label: it writes its own record
+# and ledger and never mutates the real backlog.
 
 fm_recovery_exec_classes() { printf '%s\n' 'simulation isolated production'; }
 
