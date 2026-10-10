@@ -107,8 +107,8 @@ declare -A VALID_TRANSITIONS=(
   ["REVIEWING"]="READY_FOR_MERGE FIXING WAITING_APPROVAL WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD DONE FAILED"
   ["FIXING"]="RETESTING WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD DONE FAILED"
   ["RETESTING"]="REVIEWING READY_FOR_MERGE WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD DONE FAILED"
-  ["READY_FOR_MERGE"]="MERGE_VERIFIED WAITING_APPROVAL WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD FAILED"
-  ["MERGE_VERIFIED"]="DEPLOYMENT_GATE WAITING_APPROVAL WAITING_QUOTA RECOVERY_HOLD FAILED"
+  ["READY_FOR_MERGE"]="MERGE_VERIFIED WAITING_APPROVAL WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD DONE FAILED"
+  ["MERGE_VERIFIED"]="DEPLOYMENT_GATE WAITING_APPROVAL WAITING_QUOTA RECOVERY_HOLD DONE FAILED"
   ["DEPLOYMENT_GATE"]="DONE WAITING_APPROVAL WAITING_QUOTA RECOVERY_HOLD FAILED"
   ["DONE"]=""  # Terminal
   ["FAILED"]=""  # Terminal
@@ -710,8 +710,12 @@ auto_resume_task() {  # <task-id>
           if recovery_lease_acquire "$id" "reassign"; then
             note="Auto-reassign after $AUTO_RESUME_MAX_ATTEMPTS failed resumes ($interruption_type). Switching to $new_harness."
             fm_control_relaunch "$id" "$new_harness" "$note"
+            local relaunch_rc=$?
+            if [ "$relaunch_rc" -ne 0 ]; then
+              append_evidence "$id" "Auto-reassignment to $new_harness failed: fm_control_relaunch returned $relaunch_rc"
+            fi
             recovery_lease_release "$id" "reassign"
-            return $?
+            return "$relaunch_rc"
           else
             append_evidence "$id" "Reassignment already in progress for $id"
             return 0
@@ -991,7 +995,7 @@ sync_lifecycle_with_external() {  # <task-id> <external_state>
       ;;
     failed)
       case "$lifecycle_state" in
-        READY|ASSIGNED|RUNNING|TESTING|REVIEWING|FIXING|RETESTING)
+        READY|ASSIGNED|RUNNING|TESTING|REVIEWING|FIXING|RETESTING|READY_FOR_MERGE|MERGE_VERIFIED|DEPLOYMENT_GATE)
           lifecycle_transition "$id" "FAILED" "Synced with external: task failed" ;;
       esac
       ;;
