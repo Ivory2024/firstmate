@@ -1111,6 +1111,14 @@ Each account, model and voice file above is read as its first line that is not b
 The two read files are parsed differently: `config/voice-read-scope` must hold the bare word and nothing but blank space around it, so a comment header there refuses instead of being skipped, while every line of `config/voice-read-deny` that is not blank and not a `#` comment is one more substring.
 `FM_VOICE_RELAY` and `FM_VOICE_PYTHON` belong to the laptop rather than to a home, so they have no config file: `bin/fm-voice-client.py` requires the relay path as a flag or that variable and carries no default path.
 
+## Watcher liveness alert and automatic re-arm
+
+`bin/fm-watcher-liveness-alert.sh check` is the launchd entry point (see `bin/fm-watcher-liveness-alert.sh render` for the exact agent contract).
+It alerts on an unhealthy watcher consumer exactly as before, and then re-arms the one-shot watcher from the tick alone, so continuity no longer depends on a harness event such as an idle session.
+Automatic re-arm only runs when the chain provably ended with no successor, no healthy watcher and no live lock owner is present, supervision is needed, and neither away posture nor a maintenance HOLD applies.
+Place `state/.watch-hold` (its first line is your reason) to suppress automatic re-arm deliberately, for example during a maintenance window; remove it to allow recovery again.
+A deliberate stop recorded as `arm-interrupted` is never re-armed either.
+
 ## Environment variables
 
 Runtime tuning via environment variables (defaults shown):
@@ -1216,6 +1224,11 @@ FM_WATCH_REARM_RETRY_LIMIT=5   # Pi/OpenCode adapter launch-failure retries befo
 FM_WATCH_CYCLE_LOG_MAX_BYTES=262144   # size cap for the arm-owned watcher lifecycle ledger
 FM_WATCH_CYCLE_LOG_KEEP_LINES=1000   # newest complete lifecycle rows considered when the ledger is capped
 FM_WATCHER_STALE_GRACE=300   # defaults to FM_GUARD_GRACE if set, else the poll-derived grace (docs/turnend-guard.md "Guard grace and the poll cadence"); seconds a live watcher lock may have a stale beacon before re-arm errors
+FM_WATCH_REARM_CONFIRM_TIMEOUT=30   # seconds bin/fm-watcher-liveness-alert.sh check waits for a re-armed watcher to publish a live lock with a fresh beacon; keep it below the launchd StartInterval so the tick stays bounded
+FM_WATCH_REARM_BACKOFF_BASE=60   # base seconds of the bounded exponential backoff after a failed automatic watcher re-arm
+FM_WATCH_REARM_BACKOFF_MAX=1800   # cap in seconds on that re-arm backoff, so a persistent failure never becomes a restart loop
+FM_WATCH_REARM_ALERT_AFTER=3   # consecutive failed automatic re-arms before one Discord alert is emitted for the failure episode
+FM_WATCH_ARM_BIN=   # optional override of the arm binary the liveness-alert job invokes; defaults to <code-root>/bin/fm-watch-arm.sh, and is only set by tests
 FM_SIGNAL_GRACE=30      # seconds to coalesce nearby status and turn-end signals into one wake
 FM_TURNEND_CHURN_ABSORB_SECS=900   # longest one endpoint's bare turn-ends may be deferred on pane-churn evidence alone; only consulted when config/turnend-churn-absorb is present
 FM_CAPTAIN_RE='done:|needs-decision:|blocked:|failed:|PR ready|checks green|ready in branch|merged'   # captain-relevant status regex; nonterminal progress verbs remain excluded even when their prose matches
