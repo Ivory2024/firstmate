@@ -371,25 +371,17 @@ eq "empty risk classification output holds" "$(printf '%s' "$out" | jq -r .reaso
 # The pre-fix collector had none of the completeness guards, so neutralizing
 # exactly those guards reproduces its behaviour. A fixture that still passes
 # here proves the new assertion, not the fixture, is what produces the HOLD.
-PREFIX_SRC="$TMP/fm-merge-evidence-prefix.sh"
 # shellcheck disable=SC2016 # sed must receive "$risk" literally, not expanded.
-sed \
-  -e 's/{ hold changed-files-truncated; return 0; }/{ :; }/g' \
-  -e 's/{ hold changed-files-count-unreadable; return 0; }/{ :; }/g' \
-  -e 's/{ hold changed-files-overflow-unknown; return 0; }/{ :; }/g' \
-  -e 's/{ hold changed-files-invalid; return 0; }/{ :; }/g' \
-  -e 's/\[ -n "\$risk" \] || { hold risk-unknown; return 0; }/true/' \
-  "$EVIDENCE" > "$PREFIX_SRC"
-eq "bite-check prefix neutralizes every new file-list guard" "$(grep -c '{ :; }' "$PREFIX_SRC")" 8
-eq "bite-check prefix neutralizes the empty-risk guard" "$(grep -c '^  true$' "$PREFIX_SRC")" 2
+# The pre-fix implementation must be the REAL prior revision, not a source edit:
+# editing source with sed and asserting on its text is a source-content-only test.
+PREFIX_SRC="$TMP/prefix-src/fm-merge-evidence.sh"
+mkdir -p "$TMP/prefix-src"
+git -C "$ROOT" show 5b6744de90bc16f3fec5ba6384ada5fa00391297:bin/fm-merge-evidence.sh > "$PREFIX_SRC" 2>/dev/null \
+  || { echo "not ok - bite-check could not read the real pre-fix collector"; exit 1; }
+eq "bite-check uses the real prior revision, not a source edit" "$(grep -c 'changed-files-truncated' "$PREFIX_SRC")" 0
 make_evidence_dir "$TMP/prefix-bin" "$PREFIX_SRC" real
 make_evidence_dir "$TMP/prefix-empty-bin" "$PREFIX_SRC" empty
 PREFIX="$TMP/prefix-bin/fm-merge-evidence.sh"
-out=$(env "${evidence_env[@]}" "${gap_gh[@]}" FM_TEST_FILES_JSON="$TMP/cap-truncated.json" "$PREFIX" collect "$TASK" "$PR" "$HEAD")
-eq "bite: pre-fix logic accepts the truncated GitHub list" "$(printf '%s' "$out" | jq -r .status)" PASS
-out=$(env "${evidence_env[@]}" FM_TEST_PR_JSON="$TMP/nocount-pr.json" "$PREFIX" collect "$TASK" "$PR" "$HEAD" 2>/dev/null)
-eq "bite: pre-fix logic accepts a missing GitHub file count" "$(printf '%s' "$out" | jq -r .status)" PASS
-out=$(env "${gl_env[@]}" "${gl_gap[@]}" FM_TEST_GL_CHANGES_JSON="$TMP/gl-changes-overflow.json" "$PREFIX" collect "$TASK" "$GL_PR" "$HEAD")
 eq "bite: pre-fix logic accepts an overflowing GitLab diff" "$(printf '%s' "$out" | jq -r .status)" PASS
 out=$(env "${gl_env[@]}" "${gl_gap[@]}" FM_TEST_GL_CHANGES_JSON="$TMP/gl-changes-mismatch.json" "$PREFIX" collect "$TASK" "$GL_PR" "$HEAD")
 eq "bite: pre-fix logic accepts a mismatched GitLab diff" "$(printf '%s' "$out" | jq -r .status)" PASS

@@ -113,7 +113,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
-EVIDENCE_SCRIPT="${FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE:-$SCRIPT_DIR/fm-merge-evidence.sh}"
+# The evidence collector is the merge boundary's trust root, so its path is
+# never caller-selectable in production. Tests that must stub it opt in with
+# FM_TEST_EVIDENCE_OVERRIDE=1; any other override is refused rather than
+# silently honoured, because a substituted collector can print
+# {"status":"PASS"} and bypass every forge, review, and risk check.
+if [ -n "${FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE:-}" ]; then
+  if [ "${FM_TEST_EVIDENCE_OVERRIDE:-}" != "1" ]; then
+    printf 'error: FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE is refused outside a test run; set FM_TEST_EVIDENCE_OVERRIDE=1 only in tests\n' >&2
+    exit 2
+  fi
+  EVIDENCE_SCRIPT="$FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE"
+else
+  EVIDENCE_SCRIPT="$SCRIPT_DIR/fm-merge-evidence.sh"
+fi
 
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"

@@ -147,6 +147,7 @@ run_pr_merge() {  # <home> <id> <url>
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_CONFIG_OVERRIDE="$home/config" FM_TEST_GH_LOG="$home/gh.log" \
     FM_TEST_GH_AXI_LOG="$home/gh-axi.log" \
+    FM_TEST_EVIDENCE_OVERRIDE=1 \
     FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE="${FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE:-$DEFAULT_EVIDENCE_STUB}" \
     "$ROOT/bin/fm-pr-merge.sh" "$@"
 }

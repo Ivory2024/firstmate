@@ -36,7 +36,7 @@ test_evidence_ok() {
     /^  findings: / { f=$2; gsub(/"/, "", f) }
     /^    test,/ { split($0,a,","); ts=a[2]; tf=a[3] }
     /^outcome: / { o=$2; gsub(/"/, "", o) }
-    END { exit !(h == head && p == pr && s == "completed" && f == 0 && ts == "completed" && tf == 0 && o ~ /^passed/) }
+    END { exit !(h == head && p == pr && s == "completed" && (f == 0 || f == "none") && ts == "completed" && tf == 0 && o ~ /^passed/) }
   '
 }
 
@@ -178,7 +178,18 @@ collect_github() {
   [ "$observed_files" -eq "$changed_files" ] || { hold changed-files-truncated; return 0; }
   scope=$(printf '%s\n' "$paths" | LC_ALL=C sort -u | shasum -a 256 | awk '{print $1}') || { hold scope-unreadable; return 0; }
   while IFS= read -r path; do changed_paths+=("$path"); done <<< "$paths"
-  risk=$("$SCRIPT_DIR/fm-merge-policy.sh" classify-risk "${changed_paths[@]}" 2>/dev/null) || { hold risk-unknown; return 0; }
+  # A rename changes both sides, so the risk set must carry the source path too:
+  # classifying only the destination lets a protected executable be moved out of
+  # its protected location and read as LOW.
+  risk_paths=$(printf '%s' "$files_json" | jq -r '
+    if type == "array" and all(.[]; type == "array") then
+      [.[][] | (.filename, .previous_filename) | select(type == "string" and length > 0)] | unique | .[]
+    else error("invalid changed-file pages") end' 2>/dev/null) \
+    || { hold changed-files-invalid; return 0; }
+  [ -n "$risk_paths" ] || { hold changed-files-unreadable; return 0; }
+  risk_changed_paths=()
+  while IFS= read -r path; do risk_changed_paths+=("$path"); done <<< "$risk_paths"
+  risk=$("$SCRIPT_DIR/fm-merge-policy.sh" classify-risk "${risk_changed_paths[@]}" 2>/dev/null) || { hold risk-unknown; return 0; }
   [ -n "$risk" ] || { hold risk-unknown; return 0; }
   if [ "$risk" = HIGH ]; then
     [ "$approval_ok" = true ] || { hold high-risk-captain-approval-missing-or-stale; return 0; }
@@ -251,7 +262,16 @@ collect_gitlab() {
   [ "$observed_files" -eq "$changes_count" ] || { hold changed-files-truncated; return 0; }
   scope=$(printf '%s\n' "$paths" | LC_ALL=C sort -u | shasum -a 256 | awk '{print $1}') || { hold scope-unreadable; return 0; }
   while IFS= read -r path; do changed_paths+=("$path"); done <<< "$paths"
-  risk=$("$SCRIPT_DIR/fm-merge-policy.sh" classify-risk "${changed_paths[@]}" 2>/dev/null) || { hold risk-unknown; return 0; }
+  # Same rename rule as GitHub: the source path belongs in the risk set.
+  risk_paths=$(printf '%s' "$changes" | jq -r '
+    if (.changes | type) == "array" then
+      [.changes[] | (.new_path, .old_path) | select(type == "string" and length > 0)] | unique | .[]
+    else error("invalid changes") end' 2>/dev/null) \
+    || { hold changed-files-invalid; return 0; }
+  [ -n "$risk_paths" ] || { hold changed-files-unreadable; return 0; }
+  risk_changed_paths=()
+  while IFS= read -r path; do risk_changed_paths+=("$path"); done <<< "$risk_paths"
+  risk=$("$SCRIPT_DIR/fm-merge-policy.sh" classify-risk "${risk_changed_paths[@]}" 2>/dev/null) || { hold risk-unknown; return 0; }
   [ -n "$risk" ] || { hold risk-unknown; return 0; }
   if [ "$risk" = HIGH ]; then
     hold high-risk-captain-approval-missing-or-stale

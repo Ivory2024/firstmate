@@ -29,6 +29,7 @@ cat > "$DEFAULT_EVIDENCE_STUB" <<'SH'
 printf '{"status":"PASS","head_sha":"%s","risk":"LOW","scope":"test","reasons":[]}\n' "${4:-}"
 SH
 chmod +x "$DEFAULT_EVIDENCE_STUB"
+export FM_TEST_EVIDENCE_OVERRIDE=1
 export FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE="$DEFAULT_EVIDENCE_STUB"
 REAL_CP=$(command -v cp)
 REAL_MV=$(command -v mv)
