@@ -103,14 +103,14 @@ VALID_STATES=(
 declare -A VALID_TRANSITIONS=(
   ["READY"]="ASSIGNED WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD ESCALATED DONE FAILED"
   ["ASSIGNED"]="RUNNING WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD ESCALATED DONE FAILED"
-  ["RUNNING"]="TESTING WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD ESCALATED DONE FAILED"
-  ["TESTING"]="REVIEWING FIXING WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD DONE FAILED"
+  ["RUNNING"]="TESTING WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD ESCALATED DONE FAILED"
+  ["TESTING"]="REVIEWING FIXING WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD DONE FAILED"
   ["REVIEWING"]="READY_FOR_MERGE FIXING WAITING_APPROVAL WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD DONE FAILED"
-  ["FIXING"]="RETESTING WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD DONE FAILED"
-  ["RETESTING"]="REVIEWING READY_FOR_MERGE WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD DONE FAILED"
+  ["FIXING"]="RETESTING WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD DONE FAILED"
+  ["RETESTING"]="REVIEWING READY_FOR_MERGE WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD DONE FAILED"
   ["READY_FOR_MERGE"]="MERGE_VERIFIED WAITING_APPROVAL WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD DONE FAILED"
-  ["MERGE_VERIFIED"]="DEPLOYMENT_GATE WAITING_APPROVAL WAITING_QUOTA RECOVERY_HOLD DONE FAILED"
-  ["DEPLOYMENT_GATE"]="DONE WAITING_APPROVAL WAITING_QUOTA RECOVERY_HOLD FAILED"
+  ["MERGE_VERIFIED"]="DEPLOYMENT_GATE WAITING_APPROVAL WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD DONE FAILED"
+  ["DEPLOYMENT_GATE"]="DONE WAITING_APPROVAL WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD FAILED"
   ["DONE"]=""  # Terminal
   ["FAILED"]=""  # Terminal
   ["WAITING_QUOTA"]="RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE DONE FAILED"
@@ -526,6 +526,10 @@ is_terminal() {  # <state>
   case "$1" in DONE|FAILED) return 0 ;; *) return 1 ;; esac
 }
 
+is_lane_occupying_state() {  # <state>
+  case "$1" in ASSIGNED|RUNNING|TESTING|REVIEWING|FIXING|RETESTING|READY_FOR_MERGE|MERGE_VERIFIED|DEPLOYMENT_GATE) return 0 ;; *) return 1 ;; esac
+}
+
 is_hold_state() {  # <state>
   case "$1" in WAITING_QUOTA|WAITING_APPROVAL|WAITING_EXTERNAL|RECOVERY_HOLD|ESCALATED) return 0 ;; *) return 1 ;; esac
 }
@@ -918,10 +922,9 @@ advance_lane() {  # <lane>
   local working_count=0
   for t in $(get_lane_tasks "$lane"); do
     local ls=$(lifecycle_read "$t" current_step)
-    case "$ls" in ASSIGNED|RUNNING|TESTING|REVIEWING|FIXING|RETESTING|READY_FOR_MERGE|MERGE_VERIFIED|DEPLOYMENT_GATE)
+    if is_lane_occupying_state "$ls"; then
       working_count=$((working_count + 1))
-      ;;
-    esac
+    fi
   done
 
   [ "$working_count" -eq 0 ] || return 0
@@ -1046,24 +1049,24 @@ sync_lifecycle_with_external() {  # <task-id> <external_state>
     parked)
       # Check detail for specific hold reason
       local detail=$(classify_task "$id" | cut -d' ' -f3-)
+      local hold_state=WAITING_EXTERNAL evidence="Synced with external: parked"
       case "$detail" in
         *quota*|*exhausted*)
-          [ "$lifecycle_state" = "READY" ] && lifecycle_transition "$id" "WAITING_QUOTA" "Synced with external: quota exhausted"
+          hold_state=WAITING_QUOTA
+          evidence="Synced with external: quota exhausted"
           ;;
         *approval*|*HOLD*|*captain*|*merge*|*push.target*|*trust.boundary*)
-          [ "$lifecycle_state" = "READY" ] && lifecycle_transition "$id" "WAITING_APPROVAL" "Synced with external: approval wait"
+          hold_state=WAITING_APPROVAL
+          evidence="Synced with external: approval wait"
           ;;
         *review*|*finding*)
-          [ "$lifecycle_state" = "READY" ] && lifecycle_transition "$id" "WAITING_EXTERNAL" "Synced with external: review findings"
+          evidence="Synced with external: review findings"
           ;;
-        *awaiting*|*external*)
-          [ "$lifecycle_state" = "READY" ] && lifecycle_transition "$id" "WAITING_EXTERNAL" "Synced with external: awaiting external"
-          ;;
-        *)
-          # Generic parked - could be waiting for something
-          [ "$lifecycle_state" = "READY" ] && lifecycle_transition "$id" "WAITING_EXTERNAL" "Synced with external: parked"
-          ;;
+        *awaiting*|*external*) evidence="Synced with external: awaiting external" ;;
       esac
+      if [ "$lifecycle_state" = READY ] || is_lane_occupying_state "$lifecycle_state"; then
+        lifecycle_transition "$id" "$hold_state" "$evidence"
+      fi
       ;;
     failed)
       case "$lifecycle_state" in
