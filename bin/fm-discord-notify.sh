@@ -97,6 +97,11 @@ for option in "${option_list[@]}"; do
 done
 [ "$recommendation_found" -eq 1 ] || { echo "fm-discord-notify: recommendation must match one offered option" >&2; exit 2; }
 
-export FM_HOME FM_STATE_OVERRIDE="$STATE" FM_DISCORD_BOT_TOKEN="$FM_DISCORD_TOKEN"
+# The decision message names the task by its backlog title beside its id, so
+# the captain reads which piece of work is waiting. A title the backlog cannot
+# resolve (an unknown task, an absent backlog, or no tasks-axi) stays empty and
+# the message falls back to the id alone.
+export FM_HOME FM_STATE_OVERRIDE="$STATE" FM_DISCORD_BOT_TOKEN="$FM_DISCORD_TOKEN" FM_DISCORD_TASK_TITLE
+FM_DISCORD_TASK_TITLE=$(fm_discord_task_title "$task_id")
 exec node "$SCRIPT_DIR/fm-discord-notify.js" "$trigger" "$task_id" "$decision_key" \
   "$summary" "$recommendation" "$channel_id" "$status_task_id" "${option_list[@]}"

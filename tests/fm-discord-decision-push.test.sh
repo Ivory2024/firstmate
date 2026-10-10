@@ -821,6 +821,32 @@ test_done_status_sends_plain_report() {
   pass "a done status line sends a plain Discord report with the worker's note"
 }
 
+test_decision_notification_names_the_task_title() {
+  # A decision ping names the work by its backlog title beside the id, so the
+  # captain sees which task is waiting instead of decoding an opaque slug.
+  local home posts content backlog
+  home="$TMP_ROOT/decision-title"
+  mkdir -p "$home/state/x-context" "$home/data"
+  chmod 700 "$home/state" "$home/state/x-context"
+  make_fake_node "$home"
+  [ -n "$TASKS_AXI_BIN" ] || fail "tasks-axi is required for the task-title regression"
+  backlog="$home/data/backlog.md"
+  "$TASKS_AXI_BIN" add task-a 'Ship the billing endpoint' --file "$backlog" >/dev/null 2>&1 \
+    || fail "could not seed the backlog fixture"
+  posts="$home/posts.jsonl"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$posts" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify.sh" captain-hold task-a captain-hold-task-a-1 \
+      "보류된 작업을 어떻게 진행할지" "요청대로 진행|보류 상태로 두기" "보류 상태로 두기" >/dev/null \
+    || fail "captain-hold push failed"
+  content=$(jq -r '.payload.content' "$posts")
+  assert_contains "$content" "Ship the billing endpoint" "decision message names the task title"
+  assert_contains "$content" "task-a" "decision message names the task id beside its title"
+  assert_contains "$content" "**결정 필요**" "decision message keeps its Korean decision header"
+  pass "a decision notification names the task by its backlog title and id"
+}
+
 test_done_report_names_the_task_title() {
   # A completion tells the captain which task finished: the backlog title
   # beside the id, in Korean, with the recorded outcome.
@@ -1127,6 +1153,7 @@ test_ask_user_escalation_hold_carries_finding_text
 test_pr_push_requires_yolo_off
 test_pr_push_names_gitlab_project
 test_pr_ready_summary_names_the_task_title
+test_decision_notification_names_the_task_title
 test_done_status_sends_plain_report
 test_done_report_names_the_task_title
 test_done_record_is_private_valid_json
