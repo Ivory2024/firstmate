@@ -66,7 +66,7 @@ export default {
     let rootPromise = null;
     const root = () => (rootPromise ??= resolveRoot(ctx.location?.directory));
     const controller = new AbortController();
-    let skipNextIdle = false;
+    const suppressedSessions = new Set();
 
     void (async () => {
       try {
@@ -74,13 +74,9 @@ export default {
           if (event?.location?.directory !== ctx.location?.directory) continue;
           if (!QUIESCENT_EVENTS.has(event?.type)) continue;
 
-          if (skipNextIdle) {
-            skipNextIdle = false;
-            continue;
-          }
-
           const sessionID = event.data?.sessionID ?? event.properties?.sessionID;
           if (!sessionID) continue;
+          if (suppressedSessions.delete(sessionID)) continue;
 
           if (await letWatchArmRun(directory, sessionID)) continue;
 
@@ -97,9 +93,9 @@ export default {
                 result.stderr,
             );
             await ctx.session.prompt({ sessionID, text });
-            skipNextIdle = true;
+            suppressedSessions.add(sessionID);
           } catch {
-            skipNextIdle = false;
+            suppressedSessions.delete(sessionID);
           }
         }
       } catch {

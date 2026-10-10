@@ -602,6 +602,8 @@ export default {
 
     void (async () => {
       try {
+        const events = ctx.event.subscribe({ signal: controller.signal })[Symbol.asyncIterator]();
+        let nextEvent = events.next();
         const root = await resolveRoot(ctx.location?.directory);
         if (controller.signal.aborted) return;
         const paths = effectivePaths(root);
@@ -611,12 +613,15 @@ export default {
         };
         coordinators.set(directory, coordinator);
 
-        for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+        while (true) {
+          const { value: event, done } = await nextEvent;
+          if (done) break;
+          nextEvent = events.next();
           if (event?.location?.directory !== directory) continue;
-          if (!QUIESCENT_EVENTS.has(event?.type)) continue;
-          const sessionID = event.data?.sessionID ?? event.properties?.sessionID;
-          if (!sessionID) continue;
-          void ensureArm(state, paths, sessionID, client);
+          if (QUIESCENT_EVENTS.has(event?.type)) {
+            const sessionID = event.data?.sessionID ?? event.properties?.sessionID;
+            if (sessionID) void ensureArm(state, paths, sessionID, client);
+          }
         }
       } catch {
       }
