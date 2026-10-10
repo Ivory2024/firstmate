@@ -54,14 +54,21 @@
 # a ROLLBACK.audit record that names the reason, the actor, and the sha256 of
 # every preserved file; a second rollback inside the same UTC second is refused
 # rather than allowed to merge into the first. Only transient claim locks, which
-# carry a pid and no incident content, are ever removed. See
+# carry a pid and no incident content, are ever removed, and only after their
+# owner is proved gone: a lock whose owner is still alive is retained, because
+# removing it would break the mutual exclusion a running `begin` depends on. See
 # docs/recovery-state-machine.md.
 #
 # Bounds, all owned by fm_recovery_bound in the library: alternatives 3,
 # same-cause retries 2, diagnosis 900s, whole recovery 1800s, concurrent
 # recoveries 4 (the existing execution slot cap is retained, never raised).
 # Exceeding the alternative or retry budget converges on BLOCKED_EXHAUSTED and
-# the captain hold; exceeding the total budget does the same. Only exhausted
+# the captain hold; exceeding the total budget does the same, and that bound is
+# enforced on every path that would keep a recovery working, not only on
+# `advance`, so no caller has to remember to call it for the bound to bite. A
+# record past that window with no live lease is abandoned and is converged by
+# `begin` before it counts against the concurrent cap, so an abandoned record
+# can neither be starved forever nor silently exhaust the cap. Only exhausted
 # alternatives, an exhausted budget, or the approved boundary escalate.
 #
 # Authority. `apply` asks fm_recovery_action_verdict and reports exactly what it
@@ -152,15 +159,32 @@ ledger_append() {  # <fp> <event> <detail>
   fi
 }
 
-# Read a record into REC_TEXT; returns 1 when it does not exist.
+# Read a record into REC_TEXT. Absent and unreadable are different facts and
+# must never read the same: return 1 when there is no record at all, and return
+# 2 when a record exists but cannot be read (permission denied, or an empty or
+# corrupt line). An unreadable record is a fail-closed error, never "there is
+# no recovery": flattening it into absent would let a caller report a false
+# `recovery: none`, or overwrite live incident evidence with a fresh recovery.
 REC_TEXT=
-read_record() {  # <fp>
+read_record() {  # <fp>; 0 read, 1 absent, 2 unreadable
   local path
   path=$(record_path "$1")
-  [ -f "$path" ] || return 1
-  REC_TEXT=$(cat "$path")
-  [ -n "$REC_TEXT" ] || return 1
+  [ -e "$path" ] || return 1
+  REC_TEXT=$(cat "$path" 2>/dev/null) || return 2
+  [ -n "$REC_TEXT" ] || return 2
   return 0
+}
+
+# The one way a caller turns a failed read into a stop, so no call site can
+# flatten unreadable back into absent.
+read_record_or_die() {  # <fp>
+  local rc=0
+  read_record "$1" || rc=$?
+  case "$rc" in
+    0) return 0 ;;
+    1) die "no recovery record for $1" ;;
+    *) die "the recovery record for $1 exists but cannot be read (unreadable or empty); refusing to treat it as absent" ;;
+  esac
 }
 
 field() {  # <key>
@@ -273,6 +297,53 @@ diagnosis_budget_exhausted() {
   [ "$((now - REC_UPDATED))" -gt "$diag" ]
 }
 
+# The total budget bounds the whole recovery, not one command: every path that
+# would otherwise keep a recovery working past the window converges here, so the
+# bound does not depend on the caller happening to call `advance`. Returns 0
+# when it converged, and the caller must stop rather than continue.
+enforce_total_budget() {  # <fp>
+  total_budget_exhausted || return 1
+  REC_STATE=BLOCKED_EXHAUSTED
+  REC_REASON="total recovery budget exhausted"
+  refresh_lease
+  write_record
+  ledger_append "$1" escalate "total-budget-exhausted"
+  printf 'escalated: %s state=BLOCKED_EXHAUSTED reason=%s\n' "$1" "$REC_REASON"
+  return 0
+}
+
+# An abandoned recovery must not hold a concurrent slot forever. Past the
+# whole-recovery window with no live lease nobody can be holding it, so the
+# same escalation the total budget owes it is applied here, durably and
+# announced: four abandoned records can then no longer silently and permanently
+# exhaust the cap. A record whose lease is still fresh, or that is still inside
+# the window, is left alone - `begin` on the same fingerprint resumes it (that
+# is the checkpoint), and a recovery someone may still hold is never converged
+# out from under its holder.
+reap_abandoned() {
+  local path base fp text state
+  [ -d "$REC_DIR" ] || return 0
+  for path in "$REC_DIR"/*.rec; do
+    [ -f "$path" ] || continue
+    base=${path##*/}
+    fp=${base%.rec}
+    text=$(cat "$path" 2>/dev/null) || continue
+    state=$(fm_recovery_record_field "$text" state) || continue
+    fm_recovery_state_terminal "$state" && continue
+    read_record "$fp" || continue
+    load_fields
+    lease_stale || continue
+    total_budget_exhausted || continue
+    REC_STATE=BLOCKED_EXHAUSTED
+    REC_REASON="abandoned: no live lease and the total recovery budget is exhausted"
+    refresh_lease
+    write_record
+    ledger_append "$fp" escalate "abandoned-total-budget-exhausted"
+    printf 'reaped: %s state=BLOCKED_EXHAUSTED reason=%s\n' "$fp" "$REC_REASON"
+  done
+  return 0
+}
+
 # --- classification ---------------------------------------------------------
 
 # Deterministic evidence -> cause class. The status log's newest line and the
@@ -341,10 +412,13 @@ cmd_status() {
   done
   if [ -z "$fp" ]; then
     [ -n "$task" ] || die "status needs a task id or --fingerprint"
-    fp=$(cmd_find_fp "$task") || die "no recovery record for $task"
+    local frc=0
+    fp=$(cmd_find_fp "$task") || frc=$?
+    [ "$frc" = 2 ] && die "a recovery record exists but cannot be read; refusing to report $task as having no recovery"
+    [ "$frc" = 0 ] || die "no recovery record for $task"
   fi
   valid_slug fingerprint "$fp"
-  read_record "$fp" || die "no recovery record for $fp"
+  read_record_or_die "$fp"
   load_fields
   if [ "$want_verb" = 1 ]; then
     fm_recovery_registry_verb "$REC_STATE"
@@ -360,18 +434,26 @@ cmd_status() {
 }
 
 # The fingerprint of the live recovery record for a task, if exactly one.
+# Returns 2 when some record exists but cannot be read: the task's own record
+# may be exactly the unreadable one, so a failed read can never be reported as
+# "this task has no recovery".
 cmd_find_fp() {
-  local task=$1 path base fp text found='' count=0
+  local task=$1 path base fp text found='' count=0 unreadable=0
   [ -d "$REC_DIR" ] || return 1
   for path in "$REC_DIR"/*.rec; do
     [ -f "$path" ] || continue
     base=${path##*/}
     fp=${base%.rec}
-    text=$(cat "$path" 2>/dev/null) || continue
+    if ! text=$(cat "$path" 2>/dev/null); then
+      unreadable=1
+      continue
+    fi
+    [ -n "$text" ] || { unreadable=1; continue; }
     [ "$(fm_recovery_record_field "$text" task)" = "$task" ] || continue
     found=$fp
     count=$((count + 1))
   done
+  [ "$unreadable" = 1 ] && return 2
   [ "$count" = 1 ] || return 1
   printf '%s\n' "$found"
 }
@@ -432,7 +514,13 @@ cmd_begin() {
   }
 
   now=$(now_epoch)
-  if read_record "$fp"; then
+  local have=0
+  read_record "$fp" || have=$?
+  if [ "$have" = 2 ]; then
+    fm_lock_release "$(claim_path "$fp")" >/dev/null 2>&1 || true
+    die "the recovery record for $fp exists but cannot be read (unreadable or empty); refusing to begin a new recovery over live incident evidence"
+  fi
+  if [ "$have" = 0 ]; then
     load_fields
     # Terminal first: a completed recovery is refused because it is completed,
     # never because its lease happens to look fresh. The refusal names the
@@ -459,6 +547,7 @@ cmd_begin() {
   fi
 
   local active cap
+  reap_abandoned
   active=$(active_recovery_count)
   cap=$(fm_recovery_bound max-concurrent) || cap=4
   if [ "$active" -ge "$cap" ]; then
@@ -510,18 +599,10 @@ cmd_advance() {
   [ -z "$reason" ] || one_line reason "$reason"
   valid_slug fingerprint "$fp"
   fm_recovery_state_valid "$target" || die "unknown recovery state: $target"
-  read_record "$fp" || die "no recovery record for $fp"
+  read_record_or_die "$fp"
   load_fields
   fm_recovery_state_terminal "$REC_STATE" && die "recovery $fp is already terminal: $REC_STATE"
-  if total_budget_exhausted; then
-    REC_STATE=BLOCKED_EXHAUSTED
-    REC_REASON="total recovery budget exhausted"
-    refresh_lease
-    write_record
-    ledger_append "$fp" escalate "total-budget-exhausted"
-    printf 'escalated: %s state=BLOCKED_EXHAUSTED reason=%s\n' "$fp" "$REC_REASON"
-    return 0
-  fi
+  enforce_total_budget "$fp" && return 0
   fm_recovery_transition_allowed "$REC_STATE" "$target" \
     || die "illegal transition for $fp: $REC_STATE -> $target"
   REC_STATE=$target
@@ -548,10 +629,11 @@ cmd_attempt() {
   [ -n "$cause" ] || die "attempt needs --cause"
   case "$result" in ok|fail) ;; *) die "attempt --result must be ok or fail" ;; esac
   valid_slug fingerprint "$fp"
-  read_record "$fp" || die "no recovery record for $fp"
+  read_record_or_die "$fp"
   load_fields
   fm_recovery_state_terminal "$REC_STATE" && die "recovery $fp is already terminal: $REC_STATE"
   fm_recovery_class_valid "$cause" || die "unknown failure class: $cause"
+  enforce_total_budget "$fp" && return 0
   local max
   max=$(fm_recovery_bound max-same-cause-retries) || max=2
   REC_ATTEMPTS=$((REC_ATTEMPTS + 1))
@@ -595,9 +677,10 @@ cmd_alternative() {
   [ -n "$fp" ] || die "alternative needs --fingerprint"
   one_line alternative-name "$name"
   valid_slug fingerprint "$fp"
-  read_record "$fp" || die "no recovery record for $fp"
+  read_record_or_die "$fp"
   load_fields
   fm_recovery_state_terminal "$REC_STATE" && die "recovery $fp is already terminal: $REC_STATE"
+  enforce_total_budget "$fp" && return 0
   local max
   max=$(fm_recovery_bound max-alternatives) || max=3
   if [ "$REC_ALTERNATIVES" -ge "$max" ]; then
@@ -636,9 +719,10 @@ cmd_validate() {
   case "$result" in pass|fail) ;; *) die "validate --result must be pass or fail" ;; esac
   [ -z "$evidence" ] || one_line evidence "$evidence"
   valid_slug fingerprint "$fp"
-  read_record "$fp" || die "no recovery record for $fp"
+  read_record_or_die "$fp"
   load_fields
   [ "$REC_STATE" = VALIDATING ] || die "recovery $fp is not VALIDATING (it is $REC_STATE)"
+  enforce_total_budget "$fp" && return 0
   local max
   max=$(fm_recovery_bound max-alternatives) || max=3
   if [ "$result" = pass ]; then
@@ -674,7 +758,7 @@ cmd_escalate() {
   [ -n "$fp" ] || die "escalate needs --fingerprint"
   one_line reason "$reason"
   valid_slug fingerprint "$fp"
-  read_record "$fp" || die "no recovery record for $fp"
+  read_record_or_die "$fp"
   load_fields
   local target
   if [ "$approval" = 1 ]; then target=WAITING_APPROVAL; else target=BLOCKED_EXHAUSTED; fi
@@ -741,7 +825,7 @@ cmd_resume() {
   done
   [ -n "$fp" ] || die "resume needs --fingerprint"
   valid_slug fingerprint "$fp"
-  read_record "$fp" || die "no recovery record for $fp"
+  read_record_or_die "$fp"
   load_fields
   [ "$REC_STATE" = RECOVERABLE ] || die "recovery $fp is not RECOVERABLE (it is $REC_STATE)"
   REC_STATE=RESUMED
@@ -769,7 +853,7 @@ cmd_apply() {
   [ -n "$action" ] || die "apply needs --action"
   one_line action "$action"
   valid_slug fingerprint "$fp"
-  read_record "$fp" || die "no recovery record for $fp"
+  read_record_or_die "$fp"
   load_fields
   local verdict class
   verdict=$(fm_recovery_action_verdict "$action")
@@ -802,7 +886,7 @@ cmd_apply() {
 }
 
 cmd_check() {
-  local fp=''
+  local fp='' rc=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --fingerprint) shift; fp=${1:-} ;;
@@ -817,7 +901,13 @@ cmd_check() {
   # a registered watch reports an error instead of silently reading "false".
   [ -n "$fp" ] || { printf 'fm-recovery: check needs --fingerprint\n' >&2; exit 2; }
   valid_slug fingerprint "$fp"
-  read_record "$fp" || { printf 'recovery: none\n'; return 1; }
+  # An unreadable record is an error, never a clean "there is no recovery": a
+  # watch that read it as false would silently stop watching a live incident.
+  read_record "$fp" || rc=$?
+  case "$rc" in
+    1) printf 'recovery: none\n'; return 1 ;;
+    2) printf 'fm-recovery: the recovery record for %s exists but cannot be read; refusing to report it as absent\n' "$fp" >&2; exit 2 ;;
+  esac
   load_fields
   case "$REC_STATE" in
     WAITING_APPROVAL|BLOCKED_EXHAUSTED)
@@ -918,6 +1008,19 @@ sha256_file() {  # <path>
   fi
 }
 
+# A claim lock may be removed only when its owner is provably gone, and the
+# proof is the one the lock primitive itself uses (fm_lock_try_acquire): a live
+# recorded pid, or a lock still inside its mid-acquire window, means a `begin`
+# may be running right now, and deleting that lock would break the mutual
+# exclusion that makes two concurrent recoveries of one failure impossible.
+# 0 = the lock is live and must be kept.
+claim_lock_live() {  # <lockpath>
+  local lock=$1 pid
+  pid=$(cat "$lock/pid" 2>/dev/null || true)
+  fm_pid_alive "$pid" && return 0
+  fm_lock_mid_acquire_is_fresh "$lock" "$pid"
+}
+
 cmd_retire() {
   local fp='' dest stamp
   while [ "$#" -gt 0 ]; do
@@ -930,7 +1033,7 @@ cmd_retire() {
   done
   [ -n "$fp" ] || die "retire needs --fingerprint"
   valid_slug fingerprint "$fp"
-  read_record "$fp" || die "no recovery record for $fp"
+  read_record_or_die "$fp"
   load_fields
   fm_recovery_state_terminal "$REC_STATE" \
     || die "recovery $fp is still $REC_STATE; only a terminal recovery is retired"
@@ -976,10 +1079,17 @@ cmd_archive_all() {
       base=${entry##*/}
       mv -f "$entry" "$dest/$base" || die "cannot archive $base"
     done
-    # Transient claim locks carry a pid and no incident content; they are the
-    # only thing this removes, and the audit record names them.
+    # Transient claim locks carry a pid and no incident content, and they are
+    # the only thing this removes. Liveness is proved first: a lock whose owner
+    # is still alive, or that is still inside its mid-acquire window, belongs to
+    # a `begin` that may be running right now, and removing it would break the
+    # mutual exclusion. A live lock is retained and named, never deleted.
     for entry in "$REC_DIR"/.claim-*; do
       [ -e "$entry" ] || [ -L "$entry" ] || continue
+      if claim_lock_live "$entry"; then
+        printf 'retained-live: %s\n' "${entry##*/}" >> "$dest/ROLLBACK.audit.tmp"
+        continue
+      fi
       printf 'removed-transient: %s\n' "${entry##*/}" >> "$dest/ROLLBACK.audit.tmp"
       rm -rf -- "$entry"
     done

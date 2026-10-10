@@ -587,4 +587,115 @@ run_rec "$home" status t45 >/dev/null 2>&1
 expect_code 1 "$?" "status by task id refuses when the task has more than one live recovery"
 pass "classification: the worker's own current state and the task-id lookup are covered"
 
+# --- 27. archive-all never removes a claim lock a live begin may hold ------
+home=$(make_home live-claim)
+out=$(run_rec "$home" begin t46 --class run-failed --signature "sig" --target fm/t46)
+fp=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
+# A claim lock built exactly as fm_lock_try_acquire builds it, held by a pid
+# that is alive right now (this test's own shell), plus one whose owner is gone.
+live_owner="$home/state/recovery/.claim-$fp.lock.owner.live"
+mkdir -p "$live_owner"
+printf '%s\n' "$$" > "$live_owner/pid"
+ln -s "$live_owner" "$home/state/recovery/.claim-$fp.lock"
+dead_owner="$home/state/recovery/.claim-dead.lock.owner.dead"
+mkdir -p "$dead_owner"
+printf '%s\n' 999999 > "$dead_owner/pid"
+ln -s "$dead_owner" "$home/state/recovery/.claim-dead.lock"
+out=$(run_rec "$home" archive-all --reason "live claim proof")
+dest=$(printf '%s' "$out" | sed -n 's/^archived: //p')
+audit=$(cat "$dest/ROLLBACK.audit")
+assert_contains "$audit" "retained-live: .claim-$fp.lock" "the rollback names the claim lock it retained"
+assert_contains "$audit" "removed-transient: .claim-dead.lock" "the rollback names the claim lock it removed"
+assert_present "$home/state/recovery/.claim-$fp.lock" "a claim lock whose owner is alive survives the rollback"
+assert_absent "$home/state/recovery/.claim-dead.lock" "a claim lock whose owner is gone is still removed"
+pass "rollback: a live claim lock is never removed, so a running begin keeps its mutual exclusion"
+
+# --- 28. an unreadable record is an error, never a clean 'none' -----------
+home=$(make_home unreadable)
+out=$(run_rec "$home" begin t47 --class run-failed --signature "sig" --target fm/t47)
+fp=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
+# The reviewer's own reproduction: a record that exists but cannot be read.
+chmod 000 "$home/state/recovery/$fp.rec"
+if cat "$home/state/recovery/$fp.rec" >/dev/null 2>&1; then
+  echo "skip: live: chmod 000 does not deny a read on this host"
+else
+  run_rec "$home" check --fingerprint "$fp" > "$home/check.out" 2> "$home/check.err"
+  rc=$?
+  expect_code 2 "$rc" "an unreadable record is an error, never a clean false"
+  assert_not_contains "$(cat "$home/check.out")" "recovery: none" "an unreadable record is never reported as absent"
+  assert_contains "$(cat "$home/check.err")" "cannot be read" "the error names the record it could not read"
+  assert_not_contains "$(cat "$home/check.err")" "Permission denied" "no raw cat diagnostic leaks to the caller"
+  run_rec "$home" begin t47 --class run-failed --signature "sig" --target fm/t47 \
+    > "$home/begin.out" 2>&1
+  expect_code 1 "$?" "begin refuses rather than starting a new recovery over an unreadable record"
+  assert_contains "$(cat "$home/begin.out")" "cannot be read" "the refusal names the unreadable record"
+  run_rec "$home" status t47 > "$home/status.out" 2>&1
+  expect_code 1 "$?" "status by task id refuses rather than reporting the task as having no recovery"
+  assert_not_contains "$(cat "$home/status.out")" "no recovery record for t47" \
+    "an unreadable record is never reported as an absent one by task id"
+  assert_contains "$(cat "$home/status.out")" "cannot be read" "the refusal names the unreadable record"
+fi
+chmod 600 "$home/state/recovery/$fp.rec"
+# An empty record is corrupt, not absent, and a genuinely absent one still reads none.
+home2=$(make_home empty-record)
+out=$(run_rec "$home2" begin t48 --class run-failed --signature "sig" --target fm/t48)
+fp2=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
+: > "$home2/state/recovery/$fp2.rec"
+run_rec "$home2" check --fingerprint "$fp2" >/dev/null 2>&1
+expect_code 2 "$?" "an empty record is an error, never a clean false"
+run_rec "$home2" check --fingerprint 0123456789abcdef > "$home2/none.out" 2>&1
+expect_code 1 "$?" "a genuinely absent record still reports a clean false"
+assert_contains "$(cat "$home2/none.out")" "recovery: none" "absent is still reported as absent"
+pass "record read: absent and unreadable are different facts and never read the same"
+
+# --- 29. the total budget is enforced on every path that keeps working ----
+home=$(make_home budget-attempt)
+out=$(FM_RECOVERY_NOW=1000 run_rec "$home" begin t49 --class run-failed --signature "sig" --target fm/t49)
+fp=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
+out=$(FM_RECOVERY_NOW=1500 run_rec "$home" attempt --fingerprint "$fp" --cause run-failed --result fail)
+assert_contains "$out" "state=RETRYABLE" "an attempt inside the window still retries"
+out=$(FM_RECOVERY_NOW=100000 run_rec "$home" attempt --fingerprint "$fp" --cause run-failed --result fail)
+assert_contains "$out" "state=BLOCKED_EXHAUSTED" "an attempt past the window converges on the escalation, not another retry"
+assert_equals BLOCKED_EXHAUSTED "$(FM_RECOVERY_NOW=100000 rec_state "$home" "$fp")" "the record really is terminal"
+assert_equals blocked "$(FM_RECOVERY_NOW=100000 rec_verb "$home" "$fp")" "the converged recovery projects the blocked verb"
+assert_grep "total-budget-exhausted" "$home/state/recovery/$fp.ledger" "the escalation is recorded in the append-only ledger"
+FM_RECOVERY_NOW=100000 run_rec "$home" check --fingerprint "$fp" >/dev/null
+expect_code 0 "$?" "the converged recovery asks for the supervisor"
+
+home=$(make_home budget-alternative)
+out=$(FM_RECOVERY_NOW=1000 run_rec "$home" begin t50 --class run-failed --signature "sig" --target fm/t50)
+fp=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
+FM_RECOVERY_NOW=1010 run_rec "$home" advance --fingerprint "$fp" ALTERNATIVE_SEARCH >/dev/null
+out=$(FM_RECOVERY_NOW=100000 run_rec "$home" alternative --fingerprint "$fp" --name isolated-test-run)
+assert_contains "$out" "state=BLOCKED_EXHAUSTED" "an alternative past the window converges on the escalation"
+
+home=$(make_home budget-validate)
+out=$(FM_RECOVERY_NOW=1000 run_rec "$home" begin t51 --class run-failed --signature "sig" --target fm/t51)
+fp=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
+FM_RECOVERY_NOW=1010 run_rec "$home" advance --fingerprint "$fp" ALTERNATIVE_SEARCH >/dev/null
+FM_RECOVERY_NOW=1020 run_rec "$home" alternative --fingerprint "$fp" --name isolated-test-run >/dev/null
+out=$(FM_RECOVERY_NOW=100000 run_rec "$home" validate --fingerprint "$fp" --result pass --evidence green)
+assert_contains "$out" "state=BLOCKED_EXHAUSTED" "a verification past the window converges on the escalation, not a success"
+pass "budgets: the whole-recovery window bites on attempt, alternative, and validate, not only on advance"
+
+# --- 30. an abandoned recovery cannot exhaust the cap forever -------------
+home=$(make_home abandoned-cap)
+for n in 1 2 3 4; do
+  FM_RECOVERY_NOW=1000 run_rec "$home" begin "t$n" --class run-failed --signature "distinct $n" --target "fm/t$n" >/dev/null
+done
+out=$(FM_RECOVERY_NOW=1100 run_rec "$home" begin t5 --class run-failed --signature "distinct 5" --target fm/t5)
+assert_contains "$out" "deferred: concurrent recovery cap 4 reached" "the cap still holds while the four recoveries are live"
+out=$(FM_RECOVERY_NOW=100000 run_rec "$home" begin t6 --class run-failed --signature "distinct 6" --target fm/t6)
+assert_contains "$out" "begun:" "four abandoned records no longer exhaust the cap"
+assert_contains "$out" "reaped:" "the store names the abandoned records it converged"
+for n in 1 2 3 4; do
+  state=$(FM_RECOVERY_NOW=100000 run_rec "$home" status "t$n" | sed -n 's/^recovery: \([A-Z_]*\) .*/\1/p')
+  assert_equals BLOCKED_EXHAUSTED "$state" "abandoned recovery t$n was converged, not left RETRYABLE forever"
+done
+assert_equals RETRYABLE "$(FM_RECOVERY_NOW=100000 run_rec "$home" status t6 | sed -n 's/^recovery: \([A-Z_]*\) .*/\1/p')" \
+  "the new recovery really did begin"
+assert_equals 4 "$(grep -l 'abandoned-total-budget-exhausted' "$home"/state/recovery/*.ledger 2>/dev/null | wc -l | tr -d ' ')" \
+  "each reap is recorded as its own ledger event"
+pass "concurrent cap: an abandoned recovery is converged instead of silently blocking new work"
+
 echo "ok - fm-recovery state machine (all scenarios)"

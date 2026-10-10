@@ -45,6 +45,7 @@ The hold is raised before the state is written, and a hold that cannot be record
 A recovery record is one line of space-separated `key=value` fields.
 Every value is escaped on write and unescaped on read, so a value that contains a space, an `=`, or a newline round-trips exactly instead of being truncated at its first space or read back as a second field.
 That is what keeps a free-text argument from injecting a field: `exec_class=production` inside a signature, a target, a reason, or an alternative name is data, never the record's own class.
+A record that exists but cannot be read is an error, never an absent record: the engine refuses to report it as "no recovery" and refuses to begin a new recovery over it, so live incident evidence is never overwritten by a failed read.
 
 ## Transitions
 
@@ -64,6 +65,7 @@ WAITING_APPROVAL   -> RECOVERABLE | BLOCKED_EXHAUSTED
 ```
 
 Two transitions are forced rather than requested, so a recovery always converges on an escalation instead of looping: exhausting the alternative budget, the same-cause retry budget, or the whole-recovery budget moves the record to `BLOCKED_EXHAUSTED`.
+The whole-recovery budget is a bound on the recovery, not on one command: it is enforced on every path that would otherwise keep a recovery working, so no caller has to remember to call a particular command for the bound to bite.
 A failed verification with an alternative still available returns to `ALTERNATIVE_SEARCH` so a different alternative is tried.
 
 ## Failure classes
@@ -88,6 +90,7 @@ A short-lived claim lock (`fm_lock_try_acquire`) makes two simultaneous starts o
 
 The lease inside the record is a TTL heartbeat, not a process-liveness claim, because the engine's own processes are short-lived by design.
 A lease whose heartbeat stopped for longer than `FM_RECOVERY_LEASE_TTL_SECS` is stale and may be taken over.
+A record past the whole-recovery window whose lease is stale is abandoned: nothing is holding it any more, so `begin` converges it on `BLOCKED_EXHAUSTED` before it counts against the concurrent cap, and an abandoned record can therefore neither block new work silently nor stay non-terminal forever.
 
 ## Bounds
 
@@ -98,8 +101,8 @@ All pilot values are owned by `fm_recovery_bound` in the library, and a malforme
 | `FM_RECOVERY_MAX_ALTERNATIVES` | 3 | More than three alternatives escalates |
 | `FM_RECOVERY_MAX_SAME_CAUSE_RETRIES` | 2 | A third identical retry is refused and forces `DIAGNOSING` |
 | `FM_RECOVERY_DIAGNOSIS_SECS` | 900 | A diagnosis that outlives the window asks for the supervisor |
-| `FM_RECOVERY_TOTAL_SECS` | 1800 | A recovery that outlives the window escalates |
-| `FM_RECOVERY_MAX_CONCURRENT` | 4 | The existing execution slot cap is retained, never raised |
+| `FM_RECOVERY_TOTAL_SECS` | 1800 | A recovery that outlives the window escalates, on every path that would keep it working, not only when one command happens to run |
+| `FM_RECOVERY_MAX_CONCURRENT` | 4 | The existing execution slot cap is retained, never raised; a record abandoned past the total window is converged before it counts, so it cannot exhaust the cap forever |
 | `FM_RECOVERY_LEASE_TTL_SECS` | 300 | Lease heartbeat window |
 
 ## Authority gate
@@ -159,6 +162,7 @@ Retention is unbounded by design, because these are small text lines and the eve
 **How the rollback is auditable.**
 `ROLLBACK.audit` is the record that the capability was withdrawn: schema `fm-recovery-rollback.v1`, the UTC timestamp, the acting identity, the reason, the source directory, the archive directory, and a `sha256=` line for every preserved file.
 The only things `archive-all` removes are transient claim locks, which hold a pid and no incident content, and it names each one it removed.
+A claim lock is removed only after its owner is proved gone: a lock whose recorded pid is still alive, or that is still inside its mid-acquire window, belongs to a `begin` that may be running right now and is retained and named instead.
 
 ## Execution class and measurement linkage
 
