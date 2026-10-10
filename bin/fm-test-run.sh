@@ -143,7 +143,9 @@
 # recorded family-level coupling still expands to the whole family.
 # tests/lib.sh, tests/fixtures.sh, tests/*-helpers.sh and tests/*-fixture.sh are
 # shared files that map to the suites naming them; a fixture under
-# tests/fixtures/<dir>/ is mapped by that directory instead. Curated family arms
+# tests/fixtures/<dir>/ is mapped by that directory instead. A tests/*.test.py
+# case file is mapped to the sibling *.test.sh wrapper that drives it, since
+# that wrapper is the suite the runner actually executes. Curated family arms
 # above those also name individual tests/ files explicitly.
 set -eu
 
@@ -1344,7 +1346,7 @@ families_for_unmapped_bin() {
 # Conservative path → family map. Over-selects rather than under-selects.
 # Never expands to the complete suite.
 families_for_changed_path() {
-  local path=$1 fixture_ref
+  local path=$1 fixture_ref wrapper
   case "$path" in
     tests/fm-backend-herdr-eventwait.test.py)
       printf '%s\n' real-herdr-gated
@@ -1646,6 +1648,20 @@ families_for_changed_path() {
       # make every retirement branch unable to select its changed tests.
       if [ -e "$path" ]; then
         families_for_unmapped_bin "$path" \
+          || printf '%s\n' "__unmapped__:$path"
+      fi
+      ;;
+    tests/*.test.py)
+      # A python case file is driven by its sibling *.test.sh wrapper, which is
+      # the suite the runner actually executes, so editing either half selects
+      # that one suite. A python case with no wrapper has no runnable suite to
+      # select and resolves through the same reference scan as any other test
+      # file, failing closed when nothing names it.
+      wrapper="tests/$(basename "${path%.py}.sh")"
+      if [ -e "$wrapper" ]; then
+        printf '%s\n' "__script__:$(basename "$wrapper")"
+      else
+        families_for_test_reference "$(basename "$path")" \
           || printf '%s\n' "__unmapped__:$path"
       fi
       ;;
