@@ -298,6 +298,7 @@ function confirmHandlingDeliveryWithRetry(state, paths, recovery) {
 }
 
 async function deliverActionableWake(state, paths, client, sessionID, message, recovery) {
+  if (state.disposed) return;
   if (recovery) {
     const confirmed = confirmHandlingDeliveryWithRetry(state, paths, recovery);
     if (!confirmed.ok) {
@@ -308,10 +309,12 @@ async function deliverActionableWake(state, paths, client, sessionID, message, r
           await retireArm(state, state.child);
         }
       }
+      if (state.disposed) return;
       await sendPrompt(paths, client, sessionID, wakePrompt(`${message}\n\n${confirmed.detail}`));
       return;
     }
   }
+  if (state.disposed) return;
   await sendPrompt(paths, client, sessionID, wakePrompt(message));
 }
 
@@ -319,7 +322,8 @@ function wakePrompt(reason) {
   return `WATCHER FIRED - drain queued wakes with bin/fm-wake-drain.sh and handle the reported wake. Watcher continuity is plugin-owned.\n\n${reason}`;
 }
 
-function surfaceFailure(paths, client, sessionID, reason) {
+function surfaceFailure(state, paths, client, sessionID, reason) {
+  if (state.disposed) return;
   void sendPrompt(paths, client, sessionID, wakePrompt(reason)).catch(() => {
     // OpenCode owns delivery errors; continuity restoration never waits on prompting.
   });
@@ -361,6 +365,7 @@ function restorationFailure(status) {
 async function restoreAfterActionableClose(state, paths, sessionID, client, predecessorArmPid) {
   let failure = "";
   for (let attempt = 0; attempt <= REARM_RETRY_LIMIT; attempt += 1) {
+    if (state.disposed) return { failure: "", recovery: null };
     const { status, armChild } = await ensureArm(state, paths, sessionID, client, predecessorArmPid, true);
     if (status === "armed") return { failure: "", recovery: state.armRecovery.get(armChild) };
     // An actionable line belongs to this arm's close handler.
@@ -380,24 +385,28 @@ async function restoreAfterActionableClose(state, paths, sessionID, client, pred
 }
 
 async function scheduleRetry(state, paths, sessionID, client, reason, predecessorArmPid) {
-  if (state.child || state.retryTimer) return;
+  if (state.disposed || state.child || state.retryTimer) return;
   if (!(await sessionOwnsLock(paths))) {
+    if (state.disposed) return;
     setArmStatus(state, "failed");
-    surfaceFailure(paths, client, sessionID, `watcher: FAILED - OpenCode cannot restore continuity because this session no longer owns the lock\n${reason}`);
+    surfaceFailure(state, paths, client, sessionID, `watcher: FAILED - OpenCode cannot restore continuity because this session no longer owns the lock\n${reason}`);
     return;
   }
+  if (state.disposed) return;
   state.retryFailures += 1;
   if (state.retryFailures > REARM_RETRY_LIMIT) {
     setArmStatus(state, "failed");
-    surfaceFailure(paths, client, sessionID, `watcher: FAILED - OpenCode could not restore watcher continuity after ${REARM_RETRY_LIMIT} retries\n${reason}`);
+    surfaceFailure(state, paths, client, sessionID, `watcher: FAILED - OpenCode could not restore watcher continuity after ${REARM_RETRY_LIMIT} retries\n${reason}`);
     return;
   }
   setArmStatus(state, "retrying");
   const timer = setTimeout(() => {
     if (state.retryTimer === timer) state.retryTimer = null;
+    if (state.disposed) return;
     void ensureArm(state, paths, sessionID, client, predecessorArmPid).then((status) => {
+      if (state.disposed) return;
       if (["armed", "starting", "wake"].includes(status)) return;
-      surfaceFailure(paths, client, sessionID, `watcher: FAILED - OpenCode could not launch a continuity retry (${status})`);
+      surfaceFailure(state, paths, client, sessionID, `watcher: FAILED - OpenCode could not launch a continuity retry (${status})`);
     });
   }, retryDelay(state.retryFailures));
   timer.unref();
@@ -464,6 +473,7 @@ function spawnArm(state, paths, sessionID, client, predecessorArmPid = "") {
     settled = true;
     resolveClosed();
     releaseChild();
+    if (state.disposed) return;
     const classification = classifyArmClose(paths, hostMode, stdout, stderr, code, signal);
     settleReadiness(classification.kind === "actionable" ? "wake" : "failed");
     const predecessor = String(armChild.pid ?? "");
@@ -476,6 +486,7 @@ function spawnArm(state, paths, sessionID, client, predecessorArmPid = "") {
       void restoration.then(async (result) => {
         try {
           const message = result.failure ? `${classification.message}\n\n${result.failure}` : classification.message;
+          if (state.disposed) return;
           await deliverActionableWake(state, paths, client, sessionID, message, result.recovery);
         } finally {
           if (state.restorationInFlight === restoration) state.restorationInFlight = null;
@@ -483,6 +494,7 @@ function spawnArm(state, paths, sessionID, client, predecessorArmPid = "") {
       }).catch((error) => {
         if (state.restorationInFlight === restoration) state.restorationInFlight = null;
         surfaceFailure(
+          state,
           paths,
           client,
           sessionID,
@@ -503,6 +515,7 @@ function spawnArm(state, paths, sessionID, client, predecessorArmPid = "") {
     resolveClosed();
     releaseChild();
     settleReadiness("failed");
+    if (state.disposed) return;
     if (state.restorationInFlight) {
       setArmStatus(state, "failed");
       return;
@@ -520,9 +533,11 @@ function spawnArm(state, paths, sessionID, client, predecessorArmPid = "") {
 }
 
 async function beginArm(state, paths, sessionID, client, predecessorArmPid) {
-  if (!sessionID) return { status: "skipped", armChild: null };
+  if (state.disposed || !sessionID) return { status: "skipped", armChild: null };
   if (!(await isPrimaryRoot(paths.root, paths.home))) return { status: "not-primary", armChild: null };
+  if (state.disposed) return { status: "skipped", armChild: null };
   if (!(await sessionOwnsLock(paths))) return { status: "read-only", armChild: null };
+  if (state.disposed) return { status: "skipped", armChild: null };
   if (state.child) return { status: "existing", armChild: state.child };
   if (state.retryTimer) return { status: "retrying", armChild: null };
   if (!shouldArm(paths)) return { status: "not-needed", armChild: null };
@@ -534,6 +549,7 @@ function armAttempt(status, armChild, includeArmChild) {
 }
 
 async function ensureArm(state, paths, sessionID, client, predecessorArmPid = "", includeArmChild = false) {
+  if (state.disposed) return armAttempt("skipped", null, includeArmChild);
   let launchResult = null;
   if (!state.launchInFlight) {
     const launch = beginArm(state, paths, sessionID, client, predecessorArmPid);
@@ -581,6 +597,7 @@ export default {
       armReadiness: new WeakMap(),
       armRecovery: new WeakMap(),
       armHostMode: new WeakMap(),
+      disposed: false,
     };
 
     void (async () => {
@@ -606,7 +623,13 @@ export default {
     })();
 
     return () => {
+      state.disposed = true;
       controller.abort();
+      if (state.retryTimer) {
+        clearTimeout(state.retryTimer);
+        state.retryTimer = null;
+      }
+      state.child?.kill("SIGTERM");
       const coordinators = globalThis[COORDINATOR_KEY];
       if (coordinators?.get(directory) === coordinator) coordinators.delete(directory);
       if (coordinators?.size === 0) delete globalThis[COORDINATOR_KEY];
