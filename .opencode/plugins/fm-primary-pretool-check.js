@@ -43,11 +43,11 @@ async function resolveRoot(anchor) {
 
 export default {
   id: "fm-primary-pretool-check",
-  setup(ctx) {
+  async setup(ctx) {
     let rootPromise = null;
     const root = () => (rootPromise ??= resolveRoot(ctx.location?.directory));
 
-    ctx.tool.hook("execute.before", async (arg) => {
+    const registration = await ctx.tool.hook("execute.before", async (arg) => {
       const r = await root();
       if (!r || arg?.tool !== "bash") return;
       const command = arg?.input?.command;
@@ -60,6 +60,6 @@ export default {
       throw new Error(reason);
     });
 
-    return () => {};
+    return () => registration.dispose();
   },
 };
