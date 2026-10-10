@@ -85,6 +85,11 @@ _fm_blocker_from_text() {
     # Provider quota / usage limit / outage.
     *"usage limit"*|*"quota"*|*"exceeded its invocation budget"*|*"try again at"*)
       printf 'PROVIDER_BLOCKED\tquota_exhausted' ;;
+    # A provider outage or unavailable/provider-error response is a PROVIDER
+    # failure distinct from quota: the service could not answer at all. Checked
+    # after quota so an "outage" that also reports a quota message stays quota.
+    *"provider outage"*|*"provider unavailable"*|*"provider service error"*|*"provider error"*|*"service unavailable"*|*"outage"*)
+      printf 'PROVIDER_BLOCKED\tprovider_outage' ;;
     *"connection reset"*|*"network is unreachable"*|*"dns"*|*"no space left"*|*"runner"*|*"failed to start"*)
       printf 'INFRA_BLOCKED\tinfra' ;;
     *"assertion"*|*"but got"*|*"test failed"*|*"not ok"*)
@@ -100,7 +105,7 @@ fm_blocker_classify() {
   # shellcheck disable=SC2034  # stage is part of the contract; the type is deliberately stage-independent
   local stage=$1 cause=$2 code=${3:-}
   local text_code='' from_text='' from_code=''
-  local type sub text_type
+  local type sub text_type code_type
   text_code=$(printf '%s' "$cause" | tr '[:upper:]' '[:lower:]')
 
   if [ -n "$code" ]; then

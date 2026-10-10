@@ -110,6 +110,102 @@ assert_blocker "E5 absent blocker key -> empty (legacy record)" '' \
 assert_row "E7 conflicting evidence -> UNKNOWN" UNKNOWN_BLOCKED conflicting_evidence \
   ci 'the runner has received a shutdown signal' provider_quota
 
+# --- independent-review regressions (captain, 2026-10-10) ---------------------
+
+# F1 provider outage / unavailable text is a PROVIDER failure, not quota.
+assert_row "F1 provider outage text -> PROVIDER_BLOCKED" PROVIDER_BLOCKED provider_outage \
+  run 'the provider outage began mid-step and every call failed'
+assert_row "F1b provider unavailable text -> PROVIDER_BLOCKED" PROVIDER_BLOCKED provider_outage \
+  run 'provider unavailable: 503 returned for every retry'
+assert_row "F1c structured provider_outage agrees with its text -> PROVIDER_BLOCKED" PROVIDER_BLOCKED provider_outage \
+  run 'provider outage' provider_outage
+# an outage message that also reports a quota hit stays a quota hit: quota is
+# checked first, so the shared outage word cannot steal it.
+assert_row "F1d outage plus quota text -> quota_exhausted" PROVIDER_BLOCKED quota_exhausted \
+  run 'usage limit reached while the provider outage was still reported'
+
+# F2 a structured code and conflicting text stay UNKNOWN in both directions.
+assert_row "F2 structured CODE code vs INFRA text -> UNKNOWN" UNKNOWN_BLOCKED conflicting_evidence \
+  test 'the runner has received a shutdown signal' test_assertion
+assert_row "F2b structured REVIEW code vs PROVIDER outage text -> UNKNOWN" UNKNOWN_BLOCKED conflicting_evidence \
+  review 'provider outage reported by the API' review_changes_requested
+assert_row "F2c structured PROVIDER code vs REVIEW text -> UNKNOWN" UNKNOWN_BLOCKED conflicting_evidence \
+  review 'the reviewer said changes requested' provider_quota
+
+# F3 every other evidence gap still lands on an UNKNOWN fallback.
+assert_row "F3 unrecognized structured code -> UNKNOWN" UNKNOWN_BLOCKED unknown_code \
+  ci 'x' some_new_code
+assert_row "F3b no matching evidence -> UNKNOWN" UNKNOWN_BLOCKED no_evidence \
+  ci 'nothing here matches anything'
+# the caller-supplied stage never changes the verdict.
+assert_row "F3c stage alone decides nothing" UNKNOWN_BLOCKED no_evidence \
+  review 'please review the logs before continuing'
+
+# F4 no function local leaks into the caller's scope. This is the independent
+# review's regression: `code_type` was assigned without `local`, and the lib is
+# sourced by fm-crew-state.sh, the watcher and teardown, so a leaked value would
+# corrupt their own variables.
+FM_BLOCKER_LOCALS='stage cause code text_code from_text from_code type sub text_type code_type'
+for _v in $FM_BLOCKER_LOCALS; do
+  eval "$_v=LEAK_SENTINEL_$_v"
+done
+leak_row=$(fm_blocker_classify ci 'the runner has received a shutdown signal' provider_quota)
+leak_leaked=''
+for _v in $FM_BLOCKER_LOCALS; do
+  if [ "$(eval "printf '%s' \"\$$_v\"")" != "LEAK_SENTINEL_$_v" ]; then
+    leak_leaked="$leak_leaked $_v"
+  fi
+done
+# shellcheck disable=SC2086  # deliberate word splitting over the local-name list
+unset $FM_BLOCKER_LOCALS 2>/dev/null || true
+if [ -z "$leak_leaked" ]; then
+  pass "F4 fm_blocker_classify leaves every local out of the caller scope"
+else
+  fail "F4 fm_blocker_classify leaked:$leak_leaked"
+fi
+# the conflict row is still produced through the very call that probes for leaks.
+case "${leak_row%%$'\t'*}" in
+  UNKNOWN_BLOCKED) pass "F4b the conflict row survives the leak probe" ;;
+  *) fail "F4b the conflict row changed ('$leak_row')" ;;
+esac
+
+# F5 Bash 3.2 compatibility. The CI lane that pins stock macOS Bash only parses
+# these files with `/bin/bash -n`, so this regression must prove the classifier
+# also RUNS there.
+if [ -x /bin/bash ]; then
+  if /bin/bash -n "$ROOT/bin/fm-blocker-classify-lib.sh"; then
+    pass "F5 fm-blocker-classify-lib.sh parses under /bin/bash"
+  else
+    fail "F5 fm-blocker-classify-lib.sh does not parse under /bin/bash"
+  fi
+  stock_dir=$(mktemp -d "${TMPDIR:-/tmp}/fm-blocker-stock.XXXXXX")
+  cat > "$stock_dir/probe.sh" <<'SH'
+# Runs under the stock interpreter. Exit 3 proves a leaked local, exit 4 proves
+# the conflict row itself broke.
+. "$1"
+code_type=STOCK_SENTINEL
+row=$(fm_blocker_classify "$2" "$3" "$4")
+[ "$code_type" = STOCK_SENTINEL ] || exit 3
+case "${row%%$'\t'*}" in
+  UNKNOWN_BLOCKED) exit 0 ;;
+esac
+exit 4
+SH
+  if /bin/bash -c 'printf "%s" "${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"' | grep -q '^3\.2$'; then
+    if /bin/bash "$stock_dir/probe.sh" "$ROOT/bin/fm-blocker-classify-lib.sh" \
+      ci 'the runner has received a shutdown signal' provider_quota; then
+      pass "F5c stock Bash 3.2 runs the conflict path with no leaked code_type"
+    else
+      fail "F5c stock Bash 3.2 conflict path broken (rc=$?)"
+    fi
+  else
+    pass "F5c stock Bash 3.2 absent on this host; the parse sweep above is the portable check"
+  fi
+  rm -rf "$stock_dir"
+else
+  pass "F5 no /bin/bash on this host; skipped"
+fi
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
   echo "# all fm-blocker-classify tests passed"
