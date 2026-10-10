@@ -617,10 +617,9 @@ is_stalled() {  # <task-id> <external_state> <detail>
     *) return 1 ;;
   esac
 
-  local meta status turn_ended progress
+  local meta status progress
   meta="$STATE/$id.meta"
   status="$STATE/$id.status"
-  turn_ended="$STATE/$id.turn-ended"
   progress="$STATE/$id.progress"
   local now progress_age worktree_age heartbeat_age step_age
 
@@ -841,12 +840,6 @@ auto_resume_task() {  # <task-id>
   case "$interruption_type" in
     process_crash|provider_503|harness_session|ci_failure|review_findings)
       # Determine target state based on interruption type
-      local target_state
-      target_state="RUNNING"
-      case "$interruption_type" in
-        ci_failure) target_state="FIXING" ;;
-        review_findings) target_state="FIXING" ;;
-      esac
       note="Auto-resume attempt $attempt after $interruption_type. Previous state: $lifecycle_state. Checkpoint: $(lifecycle_read "$id" resume_checkpoint)"
       if fm_control_relaunch "$id" "" "$note"; then
         # Transition to RECOVERY_HOLD while relaunch is in progress
@@ -882,9 +875,6 @@ auto_resume_task() {  # <task-id>
 }
 
 select_alternate_harness() {  # <task-id>
-  local id current_harness
-  id=$1
-  current_harness=$(lifecycle_read "$id" owner)
   # Placeholder - would integrate with quota-axi for model selection
   echo ""
 }
@@ -1126,8 +1116,6 @@ reconcile_orphans() {
       [ -d "$pool" ] || continue
       for wt in "$pool"/*/; do
         [ -d "$wt" ] || continue
-        local wt_id
-        wt_id=$(basename "$wt")
         # Check if any meta references this worktree
         local referenced
         referenced=0
@@ -1211,9 +1199,6 @@ sync_lifecycle_with_external() {  # <task-id> <external_state>
 # ============================================================================
 
 cmd_reconcile() {  # [--startup]
-  local startup
-  startup=0
-  [ "${1:-}" = "--startup" ] && startup=1
 
   echo "=== Reconcile start $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
 
