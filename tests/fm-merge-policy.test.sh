@@ -207,16 +207,16 @@ cat > "$TMP/gl-pr.json" <<JSON
 {"author":{"username":"author"},"sha":"$HEAD","target_branch":"main","head_pipeline":{"id":17,"sha":"$HEAD","status":"success"}}
 JSON
 cat > "$TMP/gl-approvals.json" <<'JSON'
-{"approvals_left":0,"approved_by":[{"user":{"username":"reviewer"}}]}
+{"approvals_left":0,"approved_by":[{"user":{"id":99,"username":"reviewer"}}]}
 JSON
 cat > "$TMP/gl-protected.json" <<'JSON'
-[{"name":"main"}]
+[{"name":"main","required_pipeline":{"id":17}}]
 JSON
 cat > "$TMP/gl-changes.json" <<'JSON'
 {"changes":[{"new_path":"docs/operations.md"}]}
 JSON
 cat > "$TMP/gl-jobs.json" <<JSON
-[{"status":"success","commit":{"id":"$HEAD"}}]
+[{"status":"success","commit":{"id":"$HEAD"},"pipeline":{"id":17}}]
 JSON
 printf '%s\n' '{"reset_approvals_on_push":true}' > "$TMP/gl-project.json"
 cat > "$TMP/fakebin/glab" <<'SH'
@@ -254,6 +254,26 @@ out=$(env "${gl_env[@]}" "$EVIDENCE" collect "$TASK" "$GL_PR" "$HEAD")
 eq "GitLab producer rejects failed pipeline job" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
 out=$(env "${gl_env[@]}" FM_TEST_GL_PR_JSON="$TMP/gl-pr.json" "$EVIDENCE" collect "$TASK" "$GL_PR" "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 eq "GitLab producer holds stale SHA" "$(printf '%s' "$out" | jq -r .reasons[0])" stale-head
+
+# --- GitLab required-set (protected branch required pipeline) ---
+cat > "$TMP/gl-protected-req.json" <<'JSON'
+[{"name":"main","required_pipeline":{"id":42},"approval_rules":[{"approvals_required":1,"user_ids":[99],"group_ids":[]}]}]
+JSON
+cat > "$TMP/gl-jobs-req.json" <<JSON
+[{"status":"success","commit":{"id":"$HEAD"},"pipeline":{"id":42}},{"status":"success","commit":{"id":"$HEAD"},"pipeline":{"id":99}}]
+JSON
+out=$(env "${gl_env[@]}" FM_TEST_GL_PROTECTED_JSON="$TMP/gl-protected-req.json" FM_TEST_GL_JOBS_JSON="$TMP/gl-jobs-req.json" "$EVIDENCE" collect "$TASK" "$GL_PR" "$HEAD")
+eq "GitLab producer accepts required pipeline success" "$(printf '%s' "$out" | jq -r .status)" PASS
+cat > "$TMP/gl-jobs-req.json" <<JSON
+[{"status":"failed","commit":{"id":"$HEAD"},"pipeline":{"id":42}}]
+JSON
+out=$(env "${gl_env[@]}" FM_TEST_GL_PROTECTED_JSON="$TMP/gl-protected-req.json" FM_TEST_GL_JOBS_JSON="$TMP/gl-jobs-req.json" "$EVIDENCE" collect "$TASK" "$GL_PR" "$HEAD")
+eq "GitLab producer rejects failed required pipeline" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
+cat > "$TMP/gl-jobs-req.json" <<JSON
+[{"status":"success","commit":{"id":"$HEAD"},"pipeline":{"id":99}}]
+JSON
+out=$(env "${gl_env[@]}" FM_TEST_GL_PROTECTED_JSON="$TMP/gl-protected-req.json" FM_TEST_GL_JOBS_JSON="$TMP/gl-jobs-req.json" "$EVIDENCE" collect "$TASK" "$GL_PR" "$HEAD")
+eq "GitLab producer rejects missing required pipeline" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
 
 echo "# fm-merge-policy.test.sh PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

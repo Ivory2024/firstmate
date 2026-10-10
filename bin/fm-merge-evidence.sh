@@ -66,6 +66,34 @@ github_required_checks_ok() {
   ' >/dev/null 2>&1
 }
 
+gitlab_required_checks_ok() {
+  local protected=$1 pipeline_jobs=$2 approvals=$3 head=$4 branch=$5
+  local required_pipelines approval_rules
+  required_pipelines=$(printf '%s' "$protected" | jq -r --arg branch "$branch" '
+    .[] | select(.name == $branch) | .required_pipeline?.id // empty' 2>/dev/null) || return 1
+  approval_rules=$(printf '%s' "$protected" | jq -c --arg branch "$branch" '
+    .[] | select(.name == $branch) | .approval_rules // []' 2>/dev/null) || return 1
+  [ -n "$required_pipelines" ] || [ "$(printf '%s' "$approval_rules" | jq 'length')" -gt 0 ] || return 1
+  if [ -n "$required_pipelines" ]; then
+    printf '%s' "$pipeline_jobs" | jq -e --arg head "$head" --argjson required "$(printf '%s' "$required_pipelines" | jq -Rs 'split("\n") | map(select(length > 0) | tonumber)')" --argjson jobs "$pipeline_jobs" '
+      ($required | type == "array" and length > 0) and
+      all($required[]; . as $pid |
+        ([$jobs[] | select(.pipeline.id == $pid and .commit.id == $head and .status == "success")] | length > 0)
+      )' >/dev/null 2>&1 || return 1
+  fi
+  if [ "$(printf '%s' "$approval_rules" | jq 'length')" -gt 0 ]; then
+    printf '%s' "$approvals" | jq -e --argjson rules "$approval_rules" --argjson appr "$approvals" '
+      ($rules | type == "array" and length > 0) and
+      all($rules[]; . as $rule |
+        (if $rule.approvals_required > 0 then
+           ($appr.approved_by | type == "array") and
+           ([$appr.approved_by[].user.id] | map(select(. != null)) | length >= ($rule.approvals_required | tonumber))
+         else true end)
+      )' >/dev/null 2>&1 || return 1
+  fi
+  return 0
+}
+
 collect_github() {
   local task_id=$1 expected=$2 pr_json reviews protection rulesets rulesets_json check_runs statuses check_runs_json statuses_json captain
   local author base owner repo number review_ok=false findings run_status path
@@ -159,17 +187,18 @@ collect_gitlab() {
     'type == "array" and any(.[]; .name == $branch)' >/dev/null 2>&1 || { hold protected-branch-missing; return 0; }
   pipeline_jobs=$(GITLAB_HOST="$FM_PR_HOST" glab api --paginate "projects/$encoded/pipelines/$pipeline_id/jobs?per_page=100" 2>/dev/null) \
     || { hold required-checks-unreadable; return 0; }
-  printf '%s' "$pipeline_jobs" | jq -e --arg head "$LIVE_HEAD" \
-    'type == "array" and length > 0 and all(.[]; .status == "success" and .commit.id == $head)' >/dev/null 2>&1 \
+  author=$(printf '%s' "$pr_json" | jq -er '.author.username | select(type == "string" and length > 0)' 2>/dev/null) \
+    || { hold forge-author-unreadable; return 0; }
+  approvals=$(GITLAB_HOST="$FM_PR_HOST" glab api "projects/$encoded/merge_requests/$FM_PR_NUMBER/approvals" 2>/dev/null) \
+    || { hold forge-approvals-unreadable; return 0; }
+  local target_branch
+  target_branch=$(printf '%s' "$pr_json" | jq -r '.target_branch // empty')
+  gitlab_required_checks_ok "$protected" "$pipeline_jobs" "$approvals" "$LIVE_HEAD" "$target_branch" \
     || { hold required-checks-not-green-or-unconfigured; return 0; }
   approval_settings=$(GITLAB_HOST="$FM_PR_HOST" glab api "projects/$encoded" 2>/dev/null) \
     || { hold approval-policy-unreadable; return 0; }
   printf '%s' "$approval_settings" | jq -e '.reset_approvals_on_push == true' >/dev/null 2>&1 \
     || { hold approval-head-binding-unverified; return 0; }
-  author=$(printf '%s' "$pr_json" | jq -er '.author.username | select(type == "string" and length > 0)' 2>/dev/null) \
-    || { hold forge-author-unreadable; return 0; }
-  approvals=$(GITLAB_HOST="$FM_PR_HOST" glab api "projects/$encoded/merge_requests/$FM_PR_NUMBER/approvals" 2>/dev/null) \
-    || { hold forge-approvals-unreadable; return 0; }
   review_ok=$(printf '%s' "$approvals" | jq -r --arg author "$author" \
     '.approvals_left == 0 and (.approved_by | type == "array") and any(.approved_by[]; .user.username != $author)') || review_ok=false
   [ "$review_ok" = true ] || { hold independent-review-missing-or-stale; return 0; }
