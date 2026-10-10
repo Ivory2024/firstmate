@@ -24,6 +24,10 @@ eq "MEDIUM+med scope -> eligible"   "$($P merge-eligible --risk MEDIUM --ci pass
 AR=$(mktemp); printf 'signer=captain\npr=115\nhead=abc\nscope=high\nat=2026-10-10\n' > "$AR"
 eq "HIGH+high scope+approval+record -> eligible" "$($P merge-eligible --risk HIGH --ci pass --review pass --head-match yes --protected no --unresolved no --scope high --approved-pr 115 --approved-sha abc --head-sha abc --approval-record "$AR")" MERGE_ELIGIBLE
 eq "protected HIGH+captain approval -> eligible" "$($P merge-eligible --risk HIGH --ci pass --review pass --head-match yes --protected yes --unresolved no --scope high --approved-pr 115 --approved-sha abc --head-sha abc --approval-record "$AR")" MERGE_ELIGIBLE
+SCOPE_LOW=$(mktemp); printf 'signer=captain\npr=115\nhead=abc\nscope=low\n' > "$SCOPE_LOW"
+eq "protected HIGH with low-scope record -> HOLD" "$($P merge-eligible --risk HIGH --ci pass --review pass --head-match yes --protected yes --unresolved no --scope high --approved-pr 115 --approved-sha abc --head-sha abc --approval-record "$SCOPE_LOW")" "MERGE_HOLD reason=approval-scope-mismatch"
+SCOPE_MISSING=$(mktemp); printf 'signer=captain\npr=115\nhead=abc\n' > "$SCOPE_MISSING"
+eq "protected HIGH with missing record scope -> HOLD" "$($P merge-eligible --risk HIGH --ci pass --review pass --head-match yes --protected yes --unresolved no --scope high --approved-pr 115 --approved-sha abc --head-sha abc --approval-record "$SCOPE_MISSING")" "MERGE_HOLD reason=approval-scope-mismatch"
 eq "HIGH no record -> HOLD" "$($P merge-eligible --risk HIGH --ci pass --review pass --head-match yes --protected no --unresolved no --scope high --approved-pr 115 --approved-sha abc --head-sha abc)" "MERGE_HOLD reason=no-approval-record"
 FA=$(mktemp); printf 'signer=auto\npr=115\nhead=abc\n' > "$FA"
 eq "HIGH forged record (non-captain) -> HOLD" "$($P merge-eligible --risk HIGH --ci pass --review pass --head-match yes --protected no --unresolved no --scope high --approved-pr 115 --approved-sha abc --head-sha abc --approval-record "$FA")" "MERGE_HOLD reason=approval-not-captain"
@@ -35,7 +39,7 @@ PREFIX_PR=$(mktemp); printf 'signer=captain\npr=1156\nhead=abc\n' > "$PREFIX_PR"
 eq "HIGH PR prefix spoof -> HOLD" "$($P merge-eligible --risk HIGH --ci pass --review pass --head-match yes --protected no --unresolved no --scope high --approved-pr 115 --approved-sha abc --head-sha abc --approval-record "$PREFIX_PR")" "MERGE_HOLD reason=approval-pr-mismatch"
 PREFIX_HEAD=$(mktemp); printf 'signer=captain\npr=115\nhead=abcdef\n' > "$PREFIX_HEAD"
 eq "HIGH head prefix spoof -> HOLD" "$($P merge-eligible --risk HIGH --ci pass --review pass --head-match yes --protected no --unresolved no --scope high --approved-pr 115 --approved-sha abc --head-sha abc --approval-record "$PREFIX_HEAD")" "MERGE_HOLD reason=approval-head-mismatch"
-rm -f "$AR" "$FA" "$WR" "$PREFIX_SIGNER" "$PREFIX_PR" "$PREFIX_HEAD"
+rm -f "$AR" "$FA" "$WR" "$PREFIX_SIGNER" "$PREFIX_PR" "$PREFIX_HEAD" "$SCOPE_LOW" "$SCOPE_MISSING"
 eq "HIGH high-scope no approval-pr -> HOLD" "$($P merge-eligible --risk HIGH --ci pass --review pass --head-match yes --protected no --unresolved no --scope high)" "MERGE_HOLD reason=high-scope-needs-approval-pr"
 eq "HIGH approval sha mismatch -> HOLD" "$($P merge-eligible --risk HIGH --ci pass --review pass --head-match yes --protected no --unresolved no --scope high --approved-pr 115 --approved-sha abc --head-sha def)" "MERGE_HOLD reason=high-scope-sha-mismatch"
 eq "core-control path -> HIGH" "$($P classify-risk bin/fm-crew-state.sh)" HIGH

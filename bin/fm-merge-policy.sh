@@ -46,7 +46,7 @@ merge_eligible() {
   [ "$ci" = pass ] || { echo "MERGE_HOLD reason=ci-not-pass"; return 0; }
   [ "$review" = pass ] || { echo "MERGE_HOLD reason=no-independent-review"; return 0; }
   [ "$head" = yes ] || { echo "MERGE_HOLD reason=head-changed"; return 0; }
-  # Protected paths require high scope and the captain approval checked below.
+  # Protected paths require a captain record with exact scope=high below.
   case "$prot" in
     yes) [ "$scope" = high ] || { echo "MERGE_HOLD reason=protected-path"; return 0; };;
     no) ;;
@@ -65,6 +65,7 @@ merge_eligible() {
     grep -qxF 'signer=captain' "$aprec" 2>/dev/null || { echo "MERGE_HOLD reason=approval-not-captain"; return 0; }
     grep -qxF "pr=$apr" "$aprec" 2>/dev/null || { echo "MERGE_HOLD reason=approval-pr-mismatch"; return 0; }
     grep -qxF "head=$hsha" "$aprec" 2>/dev/null || { echo "MERGE_HOLD reason=approval-head-mismatch"; return 0; }
+    grep -qxF 'scope=high' "$aprec" 2>/dev/null || { echo "MERGE_HOLD reason=approval-scope-mismatch"; return 0; }
   fi
 
   # risk scope: HIGH (or unknown) needs an explicit high scope
