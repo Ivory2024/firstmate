@@ -1,0 +1,35 @@
+ok - 1 assertion failure -> CODE_BLOCKED
+ok - 1b structured test_assertion -> CODE_BLOCKED
+ok - 2 runner shutdown -> INFRA_BLOCKED
+ok - 2b structured ci_runner -> INFRA_BLOCKED
+ok - 2c disk quota -> INFRA_BLOCKED (not PROVIDER)
+ok - 2c2 disk space -> INFRA_BLOCKED
+ok - 3 codex quota -> PROVIDER_BLOCKED
+ok - 4 review-stage quota -> PROVIDER_BLOCKED
+ok - 5 reviewer request -> REVIEW_BLOCKED
+ok - 5b text changes requested -> REVIEW_BLOCKED
+ok - 6 unknown cause -> UNKNOWN_BLOCKED
+ok - 9 deterministic classification (no duplicate run drift)
+ok - 10 classifier is side-effect free (state tree unchanged)
+ok - E1 provider auth failure is NOT quota
+ok - E2 bare word 'review' -> UNKNOWN
+ok - E3 known blocker key parsed
+ok - E4 unknown blocker value -> UNKNOWN_BLOCKED
+ok - E5 absent blocker key -> empty (legacy record)
+ok - E7 conflicting evidence -> UNKNOWN
+ok - F1 provider outage text -> PROVIDER_BLOCKED
+ok - F1b provider unavailable text -> PROVIDER_BLOCKED
+ok - F1c structured provider_outage agrees with its text -> PROVIDER_BLOCKED
+ok - F1d outage plus quota text -> quota_exhausted
+ok - F2 structured CODE code vs INFRA text -> UNKNOWN
+ok - F2b structured REVIEW code vs PROVIDER outage text -> UNKNOWN
+ok - F2c structured PROVIDER code vs REVIEW text -> UNKNOWN
+ok - F3 unrecognized structured code -> UNKNOWN
+ok - F3b no matching evidence -> UNKNOWN
+ok - F3c stage alone decides nothing
+ok - F4 fm_blocker_classify leaves every local out of the caller scope
+ok - F4b the conflict row survives the leak probe
+ok - F5 fm-blocker-classify-lib.sh parses under /bin/bash
+ok - F5c stock Bash 3.2 runs the conflict path with no leaked code_type
+
+# all fm-blocker-classify tests passed
