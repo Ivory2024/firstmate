@@ -690,13 +690,14 @@ case "$mode" in
     else
       scan_rc=$?
     fi
-    if [ "$scan_rc" -ne 0 ] && [ "$scan_rc" -ne 124 ]; then
-      exit 1
-    fi
     autonomous_args=(reconcile)
     [ "$startup" -ne 1 ] || autonomous_args+=(--startup)
     FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-      "$SCRIPT_DIR/fm-autonomous-loop.sh" "${autonomous_args[@]}" >/dev/null 2>&1 || true
+      fm_run_timed "$FM_INACTIVE_RECONCILE_BUDGET_SECS" \
+        "$SCRIPT_DIR/fm-autonomous-loop.sh" "${autonomous_args[@]}" >/dev/null 2>&1 || true
+    if [ "$scan_rc" -ne 0 ] && [ "$scan_rc" -ne 124 ]; then
+      exit 1
+    fi
     ;;
   _scan-locked)
     [ "$#" -eq 2 ] || exit 2
