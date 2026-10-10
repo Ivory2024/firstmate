@@ -5,8 +5,11 @@ Must-work continuity now lives above that process boundary instead of depending 
 
 ## Ownership
 
-On macOS, bootstrap installs an alert-only 60-second LaunchAgent when Discord reporting is configured; it classifies the consumer as healthy, stale-heartbeat, or no-consumer, and raises a HIGH alert when a durable wake is pending without a healthy consumer.
+On macOS, bootstrap installs a 60-second LaunchAgent when Discord reporting is configured; it classifies the consumer as healthy, stale-heartbeat, or no-consumer, and raises a HIGH alert when a durable wake is pending without a healthy consumer.
+The same tick can re-arm a one-shot watcher when its newest cycle record proves the chain ended without a successor, supervision is still needed, and neither an identity-matched healthy watcher nor any live lock owner exists.
+Re-arm stays inert during away or quiet posture, maintenance HOLD (`state/.watch-hold`), intentional stops, and cycles whose recorded arm or watcher is still alive; it starts only the approved plain arm path and records success once a fresh watcher or the arm's own started/attached line is observed, so a watcher cycle that surfaced a durable wake and exited is never mistaken for a failed re-arm.
 The alert uses the durable Discord report outbox, suppresses repeats during its cooldown, and reports recovery after a delivered HIGH alert when an identity-matched consumer returns.
+The detailed LaunchAgent and re-arm configuration is owned by [`configuration.md`](configuration.md#watcher-liveness-alert-and-automatic-re-arm).
 
 Pi's `.pi/extensions/fm-primary-pi-watch.ts`, omp's `.omp/extensions/fm-primary-omp-watch.ts`, and OpenCode's `.opencode/plugins/fm-primary-watch-arm.js` own continuous re-arm after an actionable child close.
 Each adapter starts the next arm before delivering the wake prompt, checks current session-lock ownership at launch, preserves one child or scheduled retry at a time, and applies bounded exponential retry after an unexpected or failed close.
@@ -121,6 +124,7 @@ Only the watcher process touches `state/.last-watcher-beat`; no helper process c
 The same suite covers ordinary same-process session replacement for `/new`, `/resume`, `/fork`, and reload, same-instance shutdown-plus-start, automatic re-arm before any model turn, a fresh extension-module rebind carrying all in-flight actionable closes exactly once, stale prior-generation callbacks, repeated transitions with exactly one live cycle, disappearance of the shutting-down refusal after a valid replacement activates, and terminal quit still refusing late rearm.
 `tests/fm-watch-arm.test.sh` covers durable queue replay, real remote parent-replies ingestion into the authoritative status log, decision-only OPEN DECISIONS recovery, interrupted handling replay, generation-bound acknowledgement, a persistent live successor after recovery, a watcher close inside the handling window that must leave the printed acknowledgement valid, and the self-healing moved-generation acknowledgement that consumes its handled rows and names its remedy.
 `tests/fm-watcher-liveness-alert.test.sh` covers LaunchAgent installation, consumer classifications, durable HIGH alert delivery, cooldown, recovery, and preserving pending wakes without re-arming on delivery failure.
+`tests/fm-watcher-liveness-rearm.test.sh` covers safe re-arm gates, healthy and live-owner protection, active-session and no-idle recovery, atomic single-flight, bounded failure backoff and alerting, and pending-instruction preservation.
 `tests/fm-watch-recovery-loop.test.sh` covers the once-per-generation announcement bound with the real Pi extension against a refused handling handshake, and a handling successor that must surface a real crew event instead of going blind.
 `tests/fm-watcher-lock.test.sh` covers verified-successor attach, recovery publication before stale-lock removal, the typed self-eviction failure, bounded and successor-linked lifecycle rows, and a SIGSTOP counterfactual that distinguishes a live PID from a stale beacon before classifying termination.
 `tests/fm-subagent-pretool-check.test.sh` proves Claude retains only the non-status Bash seatbelts.
