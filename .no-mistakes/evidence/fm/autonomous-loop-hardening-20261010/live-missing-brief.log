@@ -1,0 +1,6 @@
+command output:
+
+observable lifecycle state:
+current_step=WAITING_EXTERNAL
+next_action=awaiting_dispatch
+blocking_reason=missing_brief:brief
