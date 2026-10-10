@@ -46,7 +46,12 @@ merge_eligible() {
   [ "$ci" = pass ] || { echo "MERGE_HOLD reason=ci-not-pass"; return 0; }
   [ "$review" = pass ] || { echo "MERGE_HOLD reason=no-independent-review"; return 0; }
   [ "$head" = yes ] || { echo "MERGE_HOLD reason=head-changed"; return 0; }
-  [ "$prot" = no ] || { echo "MERGE_HOLD reason=protected-path"; return 0; }
+  # Protected paths require high scope and the captain approval checked below.
+  case "$prot" in
+    yes) [ "$scope" = high ] || { echo "MERGE_HOLD reason=protected-path"; return 0; };;
+    no) ;;
+    *) echo "MERGE_HOLD reason=protected-path"; return 0;;
+  esac
   [ "$unres" = no ] || { echo "MERGE_HOLD reason=unresolved-findings"; return 0; }
 
   # scope=high is NOT self-grantable: it needs an explicit captain approval bound
@@ -57,9 +62,9 @@ merge_eligible() {
     [ -n "$asha" ] && [ -n "$hsha" ] && [ "$asha" = "$hsha" ] \
       || { echo "MERGE_HOLD reason=high-scope-sha-mismatch"; return 0; }
     [ -n "$aprec" ] && [ -f "$aprec" ] || { echo "MERGE_HOLD reason=no-approval-record"; return 0; }
-    grep -q "signer=captain" "$aprec" 2>/dev/null || { echo "MERGE_HOLD reason=approval-not-captain"; return 0; }
-    grep -q "pr=$apr" "$aprec" 2>/dev/null || { echo "MERGE_HOLD reason=approval-pr-mismatch"; return 0; }
-    grep -q "head=$hsha" "$aprec" 2>/dev/null || { echo "MERGE_HOLD reason=approval-head-mismatch"; return 0; }
+    grep -qxF 'signer=captain' "$aprec" 2>/dev/null || { echo "MERGE_HOLD reason=approval-not-captain"; return 0; }
+    grep -qxF "pr=$apr" "$aprec" 2>/dev/null || { echo "MERGE_HOLD reason=approval-pr-mismatch"; return 0; }
+    grep -qxF "head=$hsha" "$aprec" 2>/dev/null || { echo "MERGE_HOLD reason=approval-head-mismatch"; return 0; }
   fi
 
   # risk scope: HIGH (or unknown) needs an explicit high scope
