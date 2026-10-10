@@ -38,8 +38,11 @@
 #     (the same escape bin/fm-remote-job-lib.sh uses). The launchd job therefore
 #     stays a fast tick and alerting is never blocked by a live cycle;
 #   - a bounded confirmation window (FM_WATCH_REARM_CONFIRM_TIMEOUT) decides the
-#     outcome; a failure increments state/.watch-rearm-state, applies bounded
-#     exponential backoff, and emits one alert per failure episode.
+#     outcome; a live identity-matched watcher with a fresh beacon, or the arm's
+#     own `watcher: started|attached` line, is success, so a cycle that surfaced
+#     a durable wake and exited is never mistaken for a failure. A real failure
+#     increments state/.watch-rearm-state, applies bounded exponential backoff,
+#     and emits one alert per failure episode.
 #   - re-arm never touches the durable wake queue, the steering inbox, ACK
 #     cursors, or checkpoints: the watcher owns those idempotently, and this
 #     script only reads the queue to decide whether supervision is needed.
@@ -410,20 +413,34 @@ start_rearm_arm() { # <output-path>
   set +m
 }
 
-# wait_for_rearm: bounded confirmation that the spawned arm produced a live
-# identity-matched watcher with a fresh beacon.
-wait_for_rearm() { # <arm-pid>
-  local arm_pid=$1 deadline watch
+# arm_reported_ready <output-path>: true when the arm itself verified a live
+# watcher. bin/fm-watch-arm.sh prints `watcher: started|attached ...` only after
+# it confirmed the child holds the lock with a fresh beacon, so this is the
+# authoritative success signal even when that watcher cycle has already ended
+# after surfacing a durable wake.
+arm_reported_ready() {
+  [ -s "$1" ] || return 1
+  grep -Eq '^watcher: (started|attached)\b' "$1"
+}
+
+# wait_for_rearm <arm-pid> <output-path>: bounded confirmation that the spawned
+# arm produced a live identity-matched watcher with a fresh beacon, or verified
+# one itself. A cycle that surfaced a durable wake and exited is a successful
+# re-arm, not a failure: the wake is durable and the next tick re-arms again.
+wait_for_rearm() { # <arm-pid> <output-path>
+  local arm_pid=$1 out=$2 deadline watch
   deadline=$(( $(date +%s) + REARM_CONFIRM_TIMEOUT + 1 ))
   while :; do
     watch=$(watch_path_for_health)
     if fm_watcher_healthy "$STATE" "$watch" "$GRACE" "$FM_HOME"; then return 0; fi
+    if arm_reported_ready "$out"; then return 0; fi
     fm_pid_alive "$arm_pid" || break
     [ "$(date +%s)" -ge "$deadline" ] && break
     sleep 1
   done
   watch=$(watch_path_for_health)
-  fm_watcher_healthy "$STATE" "$watch" "$GRACE" "$FM_HOME"
+  fm_watcher_healthy "$STATE" "$watch" "$GRACE" "$FM_HOME" && return 0
+  arm_reported_ready "$out"
 }
 
 maybe_rearm() {
@@ -444,7 +461,7 @@ maybe_rearm() {
   fi
   out="$STATE/.watch-rearm-output.$$"
   start_rearm_arm "$out"
-  if wait_for_rearm "$REARM_ARM_PID"; then
+  if wait_for_rearm "$REARM_ARM_PID" "$out"; then
     rearm_note_success
   else
     rearm_note_failure "$now"

@@ -65,6 +65,16 @@ new_case() { # <name>
 FM_DISCORD_BOT_TOKEN=test-token
 FM_DISCORD_CHANNEL_ID=1234567890
 ENV
+  # Per-scenario knobs, reset so no case inherits another's stub behavior.
+  ARM_FAIL=0
+  ARM_DELAY=0
+  ARM_REPORT_STARTED=0
+  CONFIRM_TIMEOUT=3
+  BACKOFF_BASE=60
+  BACKOFF_MAX=60
+  ALERT_AFTER=3
+  COOLDOWN_OVERRIDE=1
+  DISCORD_FAIL=0
   # Supervision is needed: one in-flight task record.
   : > "$STATE/task-a.meta"
   write_stub_arm
@@ -79,6 +89,10 @@ printf 'arm-invoked\n' >> "$FM_TEST_ARM_LOG"
 if [ "${FM_TEST_ARM_FAIL:-0}" = 1 ]; then
   printf 'watcher: FAILED - stub arm forced failure\n'
   exit 1
+fi
+if [ "${FM_TEST_ARM_REPORT_STARTED:-0}" = 1 ]; then
+  printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+  exit 0
 fi
 sleep "${FM_TEST_ARM_DELAY:-0}"
 # shellcheck source=bin/fm-wake-lib.sh
@@ -133,6 +147,7 @@ run_check() {
     FM_WATCH_ARM_BIN="$ARM_BIN" \
     FM_TEST_ARM_LOG="$ARM_LOG" FM_TEST_ARM_PIDS="$ARM_PIDS" \
     FM_TEST_ARM_FAIL="${ARM_FAIL:-0}" FM_TEST_ARM_DELAY="${ARM_DELAY:-0}" \
+    FM_TEST_ARM_REPORT_STARTED="${ARM_REPORT_STARTED:-0}" \
     FM_TEST_STATE="$STATE" FM_TEST_HOME="$HOME_CASE" FM_TEST_WATCH_PATH="$WATCH_PATH" \
     FM_TEST_WAKE_LIB="$WAKE_LIB" \
     FM_SUPERVISION_MODEL=persistent \
@@ -372,5 +387,19 @@ assert_equals 1 "$(posts_containing 'HIGH reliability alert')" "the HIGH alert m
 assert_equals 1 "$(post_count)" "the alert cooldown must dedupe repeated HIGH alerts"
 assert_equals 1 "$(arm_count)" "the bounded re-arm failure must not loop while alerting"
 pass "11. HIGH alert dedup still holds while re-arm is active"
+
+# --- 12. a delivered-wake cycle is a successful re-arm, not a failure --------
+
+new_case rearm-delivered-wake
+stale_beacon
+write_cycle actionable-signal none none none 0
+ARM_REPORT_STARTED=1
+CONFIRM_TIMEOUT=2
+run_check || fail "delivered-wake check errored"
+assert_equals 0 "$(cut -f1 "$STATE/.watch-rearm-state")" "an arm that verified a watcher must not record a failure"
+assert_equals 0 "$(post_count)" "a delivered-wake cycle must not alert as a re-arm failure"
+run_check || fail "second delivered-wake check errored"
+assert_equals 2 "$(arm_count)" "a delivered-wake cycle must not wedge the chain behind a backoff"
+pass "12. a re-armed watcher that surfaced a wake and exited counts as success"
 
 pass "session-independent watcher re-arm: all scenarios passed"
