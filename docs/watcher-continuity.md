@@ -469,6 +469,7 @@ They also prove that a legacy or handoff-phase watcher marker from an absent rep
 - The test reaper that stops a watcher armed for a temporary home.
 
 `tests/fm-watcher-liveness-alert.test.sh` covers LaunchAgent installation, consumer classifications, durable HIGH alert delivery, cooldown, recovery, and preserving pending wakes without re-arming on delivery failure.
+`tests/fm-watcher-liveness-rearm.test.sh` covers safe re-arm gates, healthy and live-owner protection, active-session and no-idle recovery, atomic single-flight, bounded failure backoff and alerting, and pending-instruction preservation.
 
 `tests/fm-watch-recovery-loop.test.sh` covers:
 
@@ -489,7 +490,6 @@ It checks that a newly appended keyed decision is classified without rereading e
 - A SIGSTOP counterfactual that distinguishes a live PID from a stale beacon before classifying termination.
 
 ### Claude auto-arm and turn-end guard
-
 `tests/fm-subagent-pretool-check.test.sh` proves Claude retains only the non-status Bash seatbelts.
 
 `tests/fm-claude-stop-autoarm.test.sh` covers:
