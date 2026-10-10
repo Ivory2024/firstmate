@@ -684,11 +684,19 @@ case "$mode" in
     # process-group kill is only the backstop for a scan wedged outside every
     # bounded section (an unbounded lock wait), so it fires one second after
     # the deadline instead of racing the clean bounded exit it exists to guard.
+    scan_rc=0
     if fm_run_timed $((FM_INACTIVE_RECONCILE_BUDGET_SECS + 1)) "$0" _scan-locked "$startup"; then
       :
-    elif [ "$?" -ne 124 ]; then
+    else
+      scan_rc=$?
+    fi
+    if [ "$scan_rc" -ne 0 ] && [ "$scan_rc" -ne 124 ]; then
       exit 1
     fi
+    autonomous_args=(reconcile)
+    [ "$startup" -ne 1 ] || autonomous_args+=(--startup)
+    FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      "$SCRIPT_DIR/fm-autonomous-loop.sh" "${autonomous_args[@]}" >/dev/null 2>&1 || true
     ;;
   _scan-locked)
     [ "$#" -eq 2 ] || exit 2
