@@ -1149,6 +1149,11 @@ case "$PROVIDER" in
     fi
     FM_PR_GITHUB_CALLER_METHOD=$(caller_merge_method "$@")
     github_verify_mergeable || exit 1
+    # Shared merge boundary: verify forge evidence before merge
+    if ! "$SCRIPT_DIR/fm-merge-evidence.sh" collect "$ID" "$URL" "$FM_PR_MERGE_HEAD" 2>&1; then
+      echo "error: merge refused - evidence verification failed" >&2
+      exit 1
+    fi
     # The away record is locked first, so this last presence and authority read
     # and the forge command below share one live-owner critical section.
     hold_away_record_for_merge || exit 1
@@ -1200,6 +1205,11 @@ case "$PROVIDER" in
     ;;
   gitlab)
     gitlab_verify_mergeable || exit 1
+    # Shared merge boundary: verify forge evidence before merge
+    if ! "$SCRIPT_DIR/fm-merge-evidence.sh" collect "$ID" "$URL" "$FM_PR_MERGE_HEAD" 2>&1; then
+      echo "error: merge refused - evidence verification failed" >&2
+      exit 1
+    fi
     # --sha binds the merge to the head this run verified, so a push that lands
     # in between is refused by GitLab instead of merged unverified. --yes only
     # skips the interactive confirmation, which no supervised run can answer;
