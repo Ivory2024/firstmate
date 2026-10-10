@@ -28,10 +28,24 @@
 #                                          never held this long after arming (default 604800)
 #              --condition-timeout <secs>  per-poll bound on one condition run (default 60)
 #              --action-timeout <secs>     bound on the action run (default 1800)
-#              --error-budget <n>          consecutive condition errors tolerated
-#                                          before waking firstmate (default 3)
-#            The condition argv must exit 0 for true, 1 for a clean false;
-#            any other exit (or a per-poll timeout) is an error, never a true.
+#              --error-budget <n>          consecutive transient condition errors
+#                                          tolerated before waking firstmate
+#                                          (default 3); a permanent error wakes
+#                                          at once, on its first observation
+#            The condition argv signals FOUR outcomes through its exit status, and
+#            a failure is never a false - only exit 1 means "not yet":
+#              0  true: the condition holds for this poll
+#              1  clean false: the condition is legitimately not met; keep waiting
+#              2  permanent error: the binding cannot heal by waiting (a moved
+#                 branch or HEAD, a missing tool or worktree, unreadable input);
+#                 wake firstmate at once and never treat it as a false
+#              any other exit, or the per-poll timeout: transient error; keep
+#                 polling with bounded backoff, and wake once --error-budget
+#                 consecutive transient errors have accumulated
+#            The alert boundary is the terminal condition-error outcome: a
+#            permanent error and an exhausted transient budget both emit it, the
+#            action never runs, and the watch is left for firstmate to decide on
+#            rather than re-armed on its own.
 #            POLICY, not enforceable here: both halves must be exact and
 #            deterministic, and the action must be safe and reversible. Anything
 #            needing judgment, and anything destructive, irreversible, or
@@ -105,9 +119,11 @@ FM_ROOT_REAL=$(cd "$FM_ROOT" 2>/dev/null && pwd -P) || FM_ROOT_REAL=$FM_ROOT
 
 WHEN_DIR="$STATE/when"
 OUTPUT_TAIL_BYTES=${FM_WHEN_OUTPUT_TAIL_BYTES:-8192}
+# Ceiling on the transient-error poll backoff, as a multiple of --interval.
+WHEN_BACKOFF_CAP_FACTOR=8
 
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
-usage() { sed -n '2,72p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,89p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2; }
 
 spec_file()  { printf '%s/%s.spec\n' "$WHEN_DIR" "$1"; }
 trust_file() { printf '%s/%s.trust\n' "$WHEN_DIR" "$1"; }
@@ -339,6 +355,29 @@ bounded_run() {
   return "$rc"
 }
 
+# retry_sleep <consecutive-transient-errors>
+# The wait before the next poll. A clean false keeps the registered cadence; a
+# transient error backs off by doubling per consecutive error, capped at
+# WHEN_BACKOFF_CAP_FACTOR times the cadence, so a flapping dependency is polled
+# more gently than a healthy one and a sustained outage does not spin. A
+# permanent error never reaches here: it wakes instead of waiting.
+retry_sleep() {
+  local err=${1:-0} factor=1 i=1
+  if [ "$err" -le 0 ]; then
+    sleep "$SPEC_INTERVAL"
+    return 0
+  fi
+  while [ "$i" -lt "$err" ]; do
+    factor=$((factor * 2))
+    if [ "$factor" -ge "$WHEN_BACKOFF_CAP_FACTOR" ]; then
+      factor=$WHEN_BACKOFF_CAP_FACTOR
+      break
+    fi
+    i=$((i + 1))
+  done
+  sleep "$(awk -v i="$SPEC_INTERVAL" -v f="$factor" 'BEGIN { printf "%.3f", i * f }')"
+}
+
 # emit_doc <source-id> <status> <detail> <polls> <action-exit-or-empty> <output-file-or-empty>
 # The single stdout writer of `run`: everything the generic runner captures.
 emit_doc() {
@@ -410,17 +449,27 @@ cmd_run() {
         consecutive_true=0
         consecutive_err=0
         ;;
+      2)
+        # A permanent condition break cannot heal by waiting, so it wakes on its
+        # FIRST observation instead of burning the transient budget. This is the
+        # boundary that keeps a real failure from being read as an ordinary "not
+        # yet": the outcome is terminal, the action never runs, and the watch is
+        # left for firstmate to decide on rather than re-armed on its own.
+        emit_doc "$sid" condition-error \
+          "the condition reported a permanent failure (exit 2) on poll $polls; the action was not run" "$polls" '' "$out"
+        exit 0
+        ;;
       *)
         consecutive_true=0
         consecutive_err=$((consecutive_err + 1))
         if [ "$consecutive_err" -ge "$SPEC_ERROR_BUDGET" ]; then
           emit_doc "$sid" condition-error \
-            "the condition exited $rc on $consecutive_err consecutive polls; the action was not run" "$polls" '' "$out"
+            "the condition errored (exit $rc) on $consecutive_err consecutive polls; the action was not run" "$polls" '' "$out"
           exit 0
         fi
         ;;
     esac
-    sleep "$SPEC_INTERVAL"
+    retry_sleep "$consecutive_err"
   done
 
   now=$(date +%s)
