@@ -566,6 +566,7 @@ async function ensureArm(paths, sessionID, client, predecessorArmPid = "", inclu
 export default {
   id: "fm-primary-watch-arm",
   setup(ctx) {
+    const directory = ctx.location?.directory;
     // OpenCode 2.0.18 shape. The 1.x ctx fields are gone: working dir is
     // `ctx.location.directory`, the old `event` hook is a
     // `ctx.event.subscribe({ signal })` stream, and `client.session.promptAsync`
@@ -578,17 +579,21 @@ export default {
       },
     };
     const controller = new AbortController();
+    let coordinator = null;
 
     void (async () => {
       try {
         const root = await resolveRoot(ctx.location?.directory);
+        if (controller.signal.aborted) return;
         const paths = effectivePaths(root);
-        globalThis[COORDINATOR_KEY] = {
+        const coordinators = (globalThis[COORDINATOR_KEY] ??= new Map());
+        coordinator = {
           ensureArmed: (sessionID, activeClient) => ensureArm(paths, sessionID, activeClient ?? client),
         };
+        coordinators.set(directory, coordinator);
 
         for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
-          if (event?.location?.directory !== ctx.location?.directory) continue;
+          if (event?.location?.directory !== directory) continue;
           if (!QUIESCENT_EVENTS.has(event?.type)) continue;
           const sessionID = event.data?.sessionID ?? event.properties?.sessionID;
           if (!sessionID) continue;
@@ -598,6 +603,11 @@ export default {
       }
     })();
 
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      const coordinators = globalThis[COORDINATOR_KEY];
+      if (coordinators?.get(directory) === coordinator) coordinators.delete(directory);
+      if (coordinators?.size === 0) delete globalThis[COORDINATOR_KEY];
+    };
   },
 };

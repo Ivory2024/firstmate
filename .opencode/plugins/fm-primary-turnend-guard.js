@@ -12,8 +12,6 @@ import { QUIESCENT_EVENTS } from "./lib/fm-opencode-events.js";
 
 const COORDINATOR_KEY = "__firstmateOpenCodeWatchArm";
 
-let skipNextIdle = false;
-
 function runProcess(command, args, input = "") {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
@@ -54,8 +52,8 @@ function runGuard(root) {
   return runProcess(`${root}/bin/fm-turnend-guard.sh`, [], '{"stop_hook_active":false}');
 }
 
-async function letWatchArmRun(sessionID) {
-  const coordinator = globalThis[COORDINATOR_KEY];
+async function letWatchArmRun(directory, sessionID) {
+  const coordinator = globalThis[COORDINATOR_KEY]?.get(directory);
   if (!coordinator?.ensureArmed) return false;
   const status = await coordinator.ensureArmed(sessionID);
   return status === "armed" || status === "wake" || status === "failed";
@@ -64,9 +62,11 @@ async function letWatchArmRun(sessionID) {
 export default {
   id: "fm-primary-turnend-guard",
   setup(ctx) {
+    const directory = ctx.location?.directory;
     let rootPromise = null;
     const root = () => (rootPromise ??= resolveRoot(ctx.location?.directory));
     const controller = new AbortController();
+    let skipNextIdle = false;
 
     void (async () => {
       try {
@@ -82,7 +82,7 @@ export default {
           const sessionID = event.data?.sessionID ?? event.properties?.sessionID;
           if (!sessionID) continue;
 
-          if (await letWatchArmRun(sessionID)) continue;
+          if (await letWatchArmRun(directory, sessionID)) continue;
 
           const r = await root();
           const result = await runGuard(r);
