@@ -15,6 +15,17 @@ import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
 // as they do for the arm, with a longer readiness budget for the host's own
 // startup. On a home that does not run the host nothing below changes.
 const COORDINATOR_KEY = "__firstmateOpenCodeWatchArm";
+
+// OpenCode 2.0.18 has no `session.idle`; a quiescent boundary is the execution
+// lifecycle end (see lib/fm-opencode-lifecycle-adapter.js).
+const QUIESCENT_EVENTS = new Set([
+  "session.idle",
+  "session.execution.succeeded",
+  "session.execution.failed",
+  "session.execution.interrupted",
+  "session.execution.cancelled",
+  "session.execution.canceled",
+]);
 // 35s on Windows so the budget stays above arm's MSYS confirm default (30s in
 // bin/fm-watch-arm.sh): a slow but successful Git Bash cold start must not be
 // SIGTERMed mid-confirmation. Conditioned on win32 so other platforms keep 12s.
@@ -561,19 +572,35 @@ async function ensureArm(paths, sessionID, client, predecessorArmPid = "", inclu
   return armAttempt(await waitForArmReady(armChild), armChild, includeArmChild);
 }
 
-export const FmPrimaryWatchArm = async ({ client, directory, worktree }) => {
-  const root = worktree ? resolvePath(worktree) : await resolveRoot(directory);
-  const paths = effectivePaths(root);
-  globalThis[COORDINATOR_KEY] = {
-    ensureArmed: (sessionID, activeClient) => ensureArm(paths, sessionID, activeClient ?? client),
-  };
+export default {
+  id: "fm-primary-watch-arm",
+  setup(ctx) {
+    // OpenCode 2.0.18 shape. The 1.x ctx fields are gone: working dir is
+    // `ctx.location.directory`, the old `event` hook is a
+    // `ctx.event.subscribe({ signal })` stream, and `client.session.promptAsync`
+    // is `ctx.session.prompt`. Keep the internal `client` call shape by shimming
+    // it onto ctx.session.prompt so ensureArm/sendPrompt stay unchanged.
+    const client = { session: { promptAsync: (args) => ctx.session.prompt(args) } };
+    const controller = new AbortController();
 
-  return {
-    event: async ({ event }) => {
-      if (event.type !== "session.idle") return;
-      const sessionID = event.properties?.sessionID;
-      if (!sessionID) return;
-      void ensureArm(paths, sessionID, client);
-    },
-  };
+    void (async () => {
+      try {
+        const root = await resolveRoot(ctx.location?.directory);
+        const paths = effectivePaths(root);
+        globalThis[COORDINATOR_KEY] = {
+          ensureArmed: (sessionID, activeClient) => ensureArm(paths, sessionID, activeClient ?? client),
+        };
+
+        for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+          if (!QUIESCENT_EVENTS.has(event?.type)) continue;
+          const sessionID = event.data?.sessionID ?? event.properties?.sessionID;
+          if (!sessionID) continue;
+          void ensureArm(paths, sessionID, client);
+        }
+      } catch {
+      }
+    })();
+
+    return () => controller.abort();
+  },
 };

@@ -2,14 +2,17 @@ import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawn } from "node:child_process";
 
-// PreToolUse seatbelt for OpenCode: block a stray persistent top-level `cd` in
-// the primary firstmate checkout before the agent's bash tool relocates the
-// shell out of the home (see bin/fm-cd-pretool-check.sh and docs/cd-guard.md).
-// This mirrors fm-primary-pretool-check.js, calling the cd-guard owner instead
-// of the watcher-arm one. tool.execute.before can block by throwing (verified
-// 2026-07-09 against OpenCode 1.17.15 for the watcher-arm plugin; the same
-// mechanism carries this guard). The owner script is itself inert outside the
-// real primary checkout, so a crewmate/scout worktree is never affected.
+// PreToolUse seatbelt for OpenCode 2.0.18: block a stray persistent top-level
+// `cd` in the primary firstmate checkout before the agent's bash tool relocates
+// the shell out of the home (see bin/fm-cd-pretool-check.sh and docs/cd-guard.md).
+// The owner script is itself inert outside the real primary checkout, so a
+// crewmate/scout worktree is never affected.
+//
+// OpenCode 2 plugin shape: `export default { id, setup(ctx) }`. The 1.x ctx
+// fields are gone: the working directory is `ctx.location.directory`, and the
+// old `tool.execute.before` hook is `ctx.tool.hook("execute.before", handler)`.
+// `ctx.worktree` is an object, not a path, so the repo root is resolved from
+// ctx.location.directory.
 
 function runProcess(command, args) {
   return new Promise((resolvePromise) => {
@@ -39,26 +42,25 @@ async function resolveRoot(anchor) {
   }
 }
 
-export const FmPrimaryCdCheck = async ({ directory, worktree }) => {
-  const root = worktree ? (() => {
-    try {
-      return realpathSync(worktree);
-    } catch {
-      return resolve(worktree);
-    }
-  })() : await resolveRoot(directory);
+export default {
+  id: "fm-primary-cd-check",
+  setup(ctx) {
+    let rootPromise = null;
+    const root = () => (rootPromise ??= resolveRoot(ctx.location?.directory));
 
-  return {
-    "tool.execute.before": async (input, output) => {
-      if (!root || input?.tool !== "bash") return;
-      const command = output?.args?.command;
+    ctx.tool.hook("execute.before", async (arg) => {
+      const r = await root();
+      if (!r || arg?.tool !== "shell") return;
+      const command = arg?.input?.command;
       if (!command || typeof command !== "string") return;
 
-      const result = await runProcess(`${root}/bin/fm-cd-pretool-check.sh`, ["--command", command]);
+      const result = await runProcess(`${r}/bin/fm-cd-pretool-check.sh`, ["--command", command]);
       if (result.code !== 2) return;
 
       const reason = result.stderr.trim() || "denied by the cd-guard PreToolUse seatbelt";
       throw new Error(reason);
-    },
-  };
+    });
+
+    return () => {};
+  },
 };
