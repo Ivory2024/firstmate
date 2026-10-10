@@ -50,7 +50,7 @@ export default {
 
     ctx.tool.hook("execute.before", async (arg) => {
       const r = await root();
-      if (!r || arg?.tool !== "shell") return;
+      if (!r || arg?.tool !== "bash") return;
       const command = arg?.input?.command;
       if (!command || typeof command !== "string") return;
 

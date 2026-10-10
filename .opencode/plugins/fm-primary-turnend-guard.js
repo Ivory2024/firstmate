@@ -64,10 +64,10 @@ function runGuard(root) {
   return runProcess(`${root}/bin/fm-turnend-guard.sh`, [], '{"stop_hook_active":false}');
 }
 
-async function letWatchArmRun(sessionID, ctx) {
+async function letWatchArmRun(sessionID) {
   const coordinator = globalThis[COORDINATOR_KEY];
   if (!coordinator?.ensureArmed) return false;
-  const status = await coordinator.ensureArmed(sessionID, ctx);
+  const status = await coordinator.ensureArmed(sessionID);
   return status === "armed" || status === "wake" || status === "failed";
 }
 
@@ -91,7 +91,7 @@ export default {
           const sessionID = event.data?.sessionID ?? event.properties?.sessionID;
           if (!sessionID) continue;
 
-          if (await letWatchArmRun(sessionID, ctx)) continue;
+          if (await letWatchArmRun(sessionID)) continue;
 
           const r = await root();
           const result = await runGuard(r);
