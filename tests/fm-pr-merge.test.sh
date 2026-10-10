@@ -159,6 +159,11 @@ case "${1:-} ${2:-}" in
         ;;
     esac
     ;;
+  "pr diff")
+    # Gate 0 reads the real PR diff for risk classification; the mock forge
+    # answers with a docs-only change so the risk stays LOW.
+    printf '%s\n' 'docs/merge-policy.md'
+    ;;
   "pr merge")
     if [ -n "${FM_TEST_META_AT_MERGE:-}" ] && [ -f "${FM_STATE_OVERRIDE:-}/task-x1.meta" ]; then
       cat "$FM_STATE_OVERRIDE/task-x1.meta" > "$FM_TEST_META_AT_MERGE"
@@ -376,6 +381,10 @@ glab_merge_line() {
 
 run_pr_merge() {
   local case_dir=$1 rc; shift
+  # Gate 0's independence gate needs named, distinct impl/review models as
+  # evidence; the harness supplies them so an otherwise-valid merge proceeds.
+  FM_MERGE_IMPL_MODEL=test/impl-model \
+  FM_MERGE_REVIEW_MODEL=test/review-model \
   FM_ROOT_OVERRIDE="$ROOT" \
   FM_HOME="${FM_TEST_HOME:-$case_dir/home}" \
   FM_STATE_OVERRIDE="$case_dir/state" \

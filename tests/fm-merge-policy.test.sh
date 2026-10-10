@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # fm-merge-policy.test.sh - risk classification + fail-closed merge eligibility.
 set -u
-UCX="/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/opencode/fm-unattended-crew-20261008/unattended-crew/implementation"
-P="$UCX/fm-merge-policy.sh"
+P="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/bin/fm-merge-policy.sh"
 PASS=0; FAIL=0
 ok(){ PASS=$((PASS+1)); echo "ok - $1"; }
 no(){ FAIL=$((FAIL+1)); echo "NOT OK - $1"; }
-eq(){ [ "$2" = "$3" ] && ok "$1" || no "$1 (got '$2' want '$3')"; }
+eq(){ if [ "$2" = "$3" ]; then ok "$1"; else no "$1 (got '$2' want '$3')"; fi; }
 
 # --- risk classification ---
 eq "docs -> LOW"            "$($P classify-risk docs/operations/x.md)" LOW
