@@ -998,9 +998,11 @@ advance_lane() {  # <lane>
   local lane id state dep project mode yolo branch branch_prefix base_branch kind brief spawn_rc spawn_gen dispatch_key dispatch_before_gen dispatch_lock
   lane=$1
   local -a spawn_args
+  local lane_tasks
+  lane_tasks=$(get_lane_tasks "$lane")
 
   # Build queue from tasks in this lane that are READY and not in flight
-  for id in $(get_lane_tasks "$lane"); do
+  for id in $lane_tasks; do
     state=$(lifecycle_read "$id" current_step)
     # Only enqueue tasks in READY state (not already assigned/running)
     [ "$state" = "READY" ] || continue
@@ -1031,7 +1033,7 @@ advance_lane() {  # <lane>
   # Check if lane has capacity (no other task in RUNNING/TESTING/REVIEWING/FIXING/RETESTING state)
   local working_count
   working_count=0
-  for t in $(get_lane_tasks "$lane"); do
+  for t in $lane_tasks; do
     local ls
     ls=$(lifecycle_read "$t" current_step)
     if is_lane_occupying_state "$ls"; then
