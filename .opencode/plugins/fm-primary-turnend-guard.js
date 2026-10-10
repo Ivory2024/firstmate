@@ -105,10 +105,7 @@ export default {
                 "The watcher cycle is missing, failed, or unhealthy. Follow the harness recovery instruction below before ending the turn.\n\n" +
                 result.stderr,
             );
-            await ctx.session.prompt({
-              path: { id: sessionID },
-              body: { parts: [{ type: "text", text }] },
-            });
+            await ctx.session.prompt({ sessionID, text });
             skipNextIdle = true;
           } catch {
             skipNextIdle = false;

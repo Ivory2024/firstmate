@@ -580,7 +580,12 @@ export default {
     // `ctx.event.subscribe({ signal })` stream, and `client.session.promptAsync`
     // is `ctx.session.prompt`. Keep the internal `client` call shape by shimming
     // it onto ctx.session.prompt so ensureArm/sendPrompt stay unchanged.
-    const client = { session: { promptAsync: (args) => ctx.session.prompt(args) } };
+    const client = {
+      session: {
+        promptAsync: ({ path, body }) =>
+          ctx.session.prompt({ sessionID: path.id, text: body.parts.map((part) => part.text).join("\n") }),
+      },
+    };
     const controller = new AbortController();
 
     void (async () => {

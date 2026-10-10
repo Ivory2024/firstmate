@@ -61,10 +61,7 @@ export default {
           if (!nudge) continue;
 
           try {
-            await ctx.session.prompt({
-              path: { id: sessionID },
-              body: { parts: [{ type: "text", text: nudge }] },
-            });
+            await ctx.session.prompt({ sessionID, text: nudge });
           } catch {
           }
         }
