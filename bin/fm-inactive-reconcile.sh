@@ -690,11 +690,6 @@ case "$mode" in
     else
       scan_rc=$?
     fi
-    autonomous_args=(reconcile)
-    [ "$startup" -ne 1 ] || autonomous_args+=(--startup)
-    FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-      fm_run_timed "$FM_INACTIVE_RECONCILE_BUDGET_SECS" \
-        "$SCRIPT_DIR/fm-autonomous-loop.sh" "${autonomous_args[@]}" >/dev/null 2>&1 || true
     if [ "$scan_rc" -ne 0 ] && [ "$scan_rc" -ne 124 ]; then
       exit 1
     fi
@@ -704,6 +699,17 @@ case "$mode" in
     fm_lock_acquire_wait "$SCAN_LOCK" || exit 1
     trap 'fm_lock_release "$SCAN_LOCK"' EXIT
     scan "$2"
+    scan_rc=$?
+    # The autonomous reconcile runs inside the same single poll budget as the
+    # scan above rather than under a second full deadline of its own, so the
+    # whole poll path honours one bound. Whatever the scan left of the outer
+    # deadline is all the reconcile gets; an overrun is deferred to the next
+    # poll and is never reported as a completed reconcile.
+    autonomous_args=(reconcile)
+    [ "$2" -ne 1 ] || autonomous_args+=(--startup)
+    FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      "$SCRIPT_DIR/fm-autonomous-loop.sh" "${autonomous_args[@]}" >/dev/null 2>&1 || true
+    exit "$scan_rc"
     ;;
   report)
     if [ "$#" -ne 2 ] || ! valid_id "$2"; then
