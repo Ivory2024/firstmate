@@ -49,11 +49,8 @@ cat > "$TMP/protection.json" <<'JSON'
 {"required_status_checks":{"contexts":["ci"]},"required_pull_request_reviews":{}}
 JSON
 printf '%s\n' '[[]]' > "$TMP/rulesets.json"
-cat > "$TMP/rule-detail.json" <<'JSON'
-{"id":1,"enforcement":"active","conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"ci"}]}}]}
-JSON
 cat > "$TMP/check-runs.json" <<JSON
-[{"total_count":1,"check_runs":[{"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"success"}]}]
+[{"total_count":1,"check_runs":[{"id":1,"run_attempt":1,"started_at":"2026-10-10T00:00:00Z","app":{"id":17},"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"success"}]}]
 JSON
 printf '%s\n' '[[]]' > "$TMP/statuses.json"
 cat > "$TMP/fakebin/gh" <<'SH'
@@ -65,7 +62,7 @@ case "$1 ${2:-}" in
       *check-runs*) cat "$FM_TEST_CHECK_RUNS_JSON";;
       *statuses*) cat "$FM_TEST_STATUSES_JSON";;
       *pulls/9/reviews*) cat "$FM_TEST_REVIEWS_JSON";;
-      *rulesets*) cat "$FM_TEST_RULESETS_JSON";;
+      *rules/branches/*) [ "${FM_TEST_FAIL_RULES:-}" != yes ] || exit 1; cat "$FM_TEST_RULESETS_JSON";;
       *) exit 2;;
     esac
     ;;
@@ -73,7 +70,6 @@ case "$1 ${2:-}" in
   "api repos/"*)
     case "$*" in
       *branches/*/protection*) [ "${FM_TEST_FAIL_PROTECTION:-}" != yes ] || exit 1; cat "$FM_TEST_PROTECTION_JSON";;
-      */rulesets/*) [ "${FM_TEST_FAIL_RULE_DETAIL:-}" != yes ] || exit 1; cat "$FM_TEST_RULE_DETAIL_JSON";;
       *) exit 2;;
     esac
     ;;
@@ -100,7 +96,6 @@ printf '%s\n' 'done: validated' > "$TMP/home/state/$TASK.status"
 evidence_env=(PATH="$TMP/fakebin:$PATH" FM_HOME="$TMP/home" FM_STATE_OVERRIDE="$TMP/home/state" \
   FM_TEST_PR_JSON="$TMP/pr.json" FM_TEST_REVIEWS_JSON="$TMP/reviews.json" \
   FM_TEST_PROTECTION_JSON="$TMP/protection.json" FM_TEST_RULESETS_JSON="$TMP/rulesets.json" \
-  FM_TEST_RULE_DETAIL_JSON="$TMP/rule-detail.json" \
   FM_TEST_CHECK_RUNS_JSON="$TMP/check-runs.json" FM_TEST_STATUSES_JSON="$TMP/statuses.json" \
   FM_TEST_STATUS="$TMP/status")
 out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
@@ -120,27 +115,27 @@ out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "bbbbbbbbbbbbbb
 eq "verified producer holds stale SHA" "$(printf '%s' "$out" | jq -r .reasons[0])" stale-head
 out=$(env "${evidence_env[@]}" FM_TEST_FAIL_PROTECTION=yes "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "verified producer holds forge API failure" "$(printf '%s' "$out" | jq -r .reasons[0])" branch-protection-unreadable
-cat > "$TMP/rulesets.json" <<'JSON'
-[[{"id":2,"enforcement":"active"}]]
-JSON
-cat > "$TMP/rule-detail.json" <<'JSON'
-{"id":2,"enforcement":"active","conditions":{"ref_name":{"include":["refs/heads/release/*"],"exclude":[]}},"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"release-only"}]}}]}
-JSON
-out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
-eq "non-applicable target branch rules are ignored" "$(printf '%s' "$out" | jq -r .status)" PASS
-cat > "$TMP/rulesets.json" <<'JSON'
-[[],[{"id":2,"enforcement":"active"}]]
-JSON
-cat > "$TMP/rule-detail.json" <<'JSON'
-{"id":2,"enforcement":"active","conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"page-two-check"}]}}]}
-JSON
-out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
-eq "later ruleset page contributes required checks" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
-out=$(env "${evidence_env[@]}" FM_TEST_FAIL_RULE_DETAIL=yes "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
-eq "unreadable full ruleset holds" "$(printf '%s' "$out" | jq -r .reasons[0])" rulesets-unreadable
 printf '%s\n' '[[]]' > "$TMP/rulesets.json"
-cat > "$TMP/rule-detail.json" <<'JSON'
-{"id":1,"enforcement":"active","conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"ci"}]}}]}
+out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "branch-effective endpoint omits non-applicable rules" "$(printf '%s' "$out" | jq -r .status)" PASS
+cat > "$TMP/release-pr.json" <<JSON
+{"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"release/a","files":[{"path":"docs/operations.md"}]}
+JSON
+cat > "$TMP/rulesets.json" <<'JSON'
+[[],[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"security-scan","integration_id":17}]}}]]
+JSON
+out=$(env "${evidence_env[@]}" FM_TEST_PR_JSON="$TMP/release-pr.json" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "branch-effective ? pattern required check is enforced" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
+cat > "$TMP/excluded-pr.json" <<JSON
+{"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"release/nope","files":[{"path":"docs/operations.md"}]}
+JSON
+printf '%s\n' '[[]]' > "$TMP/rulesets.json"
+out=$(env "${evidence_env[@]}" FM_TEST_PR_JSON="$TMP/excluded-pr.json" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "branch-effective endpoint omits excluded patterns" "$(printf '%s' "$out" | jq -r .status)" PASS
+out=$(env "${evidence_env[@]}" FM_TEST_FAIL_RULES=yes "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "unreadable branch rules hold" "$(printf '%s' "$out" | jq -r .reasons[0])" rulesets-unreadable
+cat > "$TMP/pr.json" <<JSON
+{"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"main","files":[{"path":"docs/operations.md"}]}
 JSON
 out=$(env "${evidence_env[@]}" FM_TEST_FAIL_STATUS=yes "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "verified producer holds missing test evidence" "$(printf '%s' "$out" | jq -r .reasons[0])" test-evidence-missing-or-stale
@@ -178,17 +173,30 @@ cat > "$TMP/reviews.json" <<JSON
 JSON
 cp "$TMP/check-runs.json" "$TMP/good-check-runs.json"
 cat > "$TMP/check-runs.json" <<JSON
-[{"total_count":1,"check_runs":[{"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"skipped"}]}]
+[{"total_count":2,"check_runs":[{"id":1,"run_attempt":1,"started_at":"2026-10-10T00:00:00Z","app":{"id":17},"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"success"},{"id":2,"run_attempt":1,"started_at":"2026-10-10T00:01:00Z","app":{"id":17},"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"failure"}]}]
 JSON
 out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
-eq "producer rejects skipped required check" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
+eq "later failed check run invalidates success" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
 cat > "$TMP/check-runs.json" <<JSON
-[{"total_count":1,"check_runs":[{"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"neutral"}]}]
+[{"total_count":2,"check_runs":[{"id":1,"run_attempt":1,"started_at":"2026-10-10T00:00:00Z","app":{"id":17},"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"success"},{"id":2,"run_attempt":1,"started_at":"2026-10-10T00:01:00Z","app":{"id":17},"name":"ci","head_sha":"$HEAD","status":"in_progress","conclusion":null}]}]
 JSON
 out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
-eq "producer rejects neutral required check" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
+eq "later in-progress check run invalidates success" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
+printf '%s\n' '[{"total_count":0,"check_runs":[]}]' > "$TMP/check-runs.json"
+cat > "$TMP/statuses.json" <<JSON
+[[{"id":1,"created_at":"2026-10-10T00:00:00Z","context":"ci","sha":"$HEAD","state":"success"},{"id":2,"created_at":"2026-10-10T00:01:00Z","context":"ci","sha":"$HEAD","state":"failure"}]]
+JSON
+out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "later legacy status invalidates success" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
 cp "$TMP/good-check-runs.json" "$TMP/check-runs.json"
-printf '%s\n' '[{"total_count":1,"check_runs":[{"name":"ci","head_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","status":"completed","conclusion":"success"}]}]' > "$TMP/check-runs.json"
+cat > "$TMP/statuses.json" <<JSON
+[[{"id":3,"created_at":"2026-10-10T00:02:00Z","context":"ci","sha":"$HEAD","state":"failure"}]]
+JSON
+out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "newer legacy failure supersedes earlier check run" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
+cp "$TMP/good-check-runs.json" "$TMP/check-runs.json"
+printf '%s\n' '[[]]' > "$TMP/statuses.json"
+printf '%s\n' '[{"total_count":1,"check_runs":[{"id":1,"run_attempt":1,"started_at":"2026-10-10T00:00:00Z","app":{"id":17},"name":"ci","head_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","status":"completed","conclusion":"success"}]}]' > "$TMP/check-runs.json"
 out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "producer rejects required check at wrong SHA" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
 cp "$TMP/good-check-runs.json" "$TMP/check-runs.json"

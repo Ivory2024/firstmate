@@ -17,26 +17,6 @@ hold() {
 
 valid_sha() { [[ ${1:-} =~ ^[0-9a-fA-F]{40}$ ]]; }
 
-github_rulesets_for_branch() {
-  local owner=$1 repo=$2 base=$3 listing summaries summary detail id applicable='[]'
-  listing=$(gh api --paginate --slurp "repos/$owner/$repo/rulesets?includes_parents=true&per_page=100" 2>/dev/null) || return 1
-  summaries=$(printf '%s' "$listing" | jq -ce '[.[][]? | select(type == "object" and has("id"))]') || return 1
-  while IFS= read -r summary; do
-    id=$(printf '%s' "$summary" | jq -er '.id | select(type == "number")') || return 1
-    [ "$(printf '%s' "$summary" | jq -r '.enforcement // empty')" = active ] || continue
-    detail=$(gh api "repos/$owner/$repo/rulesets/$id" 2>/dev/null) || return 1
-    printf '%s' "$detail" | jq -e --argjson expected_id "$id" 'type == "object" and .id == $expected_id and (.rules | type == "array") and (.conditions.ref_name | type == "object") and (.conditions.ref_name.include | type == "array") and (.conditions.ref_name.exclude | type == "array")' >/dev/null 2>&1 || return 1
-    if printf '%s' "$detail" | jq -e --arg base "refs/heads/$base" '
-      def matches($pattern): ($pattern | gsub("\\."; "\\\\.") | gsub("\\*"; ".*")) as $regex | $base | test("^" + $regex + "$");
-      (.conditions.ref_name.include | length == 0 or any(.[]; matches(.))) and
-      (.conditions.ref_name.exclude | all(.[]; (matches(.) | not)))
-    ' >/dev/null 2>&1; then
-      applicable=$(jq -cn --argjson prior "$applicable" --argjson current "$detail" '$prior + [$current]') || return 1
-    fi
-  done < <(printf '%s' "$summaries" | jq -c '.[]')
-  printf '%s\n' "$applicable"
-}
-
 test_evidence_ok() {
   local head=$1 pr=$2 run_status=$3
   [ -n "$run_status" ] || return 1
@@ -56,22 +36,36 @@ github_required_checks_ok() {
   required=$(jq -cn --argjson protection "$protection" --argjson rulesets "$rulesets" '
     [($protection.required_status_checks.contexts // [] | map({context:., app_id:null})),
      ($protection.required_status_checks.checks // [] | map({context:.context, app_id:(.app_id // null)})),
-     ([$rulesets[] | select(.enforcement == "active") | .rules[]? |
-       select(.type == "required_status_checks") | .parameters.required_status_checks[]? |
+     ([$rulesets[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? |
        {context:.context, app_id:(.integration_id // .app_id // null)}])]
     | flatten | map(select(.context | type == "string" and length > 0)) | unique_by([.context,.app_id])') || return 1
   [ "$(printf '%s' "$required" | jq 'length')" -gt 0 ] || return 1
   jq -en --argjson required "$required" --argjson runs "$check_runs" --argjson statuses "$statuses" --arg head "$head" '
     ($runs | type == "array") and ($statuses | type == "array") and
     all($required[]; . as $requirement |
-      (any($runs[]; .name == $requirement.context and .head_sha == $head and .status == "completed" and .conclusion == "success" and
-        ($requirement.app_id == null or .app.id == $requirement.app_id)) or
-       ($requirement.app_id == null and any($statuses[]; .context == $requirement.context and .sha == $head and .state == "success"))))
+      ([$runs[] | select(.name == $requirement.context and .head_sha == $head and
+        ($requirement.app_id == null or .app.id == $requirement.app_id))]) as $matching_runs |
+      (if $requirement.app_id == null then
+        [$statuses[] | select(.context == $requirement.context and .sha == $head)]
+       else [] end) as $matching_statuses |
+      (all($matching_runs[]; (.started_at | type == "string" and length > 0) and
+        (.id | type == "number") and (.run_attempt | type == "number") and
+        (.app.id | type == "number") and (.status | type == "string") and
+        ((.conclusion == null) or (.conclusion | type == "string"))) and
+       all($matching_statuses[]; (.created_at | type == "string" and length > 0) and
+        (.id | type == "number") and (.state | type == "string"))) as $ordered |
+      if ((($matching_runs | length) + ($matching_statuses | length)) == 0) or ($ordered | not) then false
+      else
+        ([$matching_runs[] | {time:.started_at,success:(.status == "completed" and .conclusion == "success")} ] +
+         [$matching_statuses[] | {time:.created_at,success:(.state == "success")}]) as $results |
+        ($results | map(.time) | max) as $latest_time |
+        all($results[] | select(.time == $latest_time); .success)
+      end)
   ' >/dev/null 2>&1
 }
 
 collect_github() {
-  local task_id=$1 expected=$2 pr_json reviews protection rulesets check_runs statuses check_runs_json statuses_json captain
+  local task_id=$1 expected=$2 pr_json reviews protection rulesets rulesets_json check_runs statuses check_runs_json statuses_json captain
   local author base owner repo number review_ok=false findings run_status path
   local approval_ok=false scope paths risk
   local -a changed_paths=()
@@ -92,8 +86,12 @@ collect_github() {
     || { hold branch-protection-unreadable; return 0; }
   printf '%s' "$protection" | jq -e 'type == "object" and has("required_status_checks") and has("required_pull_request_reviews")' >/dev/null 2>&1 \
     || { hold branch-protection-incomplete; return 0; }
-  rulesets=$(github_rulesets_for_branch "$owner" "$repo" "$base") \
+  rulesets_json=$(gh api --paginate --slurp "repos/$owner/$repo/rules/branches/$base_encoded" 2>/dev/null) \
     || { hold rulesets-unreadable; return 0; }
+  rulesets=$(printf '%s' "$rulesets_json" | jq -ce 'if type == "array" and all(.[]; type == "array" and all(.[]; type == "object")) then [.[][]] else error("invalid branch rules") end') \
+    || { hold rulesets-invalid; return 0; }
+  printf '%s' "$rulesets" | jq -e 'all(.[]; .type != "required_status_checks" or (.parameters.required_status_checks | type == "array"))' >/dev/null 2>&1 \
+    || { hold rulesets-invalid; return 0; }
   check_runs_json=$(gh api --paginate --slurp "repos/$owner/$repo/commits/$LIVE_HEAD/check-runs?per_page=100" 2>/dev/null) \
     || { hold required-checks-unreadable; return 0; }
   check_runs=$(printf '%s' "$check_runs_json" | jq -ce '[.[] | .check_runs[]?]') \
