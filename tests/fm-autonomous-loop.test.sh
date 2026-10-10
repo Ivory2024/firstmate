@@ -101,18 +101,22 @@ FM_HOME="$home" FM_ROOT_OVERRIDE="$root" FM_DISPATCH_LOG="$TMP_ROOT/spawn.log" \
 assert_equals 1 "$(wc -l < "$TMP_ROOT/spawn.log" | tr -d '[:space:]')" \
   "a duplicate lane reconciliation spawned the task twice"
 
-for lifecycle_state in RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE; do
+for lifecycle_state in READY ASSIGNED RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD ESCALATED; do
   for external_state in done failed; do
     id="${lifecycle_state,,}-$external_state"
     write_task "$id" "terminal-$id" "$lifecycle_state"
   done
 done
+marker="$home/state/.subsuper-seen-status-orphan-task"
+touch "$marker"
 FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$root/bin/fm-autonomous-loop.sh" reconcile >/dev/null
-for lifecycle_state in RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE; do
+for lifecycle_state in READY ASSIGNED RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD ESCALATED; do
   assert_equals DONE "$(sed -n 's/^current_step=//p' "$home/state/task-lifecycle/${lifecycle_state,,}-done.lifecycle")" \
     "$lifecycle_state did not sync external done"
   assert_equals FAILED "$(sed -n 's/^current_step=//p' "$home/state/task-lifecycle/${lifecycle_state,,}-failed.lifecycle")" \
     "$lifecycle_state did not sync external failed"
 done
+assert_equals 1 "$([ -f "$marker" ] && echo 1 || echo 0)" "orphan inventory moved or deleted its marker"
+assert_absent "$home/state/quarantine/orphan-markers" "reconcile created a quarantine for orphan markers"
 
 pass "fm-autonomous-loop"
