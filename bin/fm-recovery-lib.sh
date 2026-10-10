@@ -358,9 +358,14 @@ fm_recovery_exec_class_recordable() {  # <class>
 }
 
 # The measurement identity the KPI layer consumes. `incident_id` follows the
-# same shape as the metrics layer's own derivation
-# (inc:<sha1(task|fingerprint|opened_at)>[:16]); this engine has no run id, so
-# the task, the failure fingerprint, and the opening epoch are the binding.
+# same shape as the metrics layer's own derivation, `inc:<hex>[:16]`, over this
+# engine's own binding. Two deliberate differences from that layer's derivation
+# are worth knowing at integration time: this engine uses sha256 rather than
+# sha1, and it has no run id, so it binds the task, the failure fingerprint, and
+# the opening epoch. A consumer should therefore take the exported
+# `failure_fingerprint` and `incident_id` as this engine's authoritative values
+# for engine-produced events instead of re-deriving them, so a cross-source join
+# cannot silently miss.
 fm_recovery_incident_id() {  # <task> <fingerprint> <opened-at>
   local digest
   digest=$(fm_recovery_sha256 "${1:-}|${2:-}|${3:-}") || return 1
