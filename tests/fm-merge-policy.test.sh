@@ -48,7 +48,10 @@ JSON
 cat > "$TMP/protection.json" <<'JSON'
 {"required_status_checks":{"contexts":["ci"]},"required_pull_request_reviews":{}}
 JSON
-printf '%s\n' '[]' > "$TMP/rulesets.json"
+printf '%s\n' '[[]]' > "$TMP/rulesets.json"
+cat > "$TMP/rule-detail.json" <<'JSON'
+{"id":1,"enforcement":"active","conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"ci"}]}}]}
+JSON
 cat > "$TMP/check-runs.json" <<JSON
 [{"total_count":1,"check_runs":[{"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"success"}]}]
 JSON
@@ -62,6 +65,7 @@ case "$1 ${2:-}" in
       *check-runs*) cat "$FM_TEST_CHECK_RUNS_JSON";;
       *statuses*) cat "$FM_TEST_STATUSES_JSON";;
       *pulls/9/reviews*) cat "$FM_TEST_REVIEWS_JSON";;
+      *rulesets*) cat "$FM_TEST_RULESETS_JSON";;
       *) exit 2;;
     esac
     ;;
@@ -69,7 +73,7 @@ case "$1 ${2:-}" in
   "api repos/"*)
     case "$*" in
       *branches/*/protection*) [ "${FM_TEST_FAIL_PROTECTION:-}" != yes ] || exit 1; cat "$FM_TEST_PROTECTION_JSON";;
-      *rulesets*) cat "$FM_TEST_RULESETS_JSON";;
+      */rulesets/*) [ "${FM_TEST_FAIL_RULE_DETAIL:-}" != yes ] || exit 1; cat "$FM_TEST_RULE_DETAIL_JSON";;
       *) exit 2;;
     esac
     ;;
@@ -96,14 +100,48 @@ printf '%s\n' 'done: validated' > "$TMP/home/state/$TASK.status"
 evidence_env=(PATH="$TMP/fakebin:$PATH" FM_HOME="$TMP/home" FM_STATE_OVERRIDE="$TMP/home/state" \
   FM_TEST_PR_JSON="$TMP/pr.json" FM_TEST_REVIEWS_JSON="$TMP/reviews.json" \
   FM_TEST_PROTECTION_JSON="$TMP/protection.json" FM_TEST_RULESETS_JSON="$TMP/rulesets.json" \
+  FM_TEST_RULE_DETAIL_JSON="$TMP/rule-detail.json" \
   FM_TEST_CHECK_RUNS_JSON="$TMP/check-runs.json" FM_TEST_STATUSES_JSON="$TMP/statuses.json" \
   FM_TEST_STATUS="$TMP/status")
 out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "verified producer accepts matching forge evidence" "$(printf '%s' "$out" | jq -r .status)" PASS
+cat > "$TMP/high-pr.json" <<JSON
+{"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"main","files":[{"path":"bin/fm-watch.sh"}]}
+JSON
+cat > "$TMP/reviews.json" <<JSON
+[[{"state":"APPROVED","user":{"login":"reviewer"},"commit_id":"$HEAD","submitted_at":"2026-10-10T00:00:00Z"},{"state":"APPROVED","user":{"login":"captain"},"commit_id":"$HEAD","submitted_at":"2026-10-10T00:00:00Z"},{"state":"CHANGES_REQUESTED","user":{"login":"captain"},"commit_id":"$HEAD","submitted_at":"2026-10-10T00:01:00Z"}]]
+JSON
+out=$(env "${evidence_env[@]}" FM_TEST_PR_JSON="$TMP/high-pr.json" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "later captain rejection invalidates approval" "$(printf '%s' "$out" | jq -r .reasons[0])" high-risk-captain-approval-missing-or-stale
+cat > "$TMP/reviews.json" <<JSON
+[[{"state":"APPROVED","user":{"login":"reviewer"},"commit_id":"$HEAD","submitted_at":"2026-10-10T00:00:00Z"},{"state":"APPROVED","user":{"login":"captain"},"commit_id":"$HEAD","submitted_at":"2026-10-10T00:00:00Z"}]]
+JSON
 out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 eq "verified producer holds stale SHA" "$(printf '%s' "$out" | jq -r .reasons[0])" stale-head
 out=$(env "${evidence_env[@]}" FM_TEST_FAIL_PROTECTION=yes "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "verified producer holds forge API failure" "$(printf '%s' "$out" | jq -r .reasons[0])" branch-protection-unreadable
+cat > "$TMP/rulesets.json" <<'JSON'
+[[{"id":2,"enforcement":"active"}]]
+JSON
+cat > "$TMP/rule-detail.json" <<'JSON'
+{"id":2,"enforcement":"active","conditions":{"ref_name":{"include":["refs/heads/release/*"],"exclude":[]}},"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"release-only"}]}}]}
+JSON
+out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "non-applicable target branch rules are ignored" "$(printf '%s' "$out" | jq -r .status)" PASS
+cat > "$TMP/rulesets.json" <<'JSON'
+[[],[{"id":2,"enforcement":"active"}]]
+JSON
+cat > "$TMP/rule-detail.json" <<'JSON'
+{"id":2,"enforcement":"active","conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"page-two-check"}]}}]}
+JSON
+out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "later ruleset page contributes required checks" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
+out=$(env "${evidence_env[@]}" FM_TEST_FAIL_RULE_DETAIL=yes "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "unreadable full ruleset holds" "$(printf '%s' "$out" | jq -r .reasons[0])" rulesets-unreadable
+printf '%s\n' '[[]]' > "$TMP/rulesets.json"
+cat > "$TMP/rule-detail.json" <<'JSON'
+{"id":1,"enforcement":"active","conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"ci"}]}}]}
+JSON
 out=$(env "${evidence_env[@]}" FM_TEST_FAIL_STATUS=yes "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "verified producer holds missing test evidence" "$(printf '%s' "$out" | jq -r .reasons[0])" test-evidence-missing-or-stale
 cat > "$TMP/home/state/$TASK.test-evidence" <<JSON

@@ -17,6 +17,26 @@ hold() {
 
 valid_sha() { [[ ${1:-} =~ ^[0-9a-fA-F]{40}$ ]]; }
 
+github_rulesets_for_branch() {
+  local owner=$1 repo=$2 base=$3 listing summaries summary detail id applicable='[]'
+  listing=$(gh api --paginate --slurp "repos/$owner/$repo/rulesets?includes_parents=true&per_page=100" 2>/dev/null) || return 1
+  summaries=$(printf '%s' "$listing" | jq -ce '[.[][]? | select(type == "object" and has("id"))]') || return 1
+  while IFS= read -r summary; do
+    id=$(printf '%s' "$summary" | jq -er '.id | select(type == "number")') || return 1
+    [ "$(printf '%s' "$summary" | jq -r '.enforcement // empty')" = active ] || continue
+    detail=$(gh api "repos/$owner/$repo/rulesets/$id" 2>/dev/null) || return 1
+    printf '%s' "$detail" | jq -e --argjson expected_id "$id" 'type == "object" and .id == $expected_id and (.rules | type == "array") and (.conditions.ref_name | type == "object") and (.conditions.ref_name.include | type == "array") and (.conditions.ref_name.exclude | type == "array")' >/dev/null 2>&1 || return 1
+    if printf '%s' "$detail" | jq -e --arg base "refs/heads/$base" '
+      def matches($pattern): ($pattern | gsub("\\."; "\\\\.") | gsub("\\*"; ".*")) as $regex | $base | test("^" + $regex + "$");
+      (.conditions.ref_name.include | length == 0 or any(.[]; matches(.))) and
+      (.conditions.ref_name.exclude | all(.[]; (matches(.) | not)))
+    ' >/dev/null 2>&1; then
+      applicable=$(jq -cn --argjson prior "$applicable" --argjson current "$detail" '$prior + [$current]') || return 1
+    fi
+  done < <(printf '%s' "$summaries" | jq -c '.[]')
+  printf '%s\n' "$applicable"
+}
+
 test_evidence_ok() {
   local head=$1 pr=$2 run_status=$3
   [ -n "$run_status" ] || return 1
@@ -72,10 +92,8 @@ collect_github() {
     || { hold branch-protection-unreadable; return 0; }
   printf '%s' "$protection" | jq -e 'type == "object" and has("required_status_checks") and has("required_pull_request_reviews")' >/dev/null 2>&1 \
     || { hold branch-protection-incomplete; return 0; }
-  rulesets=$(gh api "repos/$owner/$repo/rulesets?includes_parents=true" 2>/dev/null) \
+  rulesets=$(github_rulesets_for_branch "$owner" "$repo" "$base") \
     || { hold rulesets-unreadable; return 0; }
-  printf '%s' "$rulesets" | jq -e 'type == "array"' >/dev/null 2>&1 \
-    || { hold rulesets-invalid; return 0; }
   check_runs_json=$(gh api --paginate --slurp "repos/$owner/$repo/commits/$LIVE_HEAD/check-runs?per_page=100" 2>/dev/null) \
     || { hold required-checks-unreadable; return 0; }
   check_runs=$(printf '%s' "$check_runs_json" | jq -ce '[.[] | .check_runs[]?]') \
@@ -98,8 +116,9 @@ collect_github() {
       $r.state == "APPROVED" and $r.user.login != $author and $r.commit_id == $head)') \
     || review_ok=false
   [ "$review_ok" = true ] || { hold independent-review-missing-or-stale; return 0; }
-  approval_ok=$(printf '%s' "$reviews" | jq -r --arg captain "$captain" --arg head "$LIVE_HEAD" \
-    'any(.[]; .user.login == $captain and .state == "APPROVED" and .commit_id == $head)') || approval_ok=false
+  approval_ok=$(printf '%s' "$reviews" | jq -r --arg captain "$captain" --arg head "$LIVE_HEAD" '
+    (map(select(.user.login == $captain)) | sort_by(.submitted_at // "") | last) as $r |
+    $r != null and $r.state == "APPROVED" and $r.commit_id == $head') || approval_ok=false
   [ -f "$STATE/$task_id.status" ] && [ -r "$STATE/$task_id.status" ] && [ ! -L "$STATE/$task_id.status" ] \
     || { hold task-ledger-unreadable; return 0; }
   findings=$(status_open_decisions "$STATE/$task_id.status" 2>/dev/null) || { hold task-ledger-unreadable; return 0; }
