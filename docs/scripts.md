@@ -38,6 +38,7 @@ The shared no-mistakes gate refusal for fleet lifecycle entrypoints is summarize
 | [`fm-dod-lib.sh`](../bin/fm-dod-lib.sh) | Own ship/scout worker role scope, ship definitions of done, and the no-mistakes `--intent` contract |
 | `fm-git-base-lib.sh` | Verify the expected repository and fork-main SHA, then pin the clean spawn worktree base |
 | `fm-publish-guard.sh` | Create task branches from a pinned base and refuse publication when ancestry, scope, size, or open-PR checks fail |
+| `fm-pr-target-guard.sh` | Fail closed unless the pull-request target repository is owned by the authenticated gh user; `--repair` pins the verified target as the worktree's gh default |
 | `fm-herdr-lab.sh`        | Provision and guardedly operate an isolated, never-default Herdr lab session         |
 | `fm-herdr-lab-viewer.py` | The pty engine behind `fm-herdr-lab.sh viewer`: one real foreground Herdr client on a non-zero window grid |
 | `fm-install-herdr.sh`    | Install CI's exact-version Herdr pin with official asset URL, SHA-256, and protocol checks |
