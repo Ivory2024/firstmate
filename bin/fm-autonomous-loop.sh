@@ -101,8 +101,8 @@ VALID_STATES=(
 # State transitions (fail-closed): from -> allowed to
 # Only these transitions are permitted; any other transition is rejected
 declare -A VALID_TRANSITIONS=(
-  ["READY"]="ASSIGNED WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD ESCALATED FAILED"
-  ["ASSIGNED"]="RUNNING WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD ESCALATED FAILED"
+  ["READY"]="ASSIGNED WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD ESCALATED DONE FAILED"
+  ["ASSIGNED"]="RUNNING WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD ESCALATED DONE FAILED"
   ["RUNNING"]="TESTING WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD ESCALATED DONE FAILED"
   ["TESTING"]="REVIEWING FIXING WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD DONE FAILED"
   ["REVIEWING"]="READY_FOR_MERGE FIXING WAITING_APPROVAL WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD DONE FAILED"
@@ -113,11 +113,11 @@ declare -A VALID_TRANSITIONS=(
   ["DEPLOYMENT_GATE"]="DONE WAITING_APPROVAL WAITING_QUOTA RECOVERY_HOLD FAILED"
   ["DONE"]=""  # Terminal
   ["FAILED"]=""  # Terminal
-  ["WAITING_QUOTA"]="RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE"
-  ["WAITING_APPROVAL"]="READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE DONE"
-  ["WAITING_EXTERNAL"]="RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE"
-  ["RECOVERY_HOLD"]="RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL"
-  ["ESCALATED"]="RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD"
+  ["WAITING_QUOTA"]="RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE DONE FAILED"
+  ["WAITING_APPROVAL"]="READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE DONE FAILED"
+  ["WAITING_EXTERNAL"]="RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE DONE FAILED"
+  ["RECOVERY_HOLD"]="RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL DONE FAILED"
+  ["ESCALATED"]="RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD DONE FAILED"
 )
 
 # Initialize the state machine version
@@ -1001,20 +1001,15 @@ advance_lane() {  # <lane>
 # ============================================================================
 
 reconcile_orphans() {
-  local cleaned=0 quarantined=0
+  local marker task_id
 
   # Inventory: .subsuper-seen-status-* markers for tasks whose meta no longer exists
   echo "=== Orphan Inventory ==="
   for marker in "$STATE"/.subsuper-seen-status-*; do
     [ -f "$marker" ] || continue
-    local task_id=$(basename "$marker" | sed 's/^.subsuper-seen-status-//')
+    task_id=$(basename "$marker" | sed 's/^.subsuper-seen-status-//')
     if [ ! -f "$STATE/$task_id.meta" ]; then
       echo "  ORPHAN marker: $marker (task: $task_id)"
-      # Quarantine instead of delete
-      local quarantine_dir="$STATE/quarantine/orphan-markers/$(date +%Y%m%d-%H%M%S)"
-      mkdir -p "$quarantine_dir"
-      mv "$marker" "$quarantine_dir/"
-      quarantined=$((quarantined + 1))
     fi
   done
 
@@ -1038,10 +1033,6 @@ reconcile_orphans() {
         fi
       done
     done
-  fi
-
-  if [ "$quarantined" -gt 0 ]; then
-    echo "Quarantined $quarantined orphan markers (no deletion)"
   fi
 }
 
@@ -1076,14 +1067,13 @@ sync_lifecycle_with_external() {  # <task-id> <external_state>
       ;;
     failed)
       case "$lifecycle_state" in
-        READY|ASSIGNED|RUNNING|TESTING|REVIEWING|FIXING|RETESTING|READY_FOR_MERGE|MERGE_VERIFIED|DEPLOYMENT_GATE)
+        READY|ASSIGNED|RUNNING|TESTING|REVIEWING|FIXING|RETESTING|READY_FOR_MERGE|MERGE_VERIFIED|DEPLOYMENT_GATE|WAITING_QUOTA|WAITING_APPROVAL|WAITING_EXTERNAL|RECOVERY_HOLD|ESCALATED)
           lifecycle_transition "$id" "FAILED" "Synced with external: task failed" ;;
       esac
       ;;
     done)
-      # If external says done, transition to DONE from appropriate states
       case "$lifecycle_state" in
-        READY_FOR_MERGE|MERGE_VERIFIED|DEPLOYMENT_GATE|RUNNING|TESTING|REVIEWING|FIXING|RETESTING)
+        READY|ASSIGNED|RUNNING|TESTING|REVIEWING|FIXING|RETESTING|READY_FOR_MERGE|MERGE_VERIFIED|DEPLOYMENT_GATE|WAITING_QUOTA|WAITING_APPROVAL|WAITING_EXTERNAL|RECOVERY_HOLD|ESCALATED)
           lifecycle_transition "$id" "DONE" "Synced with external: task done" ;;
       esac
       ;;
@@ -1131,7 +1121,7 @@ cmd_reconcile() {  # [--startup]
     sync_lifecycle_with_external "$id" "$state"
   done
 
-  # Reconcile orphans (read-only inventory + quarantine)
+  # Reconcile orphans (read-only inventory + classification)
   reconcile_orphans
 
   # Scan for stalled tasks (P1-5)
