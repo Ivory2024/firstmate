@@ -129,7 +129,8 @@ lifecycle_lock_path() { printf '%s/%s.lock' "$LIFECYCLE_LOCK_DIR" "$1"; }
 
 # Atomic lifecycle write with locking
 lifecycle_lock() {  # <task-id>
-  local id=$1 lock_file
+  local id lock_file
+  id=$1
   lock_file=$(lifecycle_lock_path "$id")
   fm_lock_acquire_wait "$lock_file" || return 1
   LIFECYCLE_LOCK_HELD=1
@@ -137,7 +138,8 @@ lifecycle_lock() {  # <task-id>
 }
 
 lifecycle_unlock() {  # <task-id>
-  local id=$1 lock_file
+  local id lock_file
+  id=$1
   lock_file=$(lifecycle_lock_path "$id")
   fm_lock_release "$lock_file" || return 1
   LIFECYCLE_LOCK_HELD=0
@@ -146,16 +148,22 @@ lifecycle_unlock() {  # <task-id>
 
 # Read a field from lifecycle record (no lock needed for reads)
 lifecycle_read() {  # <task-id> <key>
-  local file=$(lifecycle_path "$1") key=$2
+  local file key
+  file=$(lifecycle_path "$1")
+  key=$2
   [ -f "$file" ] || return 1
   grep "^${key}=" "$file" 2>/dev/null | tail -1 | cut -d= -f2- || true
 }
 
 # Write a field to lifecycle record (with lock)
 lifecycle_write() {  # <task-id> <key> <value>
-  local id=$1 key=$2 value=$3
+  local id key value
+  id=$1
+  key=$2
+  value=$3
   lifecycle_lock "$id" || return 1
-  local file=$(lifecycle_path "$id") tmp
+  local file tmp
+  file=$(lifecycle_path "$id")
   tmp=$(mktemp "$LIFECYCLE_DIR/.lifecycle.XXXXXX") || { lifecycle_unlock "$id"; return 1; }
   if [ -f "$file" ]; then
     grep -v "^${key}=" "$file" > "$tmp" 2>/dev/null || true
@@ -172,20 +180,26 @@ lifecycle_exists() { [ -f "$(lifecycle_path "$1")" ]; }
 
 # Derive lane from task ID or backlog
 derive_lane() {  # <task-id>
-  local id=$1
+  local id
+  id=$1
   # Check meta for explicit lane
-  local meta="$STATE/$id.meta"
+  local meta
+  meta="$STATE/$id.meta"
   if [ -f "$meta" ]; then
-    local m_lane=$(grep '^lane=' "$meta" 2>/dev/null | cut -d= -f2-)
+    local m_lane
+    m_lane=$(grep '^lane=' "$meta" 2>/dev/null | cut -d= -f2-)
     [ -n "$m_lane" ] && { printf '%s\n' "$m_lane"; return; }
   fi
   # Check backlog for lane info (new format: lane=<lane>)
-  local backlog_entry=$(grep -E "^\- \[ \] $id " "$DATA/backlog.md" 2>/dev/null | head -1)
+  local backlog_entry
+  backlog_entry=$(grep -E "^\- \[ \] $id " "$DATA/backlog.md" 2>/dev/null | head -1)
   if [ -n "$backlog_entry" ]; then
-    local lane=$(printf '%s\n' "$backlog_entry" | sed -n 's/.*(lane=\([^)]*\)).*/\1/p')
+    local lane
+    lane=$(printf '%s\n' "$backlog_entry" | sed -n 's/.*(lane=\([^)]*\)).*/\1/p')
     [ -n "$lane" ] && { printf '%s\n' "$lane"; return; }
     # Also check for (kind: X) to infer lane
-    local kind=$(printf '%s\n' "$backlog_entry" | sed -n 's/.*(kind: \([^)]*\)).*/\1/p')
+    local kind
+    kind=$(printf '%s\n' "$backlog_entry" | sed -n 's/.*(kind: \([^)]*\)).*/\1/p')
     case "$kind" in
       ship) printf 'platform-ops\n'; return ;;
       docs) printf 'docs\n'; return ;;
@@ -205,7 +219,10 @@ derive_lane() {  # <task-id>
 
 # Validate state transition (fail-closed)
 validate_transition() {  # <from> <to> [task-id]
-  local from=$1 to=$2 task_id=${3:-} allowed
+  local from to task_id allowed
+  from=$1
+  to=$2
+  task_id=${3:-}
   allowed=${VALID_TRANSITIONS[$from]:-}
   case " $allowed " in *" $to "*) return 0 ;; *) 
     if [ -n "$task_id" ]; then
@@ -219,11 +236,15 @@ validate_transition() {  # <from> <to> [task-id]
 
 # Atomic state transition with evidence requirement
 lifecycle_transition() {  # <task-id> <new_state> <evidence>
-  local id=$1 new_state=$2 evidence=$3
+  local id new_state evidence
+  id=$1
+  new_state=$2
+  evidence=$3
   local current_state
 
   # Validate new state is known
-  local valid=0
+  local valid
+  valid=0
   for s in "${VALID_STATES[@]}"; do
     [ "$s" = "$new_state" ] && valid=1
   done
@@ -250,12 +271,15 @@ lifecycle_transition() {  # <task-id> <new_state> <evidence>
       ;;
   esac
 
-  local now=$(date +%s)
-  local file=$(lifecycle_path "$id") tmp
+  local now
+  now=$(date +%s)
+  local file tmp
+  file=$(lifecycle_path "$id")
   tmp=$(mktemp "$LIFECYCLE_DIR/.lifecycle.XXXXXX") || { lifecycle_unlock "$id"; return 1; }
 
   # Read all current fields
-  local fields=()
+  local fields
+  fields=()
   if [ -f "$file" ]; then
     while IFS= read -r line; do
       fields+=("$line")
@@ -263,8 +287,14 @@ lifecycle_transition() {  # <task-id> <new_state> <evidence>
   fi
 
   # Update current_step, last_progress, updated_epoch, evidence
-  local new_fields=()
-  local found_step=0 found_progress=0 found_updated=0 found_evidence=0 found_version=0
+  local new_fields
+  new_fields=()
+  local found_step found_progress found_updated found_evidence found_version
+  found_step=0
+  found_progress=0
+  found_updated=0
+  found_evidence=0
+  found_version=0
   for line in "${fields[@]}"; do
     case "$line" in
       current_step=*) new_fields+=("current_step=$new_state"); found_step=1 ;;
@@ -293,18 +323,26 @@ lifecycle_transition() {  # <task-id> <new_state> <evidence>
 
 # Append to evidence (with lock)
 append_evidence() {  # <task-id> <text>
-  local id=$1 text=$2
+  local id text
+  id=$1
+  text=$2
   lifecycle_lock "$id" || return 1
   append_evidence_locked "$id" "$text"
   lifecycle_unlock "$id"
 }
 
 append_evidence_locked() {  # <task-id> <text> (must hold lock)
-  local id=$1 text=$2 file=$(lifecycle_path "$id") tmp
+  local id text file tmp
+  id=$1
+  text=$2
+  file=$(lifecycle_path "$id")
   tmp=$(mktemp "$LIFECYCLE_DIR/.lifecycle.XXXXXX") || return 1
-  local stamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  local now=$(date +%s)
-  local found=0
+  local stamp
+  stamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  local now
+  now=$(date +%s)
+  local found
+  found=0
   if [ -f "$file" ]; then
     while IFS= read -r line; do
       case "$line" in
@@ -322,7 +360,10 @@ append_evidence_locked() {  # <task-id> <text> (must hold lock)
 
 # Initialize lifecycle record from meta/status if missing
 ensure_lifecycle() {  # <task-id>
-  local id=$1 meta="$STATE/$id.meta" status="$STATE/$id.status"
+  local id meta status
+  id=$1
+  meta="$STATE/$id.meta"
+  status="$STATE/$id.status"
   [ -f "$meta" ] || return 1
   lifecycle_exists "$id" && return 0
 
@@ -338,7 +379,8 @@ ensure_lifecycle() {  # <task-id>
   deps=$(grep '^depends_on=' "$meta" 2>/dev/null | cut -d= -f2- || echo "")
   accept_criteria=$(grep '^acceptance_criteria=' "$meta" 2>/dev/null | cut -d= -f2- || echo "")
 
-  local now=$(date +%s)
+  local now
+  now=$(date +%s)
   {
     printf 'owner=%s\n' "$owner"
     printf 'lane=%s\n' "$lane"
@@ -363,7 +405,9 @@ ensure_lifecycle() {  # <task-id>
 
 # Migrate lifecycle record to current state machine version
 migrate_lifecycle() {  # <task-id>
-  local id=$1 file=$(lifecycle_path "$id") version
+  local id file version
+  id=$1
+  file=$(lifecycle_path "$id")
   [ -f "$file" ] || return 0
   version=$(lifecycle_read "$id" state_machine_version)
   [ -n "$version" ] || version=0
@@ -378,9 +422,13 @@ migrate_lifecycle() {  # <task-id>
     return 0
   fi
 
-  local tmp=$(mktemp "$LIFECYCLE_DIR/.lifecycle.XXXXXX") || { lifecycle_unlock "$id"; return 1; }
-  local now=$(date +%s)
-  local found_version=0 found_machine=0
+  local tmp || { lifecycle_unlock "$id"; return 1; }
+  tmp=$(mktemp "$LIFECYCLE_DIR/.lifecycle.XXXXXX")
+  local now
+  now=$(date +%s)
+  local found_version found_machine
+  found_version=0
+  found_machine=0
 
   while IFS= read -r line; do
     case "$line" in
@@ -400,19 +448,25 @@ migrate_lifecycle() {  # <task-id>
 
 # Fill missing required fields (lane, etc.) from meta/backlog
 populate_missing_fields() {  # <task-id>
-  local id=$1 file=$(lifecycle_path "$id")
+  local id file
+  id=$1
+  file=$(lifecycle_path "$id")
   [ -f "$file" ] || return 0
   
-  local current_lane=$(lifecycle_read "$id" lane)
+  local current_lane
+  current_lane=$(lifecycle_read "$id" lane)
   [ -n "$current_lane" ] && return 0  # Already has lane
   
-  local lane=$(derive_lane "$id")
+  local lane
+  lane=$(derive_lane "$id")
   [ -n "$lane" ] || return 0
   
   lifecycle_lock "$id" || return 1
   
-  local tmp=$(mktemp "$LIFECYCLE_DIR/.lifecycle.XXXXXX") || { lifecycle_unlock "$id"; return 1; }
-  local now=$(date +%s)
+  local tmp || { lifecycle_unlock "$id"; return 1; }
+  tmp=$(mktemp "$LIFECYCLE_DIR/.lifecycle.XXXXXX")
+  local now
+  now=$(date +%s)
   
   while IFS= read -r line; do
     case "$line" in
@@ -430,11 +484,17 @@ populate_missing_fields() {  # <task-id>
 
 # Update retry state
 update_retry_state() {  # <task-id> <attempt> <error>
-  local id=$1 attempt=$2 error=$3
+  local id attempt error
+  id=$1
+  attempt=$2
+  error=$3
   lifecycle_lock "$id" || return 1
-  local now=$(date +%s)
-  local tmp=$(mktemp "$LIFECYCLE_DIR/.lifecycle.XXXXXX") || { lifecycle_unlock "$id"; return 1; }
-  local found=0
+  local now
+  now=$(date +%s)
+  local tmp || { lifecycle_unlock "$id"; return 1; }
+  tmp=$(mktemp "$LIFECYCLE_DIR/.lifecycle.XXXXXX")
+  local found
+  found=0
 
   while IFS= read -r line; do
     case "$line" in
@@ -453,13 +513,15 @@ update_retry_state() {  # <task-id> <attempt> <error>
 
 # Get retry attempt count
 get_retry_attempt() {  # <task-id>
-  local state=$(lifecycle_read "$1" retry_state)
+  local state
+  state=$(lifecycle_read "$1" retry_state)
   printf '%s\n' "$state" | sed -n 's/.*attempt=\([0-9]*\).*/\1/p'
 }
 
 # Get last retry time
 get_last_retry() {  # <task-id>
-  local state=$(lifecycle_read "$1" retry_state)
+  local state
+  state=$(lifecycle_read "$1" retry_state)
   printf '%s\n' "$state" | sed -n 's/.*last_retry=\([0-9]*\).*/\1/p'
 }
 
@@ -468,7 +530,9 @@ get_last_retry() {  # <task-id>
 # ============================================================================
 
 lane_enqueue() {  # <lane> <task-id>
-  local lane=$1 id=$2 file
+  local lane id file
+  lane=$1
+  id=$2
   file=$(lane_queue_path "$lane")
   mkdir -p "$LANE_QUEUE_DIR"
   grep -Fxq "$id" "$file" 2>/dev/null && return 0
@@ -476,7 +540,8 @@ lane_enqueue() {  # <lane> <task-id>
 }
 
 lane_dequeue() {  # <lane> -> prints task-id or empty
-  local lane=$1 file id
+  local lane file id
+  lane=$1
   file=$(lane_queue_path "$lane")
   [ -f "$file" ] || return 1
   id=$(head -1 "$file")
@@ -486,21 +551,25 @@ lane_dequeue() {  # <lane> -> prints task-id or empty
 }
 
 lane_peek() {  # <lane> -> prints task-id or empty
-  local lane=$1 file
+  local lane file
+  lane=$1
   file=$(lane_queue_path "$lane")
   [ -f "$file" ] || return 1
   head -1 "$file"
 }
 
 lane_remove() {  # <lane> <task-id>
-  local lane=$1 id=$2 file
+  local lane id file
+  lane=$1
+  id=$2
   file=$(lane_queue_path "$lane")
   [ -f "$file" ] || return 0
   grep -Fxv "$id" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
 }
 
 lane_list() {  # <lane> -> prints all task-ids
-  local lane=$1 file
+  local lane file
+  lane=$1
   file=$(lane_queue_path "$lane")
   [ -f "$file" ] || return 0
   cat "$file"
@@ -511,7 +580,8 @@ lane_list() {  # <lane> -> prints all task-ids
 # ============================================================================
 
 classify_task() {  # <task-id> -> prints "state source detail"
-  local id=$1
+  local id
+  id=$1
   local out
   out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/fm-crew-state.sh" "$id" 2>/dev/null) || { echo "unknown none fm-crew-state failed"; return; }
   # Output format: "state: <state> · source: <source> · <detail>"
@@ -535,7 +605,10 @@ is_hold_state() {  # <state>
 }
 
 is_legitimate_hold() {  # <task-id> <lifecycle_state> <external_detail>
-  local id=$1 lifecycle_state=$2 detail=$3
+  local id lifecycle_state detail
+  id=$1
+  lifecycle_state=$2
+  detail=$3
   case "$lifecycle_state" in
     WAITING_QUOTA|WAITING_APPROVAL|WAITING_EXTERNAL|RECOVERY_HOLD) return 0 ;;
     *) return 1 ;;
@@ -544,7 +617,9 @@ is_legitimate_hold() {  # <task-id> <lifecycle_state> <external_detail>
 
 # Check if external state indicates a legitimate hold
 is_external_legitimate_hold() {  # <external_state> <detail>
-  local state=$1 detail=$2
+  local state detail
+  state=$1
+  detail=$2
   case "$state" in
     parked)
       case "$detail" in *quota*|*exhausted*|*approval*|*HOLD*|*captain*|*merge*|*push.target*|*trust.boundary*|*review*|*finding*|*awaiting*|*external*) return 0 ;; *) return 1 ;; esac
@@ -555,7 +630,10 @@ is_external_legitimate_hold() {  # <external_state> <detail>
 
 # Check if task is stalled (P1-5: separate observables + hysteresis + per-step waits)
 is_stalled() {  # <task-id> <external_state> <detail>
-  local id=$1 external_state=$2 detail=$3
+  local id external_state detail
+  id=$1
+  external_state=$2
+  detail=$3
   local lifecycle_state
   lifecycle_state=$(lifecycle_read "$id" current_step)
   # Check against lifecycle states (uppercase), not external states (lowercase)
@@ -564,7 +642,11 @@ is_stalled() {  # <task-id> <external_state> <detail>
     *) return 1 ;;
   esac
 
-  local meta="$STATE/$id.meta" status="$STATE/$id.status" turn_ended="$STATE/$id.turn-ended" progress="$STATE/$id.progress"
+  local meta status turn_ended progress
+  meta="$STATE/$id.meta"
+  status="$STATE/$id.status"
+  turn_ended="$STATE/$id.turn-ended"
+  progress="$STATE/$id.progress"
   local now progress_age worktree_age heartbeat_age step_age
 
   now=$(date +%s)
@@ -577,7 +659,8 @@ is_stalled() {  # <task-id> <external_state> <detail>
   fi
 
   # Observable 2: Worktree age (file changes)
-  local wt=$(grep '^worktree=' "$meta" 2>/dev/null | cut -d= -f2- | tail -1)
+  local wt
+  wt=$(grep '^worktree=' "$meta" 2>/dev/null | cut -d= -f2- | tail -1)
   if [ -n "$wt" ] && [ -d "$wt" ]; then
     worktree_age=$(( now - $(stat -f %m "$wt" 2>/dev/null || echo "$now") ))
   else
@@ -585,8 +668,10 @@ is_stalled() {  # <task-id> <external_state> <detail>
   fi
 
   # Observable 3: Heartbeat / run-step activity (from fm-crew-state.sh)
-  local crew_state=$(classify_task "$id")
-  local run_detail=$(printf '%s\n' "$crew_state" | cut -d'·' -f3-)
+  local crew_state
+  crew_state=$(classify_task "$id")
+  local run_detail
+  run_detail=$(printf '%s\n' "$crew_state" | cut -d'·' -f3-)
   if printf '%s\n' "$run_detail" | grep -q "active_steps"; then
     heartbeat_age=0
   else
@@ -602,10 +687,14 @@ is_stalled() {  # <task-id> <external_state> <detail>
 
   # Hysteresis: require ALL observables to exceed threshold
   # Use separate thresholds per observable type
-  local progress_thresh=$STALLED_THRESHOLD_SECS
-  local worktree_thresh=$STALLED_THRESHOLD_SECS
-  local heartbeat_thresh=$STALLED_THRESHOLD_SECS
-  local step_thresh=$STALLED_THRESHOLD_SECS
+  local progress_thresh
+  progress_thresh=$STALLED_THRESHOLD_SECS
+  local worktree_thresh
+  worktree_thresh=$STALLED_THRESHOLD_SECS
+  local heartbeat_thresh
+  heartbeat_thresh=$STALLED_THRESHOLD_SECS
+  local step_thresh
+  step_thresh=$STALLED_THRESHOLD_SECS
 
   [ "$progress_age" -ge "$progress_thresh" ] && \
   [ "$worktree_age" -ge "$worktree_thresh" ] && \
@@ -615,7 +704,10 @@ is_stalled() {  # <task-id> <external_state> <detail>
 
 # Classify interruption type
 classify_interruption() {  # <task-id> <state> <detail> -> prints type
-  local id=$1 state=$2 detail=$3
+  local id state detail
+  id=$1
+  state=$2
+  detail=$3
   case "$detail" in
     *503*|*unavailable*|*provider*) echo "provider_503" ;;
     *rate.limit*|*quota*|*exhausted*) echo "quota_exhausted" ;;
@@ -634,29 +726,38 @@ classify_interruption() {  # <task-id> <state> <detail> -> prints type
 # ============================================================================
 
 calc_backoff() {  # <attempt>
-  local attempt=$1 base=$AUTO_RESUME_BASE_BACKOFF max=$AUTO_RESUME_MAX_BACKOFF jitter_pct=$AUTO_RESUME_JITTER_PCT
+  local attempt base max jitter_pct
+  attempt=$1
+  base=$AUTO_RESUME_BASE_BACKOFF
+  max=$AUTO_RESUME_MAX_BACKOFF
+  jitter_pct=$AUTO_RESUME_JITTER_PCT
   local backoff jitter
   backoff=$(( base * (1 << (attempt - 1)) ))
   [ "$backoff" -gt "$max" ] && backoff=$max
   jitter=$(( backoff * jitter_pct / 100 ))
-  local rand=$(( RANDOM % (2 * jitter + 1) - jitter ))
+  local rand
+  rand=$(( RANDOM % (2 * jitter + 1) - jitter ))
   backoff=$(( backoff + rand ))
   [ "$backoff" -lt 1 ] && backoff=1
   printf '%s\n' "$backoff"
 }
 
 can_retry() {  # <task-id>
-  local id=$1 last_retry backoff
+  local id last_retry backoff
+  id=$1
   last_retry=$(get_last_retry "$id")
   [ -n "$last_retry" ] || return 0
-  local attempt=$(get_retry_attempt "$id")
+  local attempt
+  attempt=$(get_retry_attempt "$id")
   backoff=$(calc_backoff "$attempt")
   [ $(( $(date +%s) - last_retry )) -ge "$backoff" ]
 }
 
 # Recovery lease for idempotency
 recovery_lease_acquire() {  # <task-id> <lease_name>
-  local id=${1:-} lease=${2:-} lease_file
+  local id lease lease_file
+  id=${1:-}
+  lease=${2:-}
   [ -n "$id" ] && [ -n "$lease" ] || return 1
   lease_file="$STATE/.recovery-lease-$id-$lease"
   (umask 077; set -C; printf '%s\n' "$(date +%s)" > "$lease_file") 2>/dev/null || return 1
@@ -664,21 +765,26 @@ recovery_lease_acquire() {  # <task-id> <lease_name>
 }
 
 recovery_lease_release() {  # <task-id> <lease_name>
-  local id=${1:-} lease=${2:-} lease_file
+  local id lease lease_file
+  id=${1:-}
+  lease=${2:-}
   [ -n "$id" ] && [ -n "$lease" ] || return 0
   lease_file="$STATE/.recovery-lease-$id-$lease"
   rm -f "$lease_file"
 }
 
 recovery_lease_held() {  # <task-id> <lease_name>
-  local id=${1:-} lease=${2:-} lease_file
+  local id lease lease_file
+  id=${1:-}
+  lease=${2:-}
   [ -n "$id" ] && [ -n "$lease" ] || return 1
   lease_file="$STATE/.recovery-lease-$id-$lease"
   [ -f "$lease_file" ]
 }
 
 auto_resume_task() {  # <task-id>
-  local id=$1 interruption_type lifecycle_state external_state detail attempt backoff new_harness note
+  local id interruption_type lifecycle_state external_state detail attempt backoff new_harness note
+  id=$1
 
   lifecycle_state=$(lifecycle_read "$id" current_step)
   external_state=$(classify_task "$id" | cut -d' ' -f1)
@@ -715,7 +821,8 @@ auto_resume_task() {  # <task-id>
           if recovery_lease_acquire "$id" "reassign"; then
             note="Auto-reassign after $AUTO_RESUME_MAX_ATTEMPTS failed resumes ($interruption_type). Switching to $new_harness."
             fm_control_relaunch "$id" "$new_harness" "$note"
-            local relaunch_rc=$?
+            local relaunch_rc
+            relaunch_rc=$?
             if [ "$relaunch_rc" -ne 0 ]; then
               append_evidence "$id" "Auto-reassignment to $new_harness failed: fm_control_relaunch returned $relaunch_rc"
             fi
@@ -759,7 +866,8 @@ auto_resume_task() {  # <task-id>
   case "$interruption_type" in
     process_crash|provider_503|harness_session|ci_failure|review_findings)
       # Determine target state based on interruption type
-      local target_state="RUNNING"
+      local target_state
+      target_state="RUNNING"
       case "$interruption_type" in
         ci_failure) target_state="FIXING" ;;
         review_findings) target_state="FIXING" ;;
@@ -799,14 +907,19 @@ auto_resume_task() {  # <task-id>
 }
 
 select_alternate_harness() {  # <task-id>
-  local id=$1 current_harness
+  local id current_harness
+  id=$1
   current_harness=$(lifecycle_read "$id" owner)
   # Placeholder - would integrate with quota-axi for model selection
   echo ""
 }
 
 fm_control_relaunch() {  # <task-id> [new_harness] <note>
-  local id=$1 new_harness=$2 note=$3 args=()
+  local id new_harness note args
+  id=$1
+  new_harness=$2
+  note=$3
+  args=()
   args=(relaunch --note "$note")
   [ -n "$new_harness" ] && args+=(--harness "$new_harness")
   FM_HOME="$FM_HOME" "$SCRIPT_DIR/fm-control.sh" "$id" "${args[@]}"
@@ -819,17 +932,20 @@ fm_control_relaunch() {  # <task-id> [new_harness] <note>
 get_active_lanes() {
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] || continue
-    local lane=$(grep '^lane=' "$meta" 2>/dev/null | cut -d= -f2-)
+    local lane
+    lane=$(grep '^lane=' "$meta" 2>/dev/null | cut -d= -f2-)
     [ -z "$lane" ] && lane=$(derive_lane "$(basename "$meta" .meta)")
     printf '%s\n' "$lane"
   done | sort -u
 }
 
 get_lane_tasks() {  # <lane>
-  local lane=$1
+  local lane
+  lane=$1
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] || continue
-    local m_lane=$(grep '^lane=' "$meta" 2>/dev/null | cut -d= -f2-)
+    local m_lane
+    m_lane=$(grep '^lane=' "$meta" 2>/dev/null | cut -d= -f2-)
     [ -z "$m_lane" ] && m_lane=$(derive_lane "$(basename "$meta" .meta)")
     if [ "$m_lane" = "$lane" ]; then
       basename "$meta" .meta
@@ -838,12 +954,15 @@ get_lane_tasks() {  # <lane>
 }
 
 is_task_ready() {  # <task-id>
-  local id=$1 deps dep
+  local id deps dep
+  id=$1
   deps=$(lifecycle_read "$id" dependencies)
   [ -z "$deps" ] && return 0
   for dep in ${deps//,/ }; do
-    local dep_lifecycle_state=$(lifecycle_read "$dep" current_step)
-    local dep_external_state=$(classify_task "$dep" | cut -d' ' -f1)
+    local dep_lifecycle_state
+    dep_lifecycle_state=$(lifecycle_read "$dep" current_step)
+    local dep_external_state
+    dep_external_state=$(classify_task "$dep" | cut -d' ' -f1)
     case "$dep_lifecycle_state" in DONE) continue ;; esac
     case "$dep_external_state" in done) continue ;; esac
     return 1
@@ -852,7 +971,8 @@ is_task_ready() {  # <task-id>
 }
 
 failed_dependency() {  # <task-id> -> first failed dependency id
-  local id=$1 deps dep lifecycle_state external_state
+  local id deps dep lifecycle_state external_state
+  id=$1
   deps=$(lifecycle_read "$id" dependencies)
   for dep in ${deps//,/ }; do
     lifecycle_state=$(lifecycle_read "$dep" current_step)
@@ -869,14 +989,19 @@ task_meta_value() {  # <task-id> <field>
 
 # Diagnostic state for lane queue
 lane_diagnostic() {  # <lane> -> prints diagnostic info
-  local lane=$1
+  local lane
+  lane=$1
   echo "Lane: $lane"
   echo "  Tasks in lane:"
   for id in $(get_lane_tasks "$lane"); do
-    local ls=$(lifecycle_read "$id" current_step)
-    local es=$(classify_task "$id" | cut -d' ' -f1)
-    local deps=$(lifecycle_read "$id" dependencies)
-    local blocking=$(lifecycle_read "$id" blocking_reason)
+    local ls
+    ls=$(lifecycle_read "$id" current_step)
+    local es
+    es=$(classify_task "$id" | cut -d' ' -f1)
+    local deps
+    deps=$(lifecycle_read "$id" dependencies)
+    local blocking
+    blocking=$(lifecycle_read "$id" blocking_reason)
     printf '    %s: lifecycle=%s external=%s deps=%s blocking=%s\n' "$id" "$ls" "$es" "$deps" "$blocking"
   done
   echo "  Queue:"
@@ -886,7 +1011,8 @@ lane_diagnostic() {  # <lane> -> prints diagnostic info
 }
 
 advance_lane() {  # <lane>
-  local lane=$1 id state dep project mode yolo branch branch_prefix base_branch kind brief spawn_rc spawn_gen dispatch_key dispatch_before_gen dispatch_lock
+  local lane id state dep project mode yolo branch branch_prefix base_branch kind brief spawn_rc spawn_gen dispatch_key dispatch_before_gen dispatch_lock
+  lane=$1
   local -a spawn_args
 
   # Build queue from tasks in this lane that are READY and not in flight
@@ -919,9 +1045,11 @@ advance_lane() {  # <lane>
 
   # Get next task from queue
   # Check if lane has capacity (no other task in RUNNING/TESTING/REVIEWING/FIXING/RETESTING state)
-  local working_count=0
+  local working_count
+  working_count=0
   for t in $(get_lane_tasks "$lane"); do
-    local ls=$(lifecycle_read "$t" current_step)
+    local ls
+    ls=$(lifecycle_read "$t" current_step)
     if is_lane_occupying_state "$ls"; then
       working_count=$((working_count + 1))
     fi
@@ -1023,12 +1151,15 @@ reconcile_orphans() {
       [ -d "$pool" ] || continue
       for wt in "$pool"/*/; do
         [ -d "$wt" ] || continue
-        local wt_id=$(basename "$wt")
+        local wt_id
+        wt_id=$(basename "$wt")
         # Check if any meta references this worktree
-        local referenced=0
+        local referenced
+        referenced=0
         for meta in "$STATE"/*.meta; do
           [ -f "$meta" ] || continue
-          local m_wt=$(grep '^worktree=' "$meta" 2>/dev/null | cut -d= -f2- | tail -1)
+          local m_wt
+          m_wt=$(grep '^worktree=' "$meta" 2>/dev/null | cut -d= -f2- | tail -1)
           [ "$m_wt" = "$wt" ] && referenced=1 && break
         done
         if [ "$referenced" -eq 0 ]; then
@@ -1041,15 +1172,21 @@ reconcile_orphans() {
 
 # Sync lifecycle state with external state (fm-crew-state.sh)
 sync_lifecycle_with_external() {  # <task-id> <external_state>
-  local id=$1 external_state=$2
-  local lifecycle_state=$(lifecycle_read "$id" current_step)
+  local id external_state
+  id=$1
+  external_state=$2
+  local lifecycle_state
+  lifecycle_state=$(lifecycle_read "$id" current_step)
 
   # If lifecycle is READY but external shows a hold state, update lifecycle
   case "$external_state" in
     parked)
       # Check detail for specific hold reason
-      local detail=$(classify_task "$id" | cut -d' ' -f3-)
-      local hold_state=WAITING_EXTERNAL evidence="Synced with external: parked"
+      local detail
+      detail=$(classify_task "$id" | cut -d' ' -f3-)
+      local hold_state evidence
+      hold_state=WAITING_EXTERNAL
+      evidence="Synced with external: parked"
       case "$detail" in
         *quota*|*exhausted*)
           hold_state=WAITING_QUOTA
@@ -1099,7 +1236,8 @@ sync_lifecycle_with_external() {  # <task-id> <external_state>
 # ============================================================================
 
 cmd_reconcile() {  # [--startup]
-  local startup=0
+  local startup
+  startup=0
   [ "${1:-}" = "--startup" ] && startup=1
 
   echo "=== Reconcile start $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
@@ -1107,7 +1245,8 @@ cmd_reconcile() {  # [--startup]
   # Ensure lifecycle records for all tasks (with migration)
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] || continue
-    local id=$(basename "$meta" .meta)
+    local id
+    id=$(basename "$meta" .meta)
     ensure_lifecycle "$id"
     migrate_lifecycle "$id"
     populate_missing_fields "$id"
@@ -1117,7 +1256,8 @@ cmd_reconcile() {  # [--startup]
   echo "=== Syncing lifecycle states with external states ==="
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] || continue
-    local id=$(basename "$meta" .meta)
+    local id
+    id=$(basename "$meta" .meta)
     local state detail
     state=$(classify_task "$id" | cut -d' ' -f1)
     detail=$(classify_task "$id" | cut -d' ' -f3-)
@@ -1138,13 +1278,15 @@ cmd_reconcile() {  # [--startup]
   # Auto-resume interrupted tasks (P0-1)
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] || continue
-    local id=$(basename "$meta" .meta)
+    local id
+    id=$(basename "$meta" .meta)
     local state detail
     state=$(classify_task "$id" | cut -d' ' -f1)
     detail=$(classify_task "$id" | cut -d' ' -f3-)
 
     # Get updated lifecycle state (already synced above)
-    local lifecycle_state=$(lifecycle_read "$id" current_step)
+    local lifecycle_state
+    lifecycle_state=$(lifecycle_read "$id" current_step)
 
     # Skip if working normally (external state)
     [ "$state" = "working" ] && continue
@@ -1169,8 +1311,10 @@ cmd_reconcile() {  # [--startup]
 cmd_scan_stalled() {
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] || continue
-    local id=$(basename "$meta" .meta)
-    local kind=$(grep '^kind=' "$meta" 2>/dev/null | cut -d= -f2- || echo "ship")
+    local id
+    id=$(basename "$meta" .meta)
+    local kind
+    kind=$(grep '^kind=' "$meta" 2>/dev/null | cut -d= -f2- || echo "ship")
     [ "$kind" = "secondmate" ] && continue
 
     local state detail
@@ -1180,26 +1324,31 @@ cmd_scan_stalled() {
     if is_stalled "$id" "$state" "$detail"; then
       append_evidence "$id" "STALLED detected: all observables exceed threshold. State: $state, Detail: $detail"
       lifecycle_transition "$id" "RECOVERY_HOLD" "STALLED: heartbeat healthy but no progress for ${STALLED_THRESHOLD_SECS}s across all observables"
-      local w=$(grep '^window=' "$meta" 2>/dev/null | cut -d= -f2-)
+      local w
+      w=$(grep '^window=' "$meta" 2>/dev/null | cut -d= -f2-)
       [ -n "$w" ] && fm_wake_append stale "$w" "stale: $id (STALLED: all observables exceed ${STALLED_THRESHOLD_SECS}s threshold)"
     fi
   done
 }
 
 cmd_lane_next() {  # <lane>
-  local lane=${1:-}
+  local lane
+  lane=${1:-}
   [ -n "$lane" ] || die "lane required"
   advance_lane "$lane"
 }
 
 cmd_lane_diagnostic() {  # <lane>
-  local lane=${1:-}
+  local lane
+  lane=${1:-}
   [ -n "$lane" ] || die "lane required"
   lane_diagnostic "$lane"
 }
 
 cmd_task_resume() {  # <task-id> [--reason <text>]
-  local id=$1 reason="Manual resume"
+  local id reason
+  id=$1
+  reason="Manual resume"
   shift
   while [ "$#" -gt 0 ]; do
     case "$1" in --reason) reason=$2; shift 2 ;; *) shift ;; esac
@@ -1210,7 +1359,12 @@ cmd_task_resume() {  # <task-id> [--reason <text>]
 }
 
 cmd_task_reassign() {  # <task-id> --harness <name> [--model <name>] [--effort <level>] --note <text>
-  local id=$1 harness="" model="" effort="" note=""
+  local id harness model effort note
+  id=$1
+  harness=""
+  model=""
+  effort=""
+  note=""
   shift
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -1224,14 +1378,18 @@ cmd_task_reassign() {  # <task-id> --harness <name> [--model <name>] [--effort <
   [ -n "$harness" ] || die "--harness required"
   [ -n "$note" ] || die "--note required"
   lifecycle_transition "$id" "RECOVERY_HOLD" "Reassignment to $harness requested: $note"
-  local args=("--harness" "$harness" "--note" "$note")
+  local args
+  args=("--harness" "$harness" "--note" "$note")
   [ -n "$model" ] && args+=("--model" "$model")
   [ -n "$effort" ] && args+=("--effort" "$effort")
   FM_HOME="$FM_HOME" "$SCRIPT_DIR/fm-control.sh" "$id" relaunch "${args[@]}"
 }
 
 cmd_task_hold() {  # <task-id> --reason <text> [--until <epoch>]
-  local id=$1 reason="" until=""
+  local id reason until
+  id=$1
+  reason=""
+  until=""
   shift
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -1243,7 +1401,9 @@ cmd_task_hold() {  # <task-id> --reason <text> [--until <epoch>]
   [ -n "$reason" ] || die "--reason required"
   lifecycle_transition "$id" "WAITING_EXTERNAL" "Held: $reason"
   [ -n "$until" ] && lifecycle_lock "$id" && {
-    local file=$(lifecycle_path "$id") tmp=$(mktemp "$LIFECYCLE_DIR/.lifecycle.XXXXXX")
+    local file tmp
+    file=$(lifecycle_path "$id")
+    tmp=$(mktemp "$LIFECYCLE_DIR/.lifecycle.XXXXXX")
     while IFS= read -r line; do
       case "$line" in
         hold_until=*) ;;
@@ -1258,7 +1418,9 @@ cmd_task_hold() {  # <task-id> --reason <text> [--until <epoch>]
 }
 
 cmd_task_done() {  # <task-id> --evidence <text>
-  local id=$1 evidence=""
+  local id evidence
+  id=$1
+  evidence=""
   shift
   while [ "$#" -gt 0 ]; do
     case "$1" in --evidence) evidence=$2; shift 2 ;; *) shift ;; esac
@@ -1266,7 +1428,8 @@ cmd_task_done() {  # <task-id> --evidence <text>
   [ -n "$evidence" ] || die "--evidence required"
   # Evidence-based transition to DONE
   lifecycle_transition "$id" "DONE" "DONE: $evidence"
-  local lane=$(lifecycle_read "$id" lane)
+  local lane
+  lane=$(lifecycle_read "$id" lane)
   lane_remove "$lane" "$id"
 }
 
