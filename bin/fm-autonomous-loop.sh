@@ -62,25 +62,6 @@ usage() { sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2; }
 # last_progress, next_action, retry_state, blocking_reason, evidence, resume_checkpoint
 # Additional: state_version, created_epoch, updated_epoch, state_machine_version
 
-LIFECYCLE_FIELDS=(
-  "owner"
-  "lane"
-  "priority"
-  "dependencies"
-  "acceptance_criteria"
-  "current_step"
-  "last_progress"
-  "next_action"
-  "retry_state"
-  "blocking_reason"
-  "evidence"
-  "resume_checkpoint"
-  "state_version"
-  "created_epoch"
-  "updated_epoch"
-  "state_machine_version"
-)
-
 # State machine (fail-closed): only these states are valid
 # READY -> ASSIGNED -> RUNNING -> TESTING -> REVIEWING -> FIXING -> RETESTING
 # -> READY_FOR_MERGE -> MERGE_VERIFIED -> DEPLOYMENT_GATE -> DONE
@@ -129,7 +110,6 @@ lifecycle_lock() {  # <task-id>
   id=$1
   lock_file=$(lifecycle_lock_path "$id")
   fm_lock_acquire_wait "$lock_file" || return 1
-  LIFECYCLE_LOCK_HELD=1
   return 0
 }
 
@@ -138,7 +118,6 @@ lifecycle_unlock() {  # <task-id>
   id=$1
   lock_file=$(lifecycle_lock_path "$id")
   fm_lock_release "$lock_file" || return 1
-  LIFECYCLE_LOCK_HELD=0
   return 0
 }
 
