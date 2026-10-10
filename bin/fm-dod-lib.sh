@@ -40,6 +40,9 @@
 # while preserving the task's exact output contract.
 # fm_ship_rule_one owns the mode-specific first ship safety rule shared by an
 # ordinary ship brief and the durable contract written during scout promotion.
+# fm_pr_target_guard_instruction owns the pull-request target ownership check
+# every PR-creating mode must run; its repair flavor pins the verified
+# repository as the worktree's gh default for a pipeline that opens its own PR.
 
 fm_brief_worker_role() {  # <state-dir> <task-id>
   local state=$1 task_id=$2
@@ -260,6 +263,22 @@ If a check fails, refuse publication, report the failed invariant and observed v
 EOF
 }
 
+# The guard every PR-creating path must run before it can reach an unowned
+# repository: it fails closed unless the repository gh resolves in the worktree
+# is owned by the authenticated user, and it prints the explicit --repo value to
+# use. The repair flavor additionally pins that verified repository as the
+# worktree's gh default, which is what a pipeline that opens its own PR needs;
+# it refuses on an unverified owner exactly like the read-only check.
+fm_pr_target_guard_instruction() {  # <firstmate-root> <check|repair>
+  local root=$1 flavor=$2 args=''
+  [ "$flavor" = repair ] && args=' --repair'
+  cat <<EOF
+Before publishing, run \`"$root/bin/fm-pr-target-guard.sh"$args\` from this worktree and continue only on \`PR_TARGET_GUARD: PASS\`.
+It fails closed when the repository gh resolves here is not owned by the authenticated user, and it prints the repository to use.
+Pass that printed repository explicitly as \`--repo <owner>/<repo>\` on every pull request command you run instead of relying on gh's resolved default.
+EOF
+}
+
 fm_dod_block() {  # <mode> <task-id>
   local mode=$1 id=$2
   case "$mode" in
@@ -271,6 +290,7 @@ This task ships **direct-PR**: you raise the PR yourself, without the no-mistake
 The task is complete only when committed on your branch.
 EOF
       fm_publish_guard_instruction "$FM_ROOT"
+      fm_pr_target_guard_instruction "$FM_ROOT" check
       cat <<EOF
 After the guard passes, push your branch and open a PR with \`gh-axi\`.
 Immediately after opening it, use the returned PR URL to get its number, then read that PR's own \`createdAt\` year with \`gh-axi pr view <number> --json createdAt\` and run \`gh-axi pr edit <number> --title "<createdAt year>-<number>: <original title>"\`, replacing the placeholders with the PR number, the year the PR was opened, and the title you opened it with. Take the year from the PR itself, never from the current date, so a PR opened in December and edited in January keeps its opening year. Apply this only to the new PR; do not rename existing PRs.
@@ -295,6 +315,7 @@ EOF
 Delivery contract: mode=no-mistakes
 EOF
       fm_publish_guard_instruction "$FM_ROOT"
+      fm_pr_target_guard_instruction "$FM_ROOT" repair
       cat <<EOF
 After committing and after the publish guard passes, immediately invoke \`/no-mistakes\` yourself and continue through its gates; do not append \`done\` or stop merely because you committed.
 The task is complete only at the CI-green return point below, after \`/no-mistakes\` reports CI green.
