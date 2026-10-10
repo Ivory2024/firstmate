@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # Read-only collector for the fixed Gate 0 forge and task-state evidence sources.
 # Usage: fm-merge-evidence.sh collect <task-id> <pr-url> <expected-head>
+#
+# The changed-file set must be COMPLETE before risk is classified, because a
+# truncated list hides protected paths and silently downgrades the risk verdict.
+# GitHub reads the paginated pulls/<n>/files endpoint and requires its distinct
+# path count to equal the PR's own changedFiles count; GitLab rejects an
+# overflowing diff and requires changes|length to equal changes_count. Any
+# mismatch, overflow, unreadable count, or empty classification output holds.
 set -u
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -97,10 +104,10 @@ gitlab_required_checks_ok() {
 collect_github() {
   local task_id=$1 expected=$2 pr_json reviews protection rulesets rulesets_json check_runs statuses check_runs_json statuses_json captain
   local author base owner repo number review_ok=false findings run_status path
-  local approval_ok=false scope paths risk
+  local approval_ok=false scope paths risk changed_files files_json observed_files
   local -a changed_paths=()
   owner=$FM_PR_OWNER repo=$FM_PR_REPO number=$FM_PR_NUMBER
-  pr_json=$(gh pr view "$FM_PR_URL" --json author,headRefOid,baseRefName,files 2>/dev/null) \
+  pr_json=$(gh pr view "$FM_PR_URL" --json author,headRefOid,baseRefName,changedFiles 2>/dev/null) \
     || { hold forge-pr-unreadable; return 0; }
   LIVE_HEAD=$(printf '%s' "$pr_json" | jq -er '.headRefOid | select(type == "string")' 2>/dev/null) \
     || { hold forge-head-unreadable; return 0; }
@@ -154,11 +161,25 @@ collect_github() {
   run_status=''
   if command -v no-mistakes >/dev/null 2>&1; then run_status=$(no-mistakes axi status 2>/dev/null) || run_status=''; fi
   test_evidence_ok "$LIVE_HEAD" "$FM_PR_URL" "$run_status" || { hold test-evidence-missing-or-stale; return 0; }
-  paths=$(printf '%s' "$pr_json" | jq -r '.files[]?.path // empty' 2>/dev/null) || { hold changed-files-unreadable; return 0; }
+  changed_files=$(printf '%s' "$pr_json" | jq -er '.changedFiles | select(type == "number")' 2>/dev/null) \
+    || { hold changed-files-count-unreadable; return 0; }
+  # `gh pr view --json files` silently caps at files(first:100), so the complete
+  # set must come from the paginated REST endpoint and be reconciled against the
+  # PR's own changedFiles count; a short list hides protected paths.
+  files_json=$(gh api --paginate --slurp "repos/$owner/$repo/pulls/$number/files?per_page=100" 2>/dev/null) \
+    || { hold changed-files-unreadable; return 0; }
+  paths=$(printf '%s' "$files_json" | jq -r '
+    if type == "array" and all(.[]; type == "array") then
+      [.[][] | .filename | select(type == "string" and length > 0)] | unique | .[]
+    else error("invalid changed-file pages") end' 2>/dev/null) \
+    || { hold changed-files-invalid; return 0; }
   [ -n "$paths" ] || { hold changed-files-unreadable; return 0; }
+  observed_files=$(printf '%s\n' "$paths" | grep -c .)
+  [ "$observed_files" -eq "$changed_files" ] || { hold changed-files-truncated; return 0; }
   scope=$(printf '%s\n' "$paths" | LC_ALL=C sort -u | shasum -a 256 | awk '{print $1}') || { hold scope-unreadable; return 0; }
   while IFS= read -r path; do changed_paths+=("$path"); done <<< "$paths"
   risk=$("$SCRIPT_DIR/fm-merge-policy.sh" classify-risk "${changed_paths[@]}" 2>/dev/null) || { hold risk-unknown; return 0; }
+  [ -n "$risk" ] || { hold risk-unknown; return 0; }
   if [ "$risk" = HIGH ]; then
     [ "$approval_ok" = true ] || { hold high-risk-captain-approval-missing-or-stale; return 0; }
   fi
@@ -168,7 +189,7 @@ collect_github() {
 
 collect_gitlab() {
   local task_id=$1 expected=$2 encoded pr_json pipeline_id pipeline_jobs approvals approval_settings
-  local author review_ok=false findings run_status changes paths scope risk path
+  local author review_ok=false findings run_status changes paths scope risk path changes_count observed_files
   local -a changed_paths=()
   encoded=$(jq -rn --arg value "$FM_PR_PATH" '$value | @uri') || { hold project-encode-failed; return 0; }
   local project_url="https://$FM_PR_HOST/$FM_PR_PATH"
@@ -211,11 +232,27 @@ collect_gitlab() {
   test_evidence_ok "$LIVE_HEAD" "$FM_PR_URL" "$run_status" || { hold test-evidence-missing-or-stale; return 0; }
   changes=$(GITLAB_HOST="$FM_PR_HOST" glab api "projects/$encoded/merge_requests/$FM_PR_NUMBER/changes" 2>/dev/null) \
     || { hold changed-files-unreadable; return 0; }
-  paths=$(printf '%s' "$changes" | jq -r '.changes[]?.new_path // empty' 2>/dev/null) || { hold changed-files-unreadable; return 0; }
+  # GitLab reports its own truncation with `overflow`; when the diff overflows,
+  # `.changes` is a partial list, so any overflow or a length that disagrees with
+  # `changes_count` must hold rather than classify risk on an incomplete set.
+  printf '%s' "$changes" | jq -e 'type == "object" and (.overflow | type == "boolean")' >/dev/null 2>&1 \
+    || { hold changed-files-overflow-unknown; return 0; }
+  [ "$(printf '%s' "$changes" | jq -r '.overflow')" = false ] || { hold changed-files-truncated; return 0; }
+  changes_count=$(printf '%s' "$changes" | jq -er \
+    '.changes_count | if type == "number" then tostring elif (type == "string" and test("^[0-9]+$")) then . else error("invalid changes count") end' 2>/dev/null) \
+    || { hold changed-files-count-unreadable; return 0; }
+  paths=$(printf '%s' "$changes" | jq -r '
+    if (.changes | type) == "array" then
+      [.changes[] | .new_path | select(type == "string" and length > 0)] | unique | .[]
+    else error("invalid changes") end' 2>/dev/null) \
+    || { hold changed-files-invalid; return 0; }
   [ -n "$paths" ] || { hold changed-files-unreadable; return 0; }
+  observed_files=$(printf '%s\n' "$paths" | grep -c .)
+  [ "$observed_files" -eq "$changes_count" ] || { hold changed-files-truncated; return 0; }
   scope=$(printf '%s\n' "$paths" | LC_ALL=C sort -u | shasum -a 256 | awk '{print $1}') || { hold scope-unreadable; return 0; }
   while IFS= read -r path; do changed_paths+=("$path"); done <<< "$paths"
   risk=$("$SCRIPT_DIR/fm-merge-policy.sh" classify-risk "${changed_paths[@]}" 2>/dev/null) || { hold risk-unknown; return 0; }
+  [ -n "$risk" ] || { hold risk-unknown; return 0; }
   if [ "$risk" = HIGH ]; then
     hold high-risk-captain-approval-missing-or-stale
     return 0

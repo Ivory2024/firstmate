@@ -40,7 +40,7 @@ TASK=merge-evidence-test
 PR=https://github.com/example/repo/pull/9
 HEAD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 cat > "$TMP/pr.json" <<JSON
-{"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"main","statusCheckRollup":[{"__typename":"CheckRun","name":"ci","status":"COMPLETED","conclusion":"SUCCESS"}],"files":[{"path":"docs/operations.md"}]}
+{"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"main","changedFiles":1,"statusCheckRollup":[{"__typename":"CheckRun","name":"ci","status":"COMPLETED","conclusion":"SUCCESS"}],"files":[{"path":"docs/operations.md"}]}
 JSON
 cat > "$TMP/reviews.json" <<JSON
 [[{"state":"APPROVED","user":{"login":"reviewer"},"commit_id":"$HEAD","submitted_at":"2026-10-10T00:00:00Z"}, {"state":"APPROVED","user":{"login":"captain"},"commit_id":"$HEAD","submitted_at":"2026-10-10T00:00:00Z"}]]
@@ -62,6 +62,12 @@ case "$1 ${2:-}" in
       *check-runs*) cat "$FM_TEST_CHECK_RUNS_JSON";;
       *statuses*) cat "$FM_TEST_STATUSES_JSON";;
       *pulls/9/reviews*) cat "$FM_TEST_REVIEWS_JSON";;
+      *pulls/9/files*)
+        # The collector now reads the paginated REST endpoint; when a test does
+        # not stage its own page set, derive one from the view fixture so the
+        # two always agree on file count.
+        if [ -n "${FM_TEST_FILES_JSON:-}" ]; then cat "$FM_TEST_FILES_JSON"
+        else jq -c '[.files | map({filename: .path})]' "$FM_TEST_PR_JSON"; fi;;
       *rules/branches/*) [ "${FM_TEST_FAIL_RULES:-}" != yes ] || exit 1; cat "$FM_TEST_RULESETS_JSON";;
       *) exit 2;;
     esac
@@ -101,7 +107,7 @@ evidence_env=(PATH="$TMP/fakebin:$PATH" FM_HOME="$TMP/home" FM_STATE_OVERRIDE="$
 out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "verified producer accepts matching forge evidence" "$(printf '%s' "$out" | jq -r .status)" PASS
 cat > "$TMP/high-pr.json" <<JSON
-{"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"main","files":[{"path":"bin/fm-watch.sh"}]}
+{"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"main","changedFiles":1,"files":[{"path":"bin/fm-watch.sh"}]}
 JSON
 cat > "$TMP/reviews.json" <<JSON
 [[{"state":"APPROVED","user":{"login":"reviewer"},"commit_id":"$HEAD","submitted_at":"2026-10-10T00:00:00Z"},{"state":"APPROVED","user":{"login":"captain"},"commit_id":"$HEAD","submitted_at":"2026-10-10T00:00:00Z"},{"state":"CHANGES_REQUESTED","user":{"login":"captain"},"commit_id":"$HEAD","submitted_at":"2026-10-10T00:01:00Z"}]]
@@ -119,7 +125,7 @@ printf '%s\n' '[[]]' > "$TMP/rulesets.json"
 out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "branch-effective endpoint omits non-applicable rules" "$(printf '%s' "$out" | jq -r .status)" PASS
 cat > "$TMP/release-pr.json" <<JSON
-{"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"release/a","files":[{"path":"docs/operations.md"}]}
+{"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"release/a","changedFiles":1,"files":[{"path":"docs/operations.md"}]}
 JSON
 cat > "$TMP/rulesets.json" <<'JSON'
 [[],[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"security-scan","integration_id":17}]}}]]
@@ -127,7 +133,7 @@ JSON
 out=$(env "${evidence_env[@]}" FM_TEST_PR_JSON="$TMP/release-pr.json" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "branch-effective ? pattern required check is enforced" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
 cat > "$TMP/excluded-pr.json" <<JSON
-{"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"release/nope","files":[{"path":"docs/operations.md"}]}
+{"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"release/nope","changedFiles":1,"files":[{"path":"docs/operations.md"}]}
 JSON
 printf '%s\n' '[[]]' > "$TMP/rulesets.json"
 out=$(env "${evidence_env[@]}" FM_TEST_PR_JSON="$TMP/excluded-pr.json" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
@@ -135,7 +141,7 @@ eq "branch-effective endpoint omits excluded patterns" "$(printf '%s' "$out" | j
 out=$(env "${evidence_env[@]}" FM_TEST_FAIL_RULES=yes "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "unreadable branch rules hold" "$(printf '%s' "$out" | jq -r .reasons[0])" rulesets-unreadable
 cat > "$TMP/pr.json" <<JSON
-{"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"main","files":[{"path":"docs/operations.md"}]}
+{"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"main","changedFiles":1,"files":[{"path":"docs/operations.md"}]}
 JSON
 out=$(env "${evidence_env[@]}" FM_TEST_FAIL_STATUS=yes "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "verified producer holds missing test evidence" "$(printf '%s' "$out" | jq -r .reasons[0])" test-evidence-missing-or-stale
@@ -163,7 +169,7 @@ cat > "$TMP/home/state/$TASK.gate0-approval" <<JSON
 JSON
 chmod 600 "$TMP/home/state/$TASK.gate0-approval"
 cat > "$TMP/high-pr.json" <<JSON
-{"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"main","files":[{"path":"bin/fm-watch.sh"}]}
+{"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"main","changedFiles":1,"files":[{"path":"bin/fm-watch.sh"}]}
 JSON
 out=$(env "${evidence_env[@]}" FM_TEST_PR_JSON="$TMP/high-pr.json" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "producer ignores caller-writable captain approval" "$(printf '%s' "$out" | jq -r .reasons[0])" high-risk-captain-approval-missing-or-stale
@@ -213,7 +219,7 @@ cat > "$TMP/gl-protected.json" <<'JSON'
 [{"name":"main","required_pipeline":{"id":17}}]
 JSON
 cat > "$TMP/gl-changes.json" <<'JSON'
-{"changes":[{"new_path":"docs/operations.md"}]}
+{"overflow":false,"changes_count":"1","changes":[{"new_path":"docs/operations.md"}]}
 JSON
 cat > "$TMP/gl-jobs.json" <<JSON
 [{"status":"success","commit":{"id":"$HEAD"},"pipeline":{"id":17}}]
@@ -274,6 +280,121 @@ cat > "$TMP/gl-jobs-req.json" <<JSON
 JSON
 out=$(env "${gl_env[@]}" FM_TEST_GL_PROTECTED_JSON="$TMP/gl-protected-req.json" FM_TEST_GL_JOBS_JSON="$TMP/gl-jobs-req.json" "$EVIDENCE" collect "$TASK" "$GL_PR" "$HEAD")
 eq "GitLab producer rejects missing required pipeline" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
+
+# --- changed-file completeness is fail-closed (GAP A) ---
+# `gh pr view --json files` requests files(first:100) and silently caps there, so
+# a protected path past the 100th file was invisible and the PR classified
+# LOW/MEDIUM. The collector now reads the paginated pulls/<n>/files endpoint and
+# requires its distinct path count to equal the PR's own changedFiles count.
+# GitLab has the same class: an overflowing or under-reported `.changes` list
+# must hold instead of classifying risk on a partial set.
+cat > "$TMP/reviews.json" <<JSON
+[[{"state":"APPROVED","user":{"login":"reviewer"},"commit_id":"$HEAD","submitted_at":"2026-10-10T00:00:00Z"}]]
+JSON
+# The view fixture carries exactly what `gh pr view --json files` returns for
+# this PR: the first 100 files only. The paginated endpoint is the only source
+# that can answer with the real 101st entry.
+jq -cn --arg head "$HEAD" '{author:{login:"author"},headRefOid:$head,baseRefName:"main",changedFiles:101,
+  files:[range(0;100) | {path:("docs/generated/f\(.).md")}]}' > "$TMP/cap-pr.json"
+jq -c '[[.files[] | {filename:.path}]]' "$TMP/cap-pr.json" > "$TMP/cap-truncated.json"
+jq -c '[[.files[] | {filename:.path}] + [{filename:"bin/fm-watch.sh"}]]' "$TMP/cap-pr.json" > "$TMP/cap-complete.json"
+printf '%s\n' '[{"message":"Not Found"}]' > "$TMP/cap-garbage.json"
+printf '%s\n' '[[]]' > "$TMP/cap-empty.json"
+jq -cn --arg head "$HEAD" '{author:{login:"author"},headRefOid:$head,baseRefName:"main",files:[{path:"docs/operations.md"}]}' > "$TMP/nocount-pr.json"
+gap_gh=(FM_TEST_PR_JSON="$TMP/cap-pr.json")
+out=$(env "${evidence_env[@]}" "${gap_gh[@]}" FM_TEST_FILES_JSON="$TMP/cap-truncated.json" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "GitHub truncated changed-file list holds" "$(printf '%s' "$out" | jq -r .reasons[0])" changed-files-truncated
+out=$(env "${evidence_env[@]}" "${gap_gh[@]}" FM_TEST_FILES_JSON="$TMP/cap-complete.json" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "GitHub protected path past file 100 is classified" "$(printf '%s' "$out" | jq -r .reasons[0])" high-risk-captain-approval-missing-or-stale
+out=$(env "${evidence_env[@]}" "${gap_gh[@]}" FM_TEST_FILES_JSON="$TMP/cap-garbage.json" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "GitHub unreadable changed-file pages hold" "$(printf '%s' "$out" | jq -r .reasons[0])" changed-files-invalid
+out=$(env "${evidence_env[@]}" "${gap_gh[@]}" FM_TEST_FILES_JSON="$TMP/cap-empty.json" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "GitHub empty changed-file pages hold" "$(printf '%s' "$out" | jq -r .reasons[0])" changed-files-unreadable
+out=$(env "${evidence_env[@]}" FM_TEST_PR_JSON="$TMP/nocount-pr.json" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "GitHub missing changed-file count holds" "$(printf '%s' "$out" | jq -r .reasons[0])" changed-files-count-unreadable
+
+cat > "$TMP/gl-changes-ok.json" <<'JSON'
+{"overflow":false,"changes_count":"1","changes":[{"new_path":"docs/operations.md"}]}
+JSON
+cat > "$TMP/gl-changes-overflow.json" <<'JSON'
+{"overflow":true,"changes_count":"120","changes":[{"new_path":"docs/operations.md"}]}
+JSON
+cat > "$TMP/gl-changes-mismatch.json" <<'JSON'
+{"overflow":false,"changes_count":"3","changes":[{"new_path":"docs/operations.md"},{"new_path":"docs/other.md"}]}
+JSON
+cat > "$TMP/gl-changes-nooverflow.json" <<'JSON'
+{"changes":[{"new_path":"docs/operations.md"}]}
+JSON
+cat > "$TMP/gl-changes-countgarbage.json" <<'JSON'
+{"overflow":false,"changes_count":"many","changes":[{"new_path":"docs/operations.md"}]}
+JSON
+cat > "$TMP/gl-jobs-good.json" <<JSON
+[{"status":"success","commit":{"id":"$HEAD"},"pipeline":{"id":17}}]
+JSON
+gl_gap=(FM_TEST_GL_PROTECTED_JSON="$TMP/gl-protected.json" FM_TEST_GL_JOBS_JSON="$TMP/gl-jobs-good.json")
+out=$(env "${gl_env[@]}" "${gl_gap[@]}" FM_TEST_GL_CHANGES_JSON="$TMP/gl-changes-ok.json" "$EVIDENCE" collect "$TASK" "$GL_PR" "$HEAD")
+eq "GitLab complete diff passes" "$(printf '%s' "$out" | jq -r '.status + ":" + (.reasons | join(","))')" "PASS:"
+out=$(env "${gl_env[@]}" "${gl_gap[@]}" FM_TEST_GL_CHANGES_JSON="$TMP/gl-changes-overflow.json" "$EVIDENCE" collect "$TASK" "$GL_PR" "$HEAD")
+eq "GitLab overflowing diff holds" "$(printf '%s' "$out" | jq -r .reasons[0])" changed-files-truncated
+out=$(env "${gl_env[@]}" "${gl_gap[@]}" FM_TEST_GL_CHANGES_JSON="$TMP/gl-changes-mismatch.json" "$EVIDENCE" collect "$TASK" "$GL_PR" "$HEAD")
+eq "GitLab changes/changes_count mismatch holds" "$(printf '%s' "$out" | jq -r .reasons[0])" changed-files-truncated
+out=$(env "${gl_env[@]}" "${gl_gap[@]}" FM_TEST_GL_CHANGES_JSON="$TMP/gl-changes-nooverflow.json" "$EVIDENCE" collect "$TASK" "$GL_PR" "$HEAD")
+eq "GitLab missing overflow flag holds" "$(printf '%s' "$out" | jq -r .reasons[0])" changed-files-overflow-unknown
+out=$(env "${gl_env[@]}" "${gl_gap[@]}" FM_TEST_GL_CHANGES_JSON="$TMP/gl-changes-countgarbage.json" "$EVIDENCE" collect "$TASK" "$GL_PR" "$HEAD")
+eq "GitLab unreadable changes_count holds" "$(printf '%s' "$out" | jq -r .reasons[0])" changed-files-count-unreadable
+
+# Empty risk classification output (a policy helper that exits 0 silently) must
+# hold rather than pass through an empty risk value.
+make_evidence_dir() { # <dir> <evidence-script-src> <policy: real|empty>
+  local dir=$1 src=$2 policy=$3 f
+  mkdir -p "$dir"
+  # Sibling scripts and libraries are symlinked so a copied collector resolves
+  # whatever it sources; the two files it must not inherit are skipped.
+  for f in "$ROOT"/bin/*; do
+    [ -f "$f" ] || continue
+    case "${f##*/}" in fm-merge-evidence.sh|fm-merge-policy.sh) continue;; esac
+    ln -sf "$f" "$dir/"
+  done
+  cp "$src" "$dir/fm-merge-evidence.sh"
+  if [ "$policy" = empty ]; then
+    printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$dir/fm-merge-policy.sh"
+  else
+    ln -sf "$ROOT/bin/fm-merge-policy.sh" "$dir/fm-merge-policy.sh"
+  fi
+  chmod +x "$dir/fm-merge-evidence.sh" "$dir/fm-merge-policy.sh"
+}
+make_evidence_dir "$TMP/empty-bin" "$EVIDENCE" empty
+out=$(env "${evidence_env[@]}" "$TMP/empty-bin/fm-merge-evidence.sh" collect "$TASK" "$PR" "$HEAD")
+eq "empty risk classification output holds" "$(printf '%s' "$out" | jq -r .reasons[0])" risk-unknown
+
+# --- bite-check: the same fixtures must NOT hold on the pre-fix logic ---
+# The pre-fix collector had none of the completeness guards, so neutralizing
+# exactly those guards reproduces its behaviour. A fixture that still passes
+# here proves the new assertion, not the fixture, is what produces the HOLD.
+PREFIX_SRC="$TMP/fm-merge-evidence-prefix.sh"
+# shellcheck disable=SC2016 # sed must receive "$risk" literally, not expanded.
+sed \
+  -e 's/{ hold changed-files-truncated; return 0; }/{ :; }/g' \
+  -e 's/{ hold changed-files-count-unreadable; return 0; }/{ :; }/g' \
+  -e 's/{ hold changed-files-overflow-unknown; return 0; }/{ :; }/g' \
+  -e 's/{ hold changed-files-invalid; return 0; }/{ :; }/g' \
+  -e 's/\[ -n "\$risk" \] || { hold risk-unknown; return 0; }/true/' \
+  "$EVIDENCE" > "$PREFIX_SRC"
+eq "bite-check prefix neutralizes every new file-list guard" "$(grep -c '{ :; }' "$PREFIX_SRC")" 8
+eq "bite-check prefix neutralizes the empty-risk guard" "$(grep -c '^  true$' "$PREFIX_SRC")" 2
+make_evidence_dir "$TMP/prefix-bin" "$PREFIX_SRC" real
+make_evidence_dir "$TMP/prefix-empty-bin" "$PREFIX_SRC" empty
+PREFIX="$TMP/prefix-bin/fm-merge-evidence.sh"
+out=$(env "${evidence_env[@]}" "${gap_gh[@]}" FM_TEST_FILES_JSON="$TMP/cap-truncated.json" "$PREFIX" collect "$TASK" "$PR" "$HEAD")
+eq "bite: pre-fix logic accepts the truncated GitHub list" "$(printf '%s' "$out" | jq -r .status)" PASS
+out=$(env "${evidence_env[@]}" FM_TEST_PR_JSON="$TMP/nocount-pr.json" "$PREFIX" collect "$TASK" "$PR" "$HEAD" 2>/dev/null)
+eq "bite: pre-fix logic accepts a missing GitHub file count" "$(printf '%s' "$out" | jq -r .status)" PASS
+out=$(env "${gl_env[@]}" "${gl_gap[@]}" FM_TEST_GL_CHANGES_JSON="$TMP/gl-changes-overflow.json" "$PREFIX" collect "$TASK" "$GL_PR" "$HEAD")
+eq "bite: pre-fix logic accepts an overflowing GitLab diff" "$(printf '%s' "$out" | jq -r .status)" PASS
+out=$(env "${gl_env[@]}" "${gl_gap[@]}" FM_TEST_GL_CHANGES_JSON="$TMP/gl-changes-mismatch.json" "$PREFIX" collect "$TASK" "$GL_PR" "$HEAD")
+eq "bite: pre-fix logic accepts a mismatched GitLab diff" "$(printf '%s' "$out" | jq -r .status)" PASS
+out=$(env "${evidence_env[@]}" "$TMP/prefix-empty-bin/fm-merge-evidence.sh" collect "$TASK" "$PR" "$HEAD")
+eq "bite: pre-fix logic accepts empty risk output" "$(printf '%s' "$out" | jq -r .status)" PASS
 
 echo "# fm-merge-policy.test.sh PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
