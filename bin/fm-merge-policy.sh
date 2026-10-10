@@ -19,12 +19,11 @@ classify_risk() {
   local f risk=LOW
   [ "$#" -gt 0 ] || { echo HIGH; return 0; }
   for f in "$@"; do
-    # docs/tests stay LOW regardless of location
+    if printf '%s' "$f" | grep -qE "$HIGH_PATTERNS"; then echo HIGH; return 0; fi
     case "$f" in
       *.md|*.test.sh|*_test.py|test_*.py) continue;;
     esac
     case "$f" in */docs/*|*/tests/*) continue;; esac
-    if printf '%s' "$f" | grep -qE "$HIGH_PATTERNS"; then echo HIGH; return 0; fi
     if printf '%s' "$f" | grep -qE "$MED_PATTERNS"; then [ "$risk" = LOW ] && risk=MEDIUM; continue; fi
     echo HIGH; return 0   # unknown path -> HIGH (fail-closed)
   done

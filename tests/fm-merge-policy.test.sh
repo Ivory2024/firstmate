@@ -17,6 +17,8 @@ eq "PR merge -> HIGH"       "$($P classify-risk bin/fm-pr-merge.sh)" HIGH
 eq "local merge -> HIGH"    "$($P classify-risk bin/fm-merge-local.sh)" HIGH
 eq "workflow -> HIGH"       "$($P classify-risk .github/workflows/ci.yml)" HIGH
 eq "credential -> HIGH"     "$($P classify-risk config/credentials.json)" HIGH
+eq "credential markdown -> HIGH" "$($P classify-risk config/credentials.md)" HIGH
+eq "secret markdown -> HIGH" "$($P classify-risk docs/secrets.md)" HIGH
 eq "unknown path -> HIGH"   "$($P classify-risk weird/thing.xyz)" HIGH
 eq "missing path detection -> HIGH" "$($P classify-risk)" HIGH
 eq "mixed docs+bin -> HIGH" "$($P classify-risk docs/a.md bin/fm-spawn.sh)" HIGH
