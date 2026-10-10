@@ -14,7 +14,6 @@
 #   fm-autonomous-loop.sh task-hold <task-id> --reason <text> [--until <epoch>]
 #   fm-autonomous-loop.sh task-done <task-id> --evidence <text>
 #   fm-autonomous-loop.sh scan-stalled
-#   fm-autonomous-loop.sh test-inject <scenario>
 #
 # All operations are read-only on durable state except where noted.
 # Lifecycle actions (resume/reassign/hold/done) delegate to fm-control.sh.
@@ -40,6 +39,8 @@ LIFECYCLE_LOCK_DIR="$STATE/task-lifecycle.locks"
 . "$SCRIPT_DIR/fm-timeout-lib.sh"
 # shellcheck source=bin/fm-lock-lib.sh
 . "$SCRIPT_DIR/fm-lock-lib.sh"
+# shellcheck source=bin/fm-dod-lib.sh
+. "$SCRIPT_DIR/fm-dod-lib.sh"
 
 # Configuration
 AUTO_RESUME_MAX_ATTEMPTS=${FM_AUTO_RESUME_MAX_ATTEMPTS:-3}
@@ -839,12 +840,27 @@ is_task_ready() {  # <task-id>
   for dep in ${deps//,/ }; do
     local dep_lifecycle_state=$(lifecycle_read "$dep" current_step)
     local dep_external_state=$(classify_task "$dep" | cut -d' ' -f1)
-    # Check both lifecycle state and external state
-    case "$dep_lifecycle_state" in DONE|FAILED) continue ;; esac
-    case "$dep_external_state" in done|failed) continue ;; esac
+    case "$dep_lifecycle_state" in DONE) continue ;; esac
+    case "$dep_external_state" in done) continue ;; esac
     return 1
   done
   return 0
+}
+
+failed_dependency() {  # <task-id> -> first failed dependency id
+  local id=$1 deps dep lifecycle_state external_state
+  deps=$(lifecycle_read "$id" dependencies)
+  for dep in ${deps//,/ }; do
+    lifecycle_state=$(lifecycle_read "$dep" current_step)
+    case "$lifecycle_state" in FAILED) printf '%s\n' "$dep"; return 0 ;; esac
+    external_state=$(classify_task "$dep" | cut -d' ' -f1)
+    case "$external_state" in failed) printf '%s\n' "$dep"; return 0 ;; esac
+  done
+  return 1
+}
+
+task_meta_value() {  # <task-id> <field>
+  sed -n "s/^$2=//p" "$STATE/$1.meta" | head -1
 }
 
 # Diagnostic state for lane queue
@@ -866,53 +882,118 @@ lane_diagnostic() {  # <lane> -> prints diagnostic info
 }
 
 advance_lane() {  # <lane>
-  local lane=$1 id state
+  local lane=$1 id state dep project mode yolo branch branch_prefix base_branch kind brief spawn_rc spawn_gen dispatch_key dispatch_before_gen dispatch_lock
+  local -a spawn_args
 
   # Build queue from tasks in this lane that are READY and not in flight
   for id in $(get_lane_tasks "$lane"); do
     state=$(lifecycle_read "$id" current_step)
     # Only enqueue tasks in READY state (not already assigned/running)
     [ "$state" = "READY" ] || continue
+    dispatch_key=$(lifecycle_read "$id" dispatch_key)
+    spawn_gen=$(task_meta_value "$id" spawn_gen)
+    case "$dispatch_key" in
+      "lane-dispatch:$id:"*)
+        dispatch_before_gen=${dispatch_key##*:}
+        if [ -n "$spawn_gen" ] && [ "$spawn_gen" != "$dispatch_before_gen" ]; then
+          lifecycle_transition "$id" "ASSIGNED" "Lane $lane worker spawn was recorded."
+          lifecycle_write "$id" next_action worker_started
+          continue
+        fi
+        ;;
+    esac
+    if dep=$(failed_dependency "$id"); then
+      lifecycle_transition "$id" "WAITING_EXTERNAL" "Dependency $dep failed; task held."
+      lifecycle_write "$id" blocking_reason "failed_dependency:$dep"
+      lane_remove "$lane" "$id"
+      continue
+    fi
     if is_task_ready "$id"; then
       lane_enqueue "$lane" "$id"
     fi
   done
 
   # Get next task from queue
-  id=$(lane_peek "$lane")
-  [ -n "$id" ] || return 0
-
   # Check if lane has capacity (no other task in RUNNING/TESTING/REVIEWING/FIXING/RETESTING state)
   local working_count=0
   for t in $(get_lane_tasks "$lane"); do
     local ls=$(lifecycle_read "$t" current_step)
-    case "$ls" in RUNNING|TESTING|REVIEWING|FIXING|RETESTING|READY_FOR_MERGE|MERGE_VERIFIED|DEPLOYMENT_GATE)
+    case "$ls" in ASSIGNED|RUNNING|TESTING|REVIEWING|FIXING|RETESTING|READY_FOR_MERGE|MERGE_VERIFIED|DEPLOYMENT_GATE)
       working_count=$((working_count + 1))
       ;;
     esac
   done
 
-  if [ "$working_count" -eq 0 ]; then
-    # Lane is free, dispatch next task
-    lane_dequeue "$lane"
-    lifecycle_transition "$id" "ASSIGNED" "Lane $lane free, dispatching next READY task."
-    # Update next_action for dispatcher
-    lifecycle_lock "$id"
-    local file=$(lifecycle_path "$id") tmp
-    tmp=$(mktemp "$LIFECYCLE_DIR/.lifecycle.XXXXXX")
-    while IFS= read -r line; do
-      case "$line" in
-        next_action=*) printf 'next_action=spawning_worker\n' >> "$tmp" ;;
-        updated_epoch=*) printf 'updated_epoch=%s\n' "$(date +%s)" >> "$tmp" ;;
-        state_version=*) printf 'state_version=%s\n' "$((${line#state_version=} + 1))" >> "$tmp" ;;
-        *) printf '%s\n' "$line" >> "$tmp" ;;
-      esac
-    done < "$file"
-    chmod 600 "$tmp"
-    mv -f "$tmp" "$file"
-    lifecycle_unlock "$id"
-    return 0
-  fi
+  [ "$working_count" -eq 0 ] || return 0
+
+  while :; do
+    id=$(lane_peek "$lane")
+    [ -n "$id" ] || return 0
+    state=$(lifecycle_read "$id" current_step)
+    if [ "$state" != READY ]; then
+      lane_dequeue "$lane" >/dev/null || true
+      continue
+    fi
+    if dep=$(failed_dependency "$id"); then
+      lane_dequeue "$lane" >/dev/null || true
+      lifecycle_transition "$id" "WAITING_EXTERNAL" "Dependency $dep failed; task held."
+      lifecycle_write "$id" blocking_reason "failed_dependency:$dep"
+      continue
+    fi
+    project=$(task_meta_value "$id" project)
+    mode=$(task_meta_value "$id" mode)
+    yolo=$(task_meta_value "$id" yolo)
+    kind=$(task_meta_value "$id" kind)
+    branch=$(task_meta_value "$id" branch)
+    branch_prefix=$(task_meta_value "$id" branch_prefix)
+    base_branch=$(task_meta_value "$id" base_branch)
+    brief="$DATA/$id/brief.md"
+    state=
+    [ -n "$project" ] && [ -d "$project" ] || state=project
+    [ "$kind" = ship ] || state=${state:+$state,}kind
+    if [ ! -f "$brief" ] || ! fm_brief_task_content_valid "$brief" || fm_brief_task_placeholders_present "$brief"; then
+      state=${state:+$state,}brief
+    fi
+    case "$mode" in no-mistakes|direct-PR|local-only) ;; *) state=${state:+$state,}mode ;; esac
+    case "$yolo" in on|off) ;; *) state=${state:+$state,}yolo ;; esac
+    if [ -z "$branch_prefix" ]; then
+      case "$branch" in *"$id") branch_prefix=${branch%"$id"} ;; esac
+    fi
+    [ -n "$branch_prefix" ] || state=${state:+$state,}branch_prefix
+    if [ -n "$state" ]; then
+      lane_dequeue "$lane" >/dev/null || true
+      lifecycle_transition "$id" "WAITING_EXTERNAL" "Missing dispatch data: $state"
+      lifecycle_write "$id" blocking_reason "missing_brief:$state"
+      continue
+    fi
+    dispatch_lock="$LIFECYCLE_LOCK_DIR/$id.lane-dispatch.lock"
+    if ! fm_lock_try_acquire "$dispatch_lock"; then
+      return 0
+    fi
+    state=$(lifecycle_read "$id" current_step)
+    if [ "$state" != READY ]; then
+      fm_lock_release "$dispatch_lock"
+      lane_dequeue "$lane" >/dev/null || true
+      continue
+    fi
+    spawn_gen=$(task_meta_value "$id" spawn_gen)
+    lifecycle_write "$id" dispatch_key "lane-dispatch:$id:$spawn_gen"
+    spawn_args=("$id" "$project" --mode "$mode" --yolo "$yolo" --branch-prefix "$branch_prefix")
+    [ -z "$base_branch" ] || spawn_args+=(--base-branch "$base_branch")
+    if FM_HOME="$FM_HOME" "$SCRIPT_DIR/fm-spawn.sh" "${spawn_args[@]}" >/dev/null 2>&1; then
+      lifecycle_transition "$id" "ASSIGNED" "Lane $lane free; worker spawned."
+      lifecycle_write "$id" next_action worker_started
+      lane_dequeue "$lane" >/dev/null || true
+      fm_lock_release "$dispatch_lock"
+      return 0
+    else
+      spawn_rc=$?
+      lifecycle_transition "$id" "RECOVERY_HOLD" "Lane dispatch failed with fm-spawn status $spawn_rc."
+      lifecycle_write "$id" blocking_reason "spawn_failed:$spawn_rc"
+      lane_dequeue "$lane" >/dev/null || true
+      fm_lock_release "$dispatch_lock"
+    fi
+  done
 }
 
 # ============================================================================
