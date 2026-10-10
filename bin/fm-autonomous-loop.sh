@@ -549,9 +549,15 @@ is_external_legitimate_hold() {  # <external_state> <detail>
 }
 
 # Check if task is stalled (P1-5: separate observables + hysteresis + per-step waits)
-is_stalled() {  # <task-id> <state> <detail>
-  local id=$1 state=$2 detail=$3
-  [ "$state" = "RUNNING" ] || [ "$state" = "TESTING" ] || [ "$state" = "REVIEWING" ] || [ "$state" = "FIXING" ] || [ "$state" = "RETESTING" ] || return 1
+is_stalled() {  # <task-id> <external_state> <detail>
+  local id=$1 external_state=$2 detail=$3
+  local lifecycle_state
+  lifecycle_state=$(lifecycle_read "$id" current_step)
+  # Check against lifecycle states (uppercase), not external states (lowercase)
+  case "$lifecycle_state" in
+    RUNNING|TESTING|REVIEWING|FIXING|RETESTING) ;;
+    *) return 1 ;;
+  esac
 
   local meta="$STATE/$id.meta" status="$STATE/$id.status" turn_ended="$STATE/$id.turn-ended" progress="$STATE/$id.progress"
   local now progress_age worktree_age heartbeat_age step_age
@@ -587,6 +593,7 @@ is_stalled() {  # <task-id> <state> <detail>
     step_age=$(( now - $(stat -f %m "$progress" 2>/dev/null || echo "$now") ))
   else
     step_age=$heartbeat_age
+  fi
   fi
 
   # Hysteresis: require ALL observables to exceed threshold
@@ -974,8 +981,9 @@ sync_lifecycle_with_external() {  # <task-id> <external_state>
       esac
       ;;
     failed)
-      [ "$lifecycle_state" = "READY" ] || [ "$lifecycle_state" = "ASSIGNED" ] || [ "$lifecycle_state" = "RUNNING" ] \
-        && lifecycle_transition "$id" "FAILED" "Synced with external: task failed"
+      case "$lifecycle_state" in
+        READY|ASSIGNED|RUNNING) lifecycle_transition "$id" "FAILED" "Synced with external: task failed" ;;
+      esac
       ;;
     done)
       # If external says done, transition to DONE from appropriate states
@@ -989,10 +997,10 @@ sync_lifecycle_with_external() {  # <task-id> <external_state>
       ;;
     working|paused)
       # If external says working/paused but lifecycle is READY, transition to ASSIGNED
-      # If lifecycle is ASSIGNED, transition to RUNNING
+      # If lifecycle is ASSIGNED or RECOVERY_HOLD, transition to RUNNING
       case "$lifecycle_state" in
         READY) lifecycle_transition "$id" "ASSIGNED" "Synced with external: task actively $external_state" ;;
-        ASSIGNED) lifecycle_transition "$id" "RUNNING" "Synced with external: task actively $external_state" ;;
+        ASSIGNED|RECOVERY_HOLD) lifecycle_transition "$id" "RUNNING" "Synced with external: task actively $external_state" ;;
       esac
       ;;
   esac
