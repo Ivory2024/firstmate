@@ -382,6 +382,7 @@ eq "bite-check uses the real prior revision, not a source edit" "$(grep -c 'chan
 make_evidence_dir "$TMP/prefix-bin" "$PREFIX_SRC" real
 make_evidence_dir "$TMP/prefix-empty-bin" "$PREFIX_SRC" empty
 PREFIX="$TMP/prefix-bin/fm-merge-evidence.sh"
+out=$(env "${gl_env[@]}" "${gl_gap[@]}" FM_TEST_GL_CHANGES_JSON="$TMP/gl-changes-overflow.json" "$PREFIX" collect "$TASK" "$GL_PR" "$HEAD")
 eq "bite: pre-fix logic accepts an overflowing GitLab diff" "$(printf '%s' "$out" | jq -r .status)" PASS
 out=$(env "${gl_env[@]}" "${gl_gap[@]}" FM_TEST_GL_CHANGES_JSON="$TMP/gl-changes-mismatch.json" "$PREFIX" collect "$TASK" "$GL_PR" "$HEAD")
 eq "bite: pre-fix logic accepts a mismatched GitLab diff" "$(printf '%s' "$out" | jq -r .status)" PASS
