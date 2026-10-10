@@ -16,6 +16,17 @@ BEARINGS="$ROOT/bin/fm-bearings-snapshot.sh"
 TMP_ROOT=$(fm_test_tmproot fm-captain-hold)
 TASKS_AXI_BIN=$(command -v tasks-axi || true)
 
+# fm-merge-evidence.sh's own forge-evidence logic is covered by
+# tests/fm-merge-policy.test.sh; this file's fm-pr-merge.sh calls exercise
+# captain-hold/teardown behavior, so stub the evidence collector to an
+# unconditional PASS at the requested head.
+DEFAULT_EVIDENCE_STUB="$TMP_ROOT/default-evidence-pass.sh"
+cat > "$DEFAULT_EVIDENCE_STUB" <<'SH'
+#!/usr/bin/env bash
+printf '{"status":"PASS","head_sha":"%s","risk":"LOW","scope":"test","reasons":[]}\n' "${4:-}"
+SH
+chmod +x "$DEFAULT_EVIDENCE_STUB"
+
 command -v jq >/dev/null 2>&1 || { echo "skip: jq not found"; exit 0; }
 command -v tasks-axi >/dev/null 2>&1 || { echo "skip: tasks-axi not found"; exit 0; }
 
@@ -135,7 +146,9 @@ run_pr_merge() {  # <home> <id> <url>
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_CONFIG_OVERRIDE="$home/config" FM_TEST_GH_LOG="$home/gh.log" \
-    FM_TEST_GH_AXI_LOG="$home/gh-axi.log" "$ROOT/bin/fm-pr-merge.sh" "$@"
+    FM_TEST_GH_AXI_LOG="$home/gh-axi.log" \
+    FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE="${FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE:-$DEFAULT_EVIDENCE_STUB}" \
+    "$ROOT/bin/fm-pr-merge.sh" "$@"
 }
 
 wait_for_test_file() {  # <path> <pid>

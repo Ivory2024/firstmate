@@ -18,6 +18,18 @@ TEARDOWN="$ROOT/bin/fm-teardown.sh"
 REGISTER="$ROOT/bin/fm-check-register.sh"
 TMP_ROOT=$(fm_test_tmproot fm-pr-check-security)
 BASE_PATH=${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}
+
+# fm-merge-evidence.sh's own forge-evidence logic is covered by
+# tests/fm-merge-policy.test.sh; this file's PR_MERGE calls exercise poll and
+# authority behavior, so stub the evidence collector to an unconditional PASS
+# at the requested head.
+DEFAULT_EVIDENCE_STUB="$TMP_ROOT/default-evidence-pass.sh"
+cat > "$DEFAULT_EVIDENCE_STUB" <<'SH'
+#!/usr/bin/env bash
+printf '{"status":"PASS","head_sha":"%s","risk":"LOW","scope":"test","reasons":[]}\n' "${4:-}"
+SH
+chmod +x "$DEFAULT_EVIDENCE_STUB"
+export FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE="$DEFAULT_EVIDENCE_STUB"
 REAL_CP=$(command -v cp)
 REAL_MV=$(command -v mv)
 REAL_STAT=$(command -v stat)
