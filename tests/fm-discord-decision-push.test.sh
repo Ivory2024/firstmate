@@ -63,17 +63,17 @@ discord_path_links() {
     stat -c %h "$1"
   fi
 }
-test_no_token_is_inert() {
+test_no_token_fails_closed() {
   local home out rc
   home="$TMP_ROOT/no-token"
   mkdir -p "$home"
   out=$(PATH="$BASE_PATH" FM_HOME="$home" FM_DISCORD_BOT_TOKEN='' \
-    "$ROOT/bin/fm-discord-notify.sh" captain-hold task-a captain-hold-task-a-1 "Needs a decision" "Continue|Pause" "Pause")
+    "$ROOT/bin/fm-discord-notify.sh" captain-hold task-a captain-hold-task-a-1 "Needs a decision" "Continue|Pause" "Pause" 2>&1)
   rc=$?
-  expect_code 0 "$rc" "missing token is inert"
-  [ -z "$out" ] || fail "missing token printed output: $out"
+  expect_code 1 "$rc" "missing token fails closed"
+  assert_equals "fm-discord-notify: missing Discord bot token" "$out" "missing token diagnostic names the gap"
   assert_absent "$home/state/x-context" "missing token creates no notification record"
-  pass "proactive Discord notification is inert without the self-hosted token"
+  pass "proactive Discord notification fails closed without the self-hosted token"
 }
 test_quiet_report_posts_plain_snapshot() {
   local home log body long_report
@@ -872,14 +872,16 @@ test_failed_done_delivery_retries() {
   assert_equals "failed" \
     "$(jq -r .state "$(find "$home/state/x-context" -name 'discord-completion-*.json' -print -quit)")" \
     "a failed completion stays retryable in the outbox"
-  # Re-reading the same status line must not double-post; the retry sweep is the
-  # single owner of redelivery, exactly as it is for a decision.
-  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
+  # Re-reading the same status line must not double-post, and must not report
+  # success either: a failed record is not a sent message, so the retry sweep
+  # stays the single owner of redelivery, exactly as it is for a decision.
+  if FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
     PATH="$home/fake-bin:$BASE_PATH" FM_CREW_STATE_BIN="$home/fake-bin/fm-crew-state.sh" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
     FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
     "$ROOT/bin/fm-discord-notify-status.sh" task-a \
-      'done: wired up the new endpoint' >/dev/null \
-    || fail "re-reading a failed completion reported failure"
+      'done: wired up the new endpoint' >/dev/null 2>&1; then
+    fail "re-reading a failed completion reported success"
+  fi
   assert_equals "1" "$(wc -l < "$log" | tr -d '[:space:]')" "re-reading a failed completion does not double-post"
   FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
     PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
@@ -893,24 +895,26 @@ test_failed_done_delivery_retries() {
   pass "a failed completion delivery is retried by the sweep, not by a re-read"
 }
 
-test_unconfigured_done_status_is_silent_and_retryable() {
+test_unconfigured_done_status_fails_closed_and_retryable() {
   local home log
   home="$TMP_ROOT/done-unconfigured"
   mkdir -p "$home/state/x-context"
   chmod 700 "$home/state" "$home/state/x-context"
   make_fake_node "$home"
   log="$home/posts.jsonl"
-  PATH="$BASE_PATH" FM_CREW_STATE_BIN="$home/fake-bin/fm-crew-state.sh" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+  if PATH="$BASE_PATH" FM_CREW_STATE_BIN="$home/fake-bin/fm-crew-state.sh" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
     FM_DISCORD_BOT_TOKEN='' "$ROOT/bin/fm-discord-notify-status.sh" task-a \
-    'done: wired up the new endpoint' >/dev/null \
-    || fail "unconfigured completion returned failure"
+    'done: wired up the new endpoint' >/dev/null 2>&1; then
+    fail "unconfigured completion reported success"
+  fi
   [ -z "$(find "$home/state/x-context" -name 'discord-completion-*.json' -print -quit 2>/dev/null)" ] \
     || fail "unconfigured completion was marked delivered"
-  PATH="$BASE_PATH" FM_CREW_STATE_BIN="$home/fake-bin/fm-crew-state.sh" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+  if PATH="$BASE_PATH" FM_CREW_STATE_BIN="$home/fake-bin/fm-crew-state.sh" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
     FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=not-a-channel \
     "$ROOT/bin/fm-discord-notify-status.sh" task-a \
-      'done: wired up the new endpoint' >/dev/null \
-    || fail "malformed Discord channel returned failure"
+      'done: wired up the new endpoint' >/dev/null 2>&1; then
+    fail "malformed Discord channel reported success"
+  fi
   FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
     PATH="$home/fake-bin:$BASE_PATH" FM_CREW_STATE_BIN="$home/fake-bin/fm-crew-state.sh" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
     FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
@@ -918,7 +922,7 @@ test_unconfigured_done_status_is_silent_and_retryable() {
       'done: wired up the new endpoint' >/dev/null \
     || fail "completion did not retry after Discord was configured"
   assert_equals "1" "$(wc -l < "$log" | tr -d '[:space:]')" "unconfigured completion is retried when configured"
-  pass "an unconfigured completion is silent and remains retryable"
+  pass "an unconfigured completion fails closed and remains retryable"
 }
 
 test_blocked_status_sends_no_report() {
@@ -1041,7 +1045,7 @@ test_done_status_deduplicates_repeated_lines() {
   pass "a repeated done status line does not produce duplicate Discord posts"
 }
 
-test_no_token_is_inert
+test_no_token_fails_closed
 test_quiet_report_posts_plain_snapshot
 test_report_requires_token
 test_report_helper_refuses_non_quiet_mode
@@ -1076,7 +1080,7 @@ test_done_status_recovers_from_a_crash_before_its_receipt
 test_nonterminal_done_status_sends_no_report
 test_pr_awaiting_merge_done_status_sends_no_report
 test_failed_done_delivery_retries
-test_unconfigured_done_status_is_silent_and_retryable
+test_unconfigured_done_status_fails_closed_and_retryable
 test_blocked_status_sends_no_report
 test_failed_status_sends_no_report
 test_done_status_deduplicates_repeated_lines

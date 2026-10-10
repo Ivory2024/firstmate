@@ -266,8 +266,15 @@ async function main() {
         throw new Error("existing completion notification record is unreadable");
       }
       if (!created) {
-        console.log(record.message_id || record.nonce);
-        return;
+        // Only a SENT record proves the message reached Discord. A pending,
+        // failed, or in-flight record means the delivery did not happen, so
+        // reporting the nonce here would let an unsent completion look
+        // delivered - and an unsent decision look answered.
+        if (record.state === "sent" && record.message_id) {
+          console.log(record.message_id);
+          return;
+        }
+        throw new Error(`existing completion notification is not sent (state=${record.state})`);
       }
       console.log(await postCompletion(recordPath, record, await getBotId(), false));
       return;

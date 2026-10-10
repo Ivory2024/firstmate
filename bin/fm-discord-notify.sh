@@ -49,14 +49,21 @@ if [ "$retry_pending" -eq 0 ] && [ "$report_mode" -eq 0 ]; then
   status_task_id=${7:-$task_id}
 fi
 fm_discord_load_config
+# Fail closed: a missing token or channel must never return success. The caller
+# records a delivery only on exit 0, so a silent success here would let an
+# unsent decision look delivered - and a real captain approval look obtained.
 [ -n "${FM_DISCORD_TOKEN:-}" ] || {
   if [ "$report_mode" -eq 1 ]; then
     echo "fm-discord-notify: missing Discord bot token for report" >&2
-    exit 1
+  else
+    echo "fm-discord-notify: missing Discord bot token" >&2
   fi
-  exit 0
+  exit 1
 }
-[ "$retry_pending" -eq 1 ] || [ "$report_mode" -eq 1 ] || [ -n "${FM_DISCORD_CHANNELS:-}" ] || exit 0
+[ "$retry_pending" -eq 1 ] || [ "$report_mode" -eq 1 ] || [ -n "${FM_DISCORD_CHANNELS:-}" ] || {
+  echo "fm-discord-notify: no Discord channel configured" >&2
+  exit 1
+}
 command -v node >/dev/null 2>&1 || { echo "fm-discord-notify: missing node for self-hosted Discord" >&2; exit 1; }
 
 if [ "$report_mode" -eq 1 ]; then
