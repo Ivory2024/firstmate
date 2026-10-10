@@ -39,6 +39,13 @@ What the rest of Firstmate reads is the registry projection, printed by `fm-reco
 | `BLOCKED_EXHAUSTED` | `blocked` | None: escalated with the original work preserved |
 | `RESUMED` | `none` | Handed back to the ordinary work path |
 
+`WAITING_APPROVAL` is only ever published together with a recorded captain hold.
+The hold is raised before the state is written, and a hold that cannot be recorded is a fail-closed stop: the recovery refuses to open or escalate onto `WAITING_APPROVAL` rather than publishing a wait that nothing is waiting on.
+
+A recovery record is one line of space-separated `key=value` fields.
+Every value is escaped on write and unescaped on read, so a value that contains a space, an `=`, or a newline round-trips exactly instead of being truncated at its first space or read back as a second field.
+That is what keeps a free-text argument from injecting a field: `exec_class=production` inside a signature, a target, a reason, or an alternative name is data, never the record's own class.
+
 ## Transitions
 
 Every transition not listed here is refused.
@@ -97,12 +104,13 @@ All pilot values are owned by `fm_recovery_bound` in the library, and a malforme
 
 ## Authority gate
 
-`fm-recovery.sh apply` asks `fm_recovery_action_verdict` and does exactly what it answers.
+`fm-recovery.sh apply` asks `fm_recovery_action_verdict` and reports exactly what it answers.
+The capability ships inert, so `apply` performs no action itself: it prints `would-apply:` for a permitted action and records the decision in the ledger.
 
 | Verdict | Actions | Behavior |
 |---|---|---|
-| `automatic` | `read-only-probe`, `retry-same-step`, `cache-refresh`, `reattach-run`, `refresh-clone-read`, `isolated-branch-edit`, `isolated-test-run`, `isolated-worktree-reset`, `revert-isolated-commit` | Proceeds |
-| `approval-required` | `config-reload`, `queue-requeue`, `external-draft-notify`, `discard-unlanded`, `force-terminate`, `credential-change`, `external-publish`, `rollback-destructive` | Refused without a recorded approval token |
+| `automatic` | `read-only-probe`, `retry-same-step`, `cache-refresh`, `reattach-run`, `refresh-clone-read`, `isolated-branch-edit`, `isolated-test-run`, `isolated-worktree-reset`, `revert-isolated-commit` | Permitted: the engine records the decision and performs no action |
+| `approval-required` | `config-reload`, `queue-requeue`, `external-draft-notify`, `discard-unlanded`, `force-terminate`, `credential-change`, `external-publish`, `rollback-destructive` | Permitted only with a recorded approval token; the engine still performs no action |
 | `refused` | `upstream-write`, `shared-remote-change`, `shared-db-change`, `pr-create`, `pr-retarget`, `attestation-reuse`, `attestation-fabricate`, `gate-waiver`, `merge`, `production-deploy`, `launchd-change`, `auto-recovery-activate`, `daemon-restart` | Never performed here, with or without a token; the recovery escalates instead |
 | `undecidable` | Anything unrecognized | Stops, fail-closed |
 
@@ -130,6 +138,7 @@ Nothing in this capability deletes them.
 **Checkpoint policy.**
 The record is durable and the fingerprint excludes the spawn incarnation, so an interrupted recovery resumes from the same record.
 A terminal recovery is retained live until it is retired, and `fm-recovery.sh retire --fingerprint <fp>` moves the record and its ledger, byte for byte, into `data/recovery-archive/<fingerprint>/<epoch>.{rec,ledger}` and appends a `retire` event to the archived ledger, so the archived ledger stays a complete, self-contained event stream.
+A second retire of the same fingerprint inside the same epoch second is refused rather than allowed to overwrite the first archived record and ledger: archived evidence is never replaced.
 Retiring is what lets a recurring failure of the same fingerprint open a new recovery; without it the terminal record correctly refuses a duplicate forever.
 
 **Audit-event retention.**
@@ -141,6 +150,7 @@ Retention is unbounded by design, because these are small text lines and the eve
 
 1. Run `fm-recovery.sh archive-all --reason "<why>"` while the code is still present.
    It moves every live `.rec` and `.ledger` into `data/recovery-archive/rollback-<UTC>/` and writes `ROLLBACK.audit`.
+   A second `archive-all` inside the same UTC second is refused: two rollbacks never merge into one directory, because that would truncate the first rollback's audit record.
 2. Verify `ROLLBACK.audit` lists every archived file with its byte size and sha256.
 3. Remove the capability code: `bin/fm-recovery.sh`, `bin/fm-recovery-lib.sh`, and their registrations.
    `data/recovery-archive/` is deliberately outside `state/`, so removing the capability cannot touch it.
@@ -153,7 +163,11 @@ The only things `archive-all` removes are transient claim locks, which hold a pi
 ## Execution class and measurement linkage
 
 Every recovery record carries an execution class, and the engine records only `simulation` or `isolated`.
-`production` is refused here by name: assigning it is the job of the separately approved control plane that activates the capability, so no argument to `fm-recovery.sh begin` can relabel test output as operational output.
+`production` is refused here by name: assigning it is the job of the separately approved control plane that activates the capability.
+The class is a record field the engine writes, never a value derived from free text, so no argument to `fm-recovery.sh begin` can relabel test output as operational output: the record's escaping rule means an `exec_class=production` inside a signature, a target, a reason, or an alternative name is stored as data and can never become the record's own class.
+
+A `simulation` recovery is inert in effect as well as in label.
+It writes its own recovery record and ledger, which carry the class, but it never mutates the real backlog: it raises no captain hold, and it touches no file outside this engine's own store.
 
 `fm-recovery.sh export-events` is the read-only seam to the measurement layer.
 It writes nothing, and it owns none of the measurement layer's files: the metrics layer owns its own event log and dashboard, while this engine owns the recovery records and ledgers.
