@@ -82,6 +82,12 @@ case "$verb:$key" in
     case "$detail" in
       *" pull request ready: "*) url=${detail#* pull request ready: }; url=${url%% choose *} ;;
     esac
+    # Name the task in the captain's own words (its backlog title) beside its
+    # id, so the notification says which piece of work is waiting for him
+    # rather than only an opaque identifier.
+    route_label=$route_task_id
+    route_title=$(fm_discord_task_title "$route_task_id")
+    [ -n "$route_title" ] && route_label="$route_title [$route_task_id]"
     # Name the repo up front (from a GitHub owner/repo or GitLab project path)
     # so a captain merging non-IMAC repos manually from this ping knows which
     # project it is without parsing the URL.
@@ -99,9 +105,9 @@ case "$verb:$key" in
         ;;
     esac
     if [ -n "$repo" ]; then
-      summary="$repo 저장소: 검토할 풀 리퀘스트가 준비되었습니다."
+      summary="$repo 저장소 - 작업: $route_label. 검토할 풀 리퀘스트가 준비되었습니다."
     else
-      summary="검토할 풀 리퀘스트가 준비되었습니다."
+      summary="작업: $route_label. 검토할 풀 리퀘스트가 준비되었습니다."
     fi
     [ -z "$url" ] || summary="$summary $url"
     "$SCRIPT_DIR/fm-discord-notify.sh" pr-ready "$route_task_id" "$key" \
@@ -111,9 +117,14 @@ case "$verb:$key" in
     fm_discord_task_is_done "$task_id" || exit 0
     note=$(status_line_note "$line")
     note=$(printf '%s' "$note" | tr '\n\r' '  ')
+    # The completion names the work by its backlog title beside its id, so the
+    # captain reads which task finished without cross-referencing the queue.
+    task_label=$task_id
+    task_title=$(fm_discord_task_title "$task_id")
+    [ -n "$task_title" ] && task_label="$task_title [$task_id]"
     fm_discord_send_completion "$task_id" \
       "$(fm_discord_completion_event_id "$task_id" "$note")" \
-      "작업 완료 [$task_id]: ${note:-완료}" || exit $?
+      "작업 완료 - $task_label: ${note:-완료}" || exit $?
     ;;
   *) exit 0 ;;
 esac

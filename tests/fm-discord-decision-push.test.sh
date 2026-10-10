@@ -8,6 +8,8 @@ JQ_DIR=$(command -v jq 2>/dev/null) && JQ_DIR=$(dirname "$JQ_DIR") || JQ_DIR=
 NODE_DIR=$(command -v node 2>/dev/null) && NODE_DIR=$(dirname "$NODE_DIR") || NODE_DIR=
 [ -n "$JQ_DIR" ] && BASE_PATH="$JQ_DIR:$BASE_PATH"
 [ -n "$NODE_DIR" ] && BASE_PATH="$NODE_DIR:$BASE_PATH"
+TASKS_AXI_BIN=$(command -v tasks-axi 2>/dev/null) && TASKS_AXI_DIR=$(dirname "$TASKS_AXI_BIN") || TASKS_AXI_DIR=
+[ -n "$TASKS_AXI_DIR" ] && BASE_PATH="$TASKS_AXI_DIR:$BASE_PATH"
 TMP_ROOT=$(fm_test_tmproot fm-discord-decision-push)
 make_fake_node() {
   local home=$1
@@ -768,6 +770,34 @@ test_pr_push_names_gitlab_project() {
   pass "PR-ready notifications name the project for an accepted GitLab merge-request URL too"
 }
 
+test_pr_ready_summary_names_the_task_title() {
+  # The captain reads which piece of work is waiting for him, so the review
+  # notification carries the backlog title beside the task id.
+  local home record backlog
+  home="$TMP_ROOT/pr-trigger-title"
+  mkdir -p "$home/state/x-context" "$home/data"
+  chmod 700 "$home/state" "$home/state/x-context"
+  make_fake_node "$home"
+  [ -n "$TASKS_AXI_BIN" ] || fail "tasks-axi is required for the task-title regression"
+  backlog="$home/data/backlog.md"
+  "$TASKS_AXI_BIN" add task-a 'Ship the billing endpoint' --file "$backlog" >/dev/null 2>&1 \
+    || fail "could not seed the backlog fixture"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$home/posts.jsonl" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify-status.sh" task-a \
+    'needs-decision [key=pr-ready-task-a]: task=task-a yolo=off pull request ready: https://github.com/acme/app/pull/42 choose merge or leave open' >/dev/null \
+    || fail "yolo-off PR status did not trigger a push"
+  record=$(find "$home/state/x-context" -name 'discord-notify-*.json' -print -quit)
+  assert_contains "$(jq -r '.summary' "$record")" "Ship the billing endpoint" \
+    "PR summary names the task title from the backlog"
+  assert_contains "$(jq -r '.summary' "$record")" "task-a" \
+    "PR summary names the task id beside its title"
+  assert_contains "$(jq -r '.summary' "$record")" "검토할 풀 리퀘스트가 준비되었습니다" \
+    "PR summary is written in Korean"
+  pass "a PR-ready notification names the task title and id in Korean"
+}
+
 test_done_status_sends_plain_report() {
   local home log body
   home="$TMP_ROOT/done-status"
@@ -789,6 +819,33 @@ test_done_status_sends_plain_report() {
   [ -n "$(find "$home/state/x-context" -name 'discord-completion-*.json' -print -quit)" ] \
     || fail "done status did not record its successful delivery"
   pass "a done status line sends a plain Discord report with the worker's note"
+}
+
+test_done_report_names_the_task_title() {
+  # A completion tells the captain which task finished: the backlog title
+  # beside the id, in Korean, with the recorded outcome.
+  local home log body backlog
+  home="$TMP_ROOT/done-title"
+  mkdir -p "$home/state" "$home/data"
+  chmod 700 "$home/state"
+  make_fake_node "$home"
+  [ -n "$TASKS_AXI_BIN" ] || fail "tasks-axi is required for the task-title regression"
+  backlog="$home/data/backlog.md"
+  "$TASKS_AXI_BIN" add task-a 'Wire the billing endpoint' --file "$backlog" >/dev/null 2>&1 \
+    || fail "could not seed the backlog fixture"
+  log="$home/posts.jsonl"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_CREW_STATE_BIN="$home/fake-bin/fm-crew-state.sh" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify-status.sh" task-a \
+      'done: endpoint wired and tested' >/dev/null \
+    || fail "done status classification failed"
+  body=$(jq -r '.payload.content' "$log")
+  assert_contains "$body" "작업 완료" "done report headline is Korean"
+  assert_contains "$body" "Wire the billing endpoint" "done report names the task title"
+  assert_contains "$body" "task-a" "done report names the task id"
+  assert_contains "$body" "endpoint wired and tested" "done report states the outcome"
+  pass "a done report is Korean and names the task title, the task id, and the outcome"
 }
 
 test_done_record_is_private_valid_json() {
@@ -1069,7 +1126,9 @@ test_ask_user_gate_alone_triggers_no_push
 test_ask_user_escalation_hold_carries_finding_text
 test_pr_push_requires_yolo_off
 test_pr_push_names_gitlab_project
+test_pr_ready_summary_names_the_task_title
 test_done_status_sends_plain_report
+test_done_report_names_the_task_title
 test_done_record_is_private_valid_json
 test_done_status_lands_once_across_concurrent_senders
 test_done_status_recovers_from_a_crash_before_its_receipt
