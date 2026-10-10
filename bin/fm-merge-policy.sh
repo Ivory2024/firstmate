@@ -31,21 +31,9 @@ classify_risk() {
   echo "$risk"
 }
 
-review_route() { # --risk R -> reviewer tier plan (free-first, escalate for HIGH)
-  local risk=''
-  while [ $# -gt 0 ]; do case "$1" in --risk) risk=$2; shift 2;; *) shift;; esac; done
-  case "$risk" in
-    LOW)    echo "reviewer=free-primary tier=free independent=required";;
-    MEDIUM) echo "reviewer=free-cross tier=free-x2 independent=required escalate_on=conflict,low-confidence";;
-    HIGH)   echo "reviewer=escalated tier=high-capability independent=required dual=optional free_prepass=yes";;
-    *)      echo "reviewer=none action=HOLD reason=unknown-risk";;
-  esac
-}
-
 case "${1:-}" in
   classify-risk) shift; classify_risk "$@";;
   merge-eligible) echo "MERGE_HOLD reason=verified-evidence-required";;
-  review-route) shift; review_route "$@";;
   independent-ok) echo "REVIEW_INDEPENDENCE_HOLD reason=verified-review-provenance-required";;
-  *) echo "usage: fm-merge-policy.sh classify-risk|merge-eligible|review-route|independent-ok ..." >&2; exit 2;;
+  *) echo "usage: fm-merge-policy.sh classify-risk|merge-eligible|independent-ok ..." >&2; exit 2;;
 esac

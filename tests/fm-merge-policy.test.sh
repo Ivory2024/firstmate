@@ -25,11 +25,7 @@ eq "mixed docs+bin -> HIGH" "$($P classify-risk docs/a.md bin/fm-spawn.sh)" HIGH
 eq "forged passing flags -> HOLD" "$($P merge-eligible --risk LOW --ci pass --review pass --head-match yes --protected no --unresolved no --scope low)" "MERGE_HOLD reason=verified-evidence-required"
 eq "caller approval record -> HOLD" "$($P merge-eligible --risk HIGH --ci pass --review pass --head-match yes --protected yes --unresolved no --scope high --approved-pr 115 --approved-sha abc --head-sha abc --approval-record /dev/null)" "MERGE_HOLD reason=verified-evidence-required"
 
-# --- review routing (free-first, escalate HIGH) ---
-eq "LOW -> free reviewer"    "$($P review-route --risk LOW | sed -n 's/.*tier=\([a-z0-9-]*\).*/\1/p')" free
-eq "MEDIUM -> free cross"    "$($P review-route --risk MEDIUM | sed -n 's/.*tier=\([a-z0-9-]*\).*/\1/p')" free-x2
-eq "HIGH -> escalated"       "$($P review-route --risk HIGH | sed -n 's/.*tier=\([a-z0-9-]*\).*/\1/p')" high-capability
-eq "unknown risk -> HOLD"    "$($P review-route --risk UNKNOWN | sed -n 's/.*action=\([A-Z]*\).*/\1/p')" HOLD
+if "$P" review-route --risk LOW >/dev/null 2>&1; then no "review-route command is unavailable"; else ok "review-route command is unavailable"; fi
 # --- independence requires provenance, not caller model names ---
 eq "caller model names -> HOLD" "$($P independent-ok opencode/x codex/y)" "REVIEW_INDEPENDENCE_HOLD reason=verified-review-provenance-required"
 
