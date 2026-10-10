@@ -113,6 +113,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+EVIDENCE_SCRIPT="${FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE:-$SCRIPT_DIR/fm-merge-evidence.sh}"
 
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
@@ -1149,9 +1150,13 @@ case "$PROVIDER" in
     fi
     FM_PR_GITHUB_CALLER_METHOD=$(caller_merge_method "$@")
     github_verify_mergeable || exit 1
-    # Shared merge boundary: verify forge evidence before merge
-    if ! "$SCRIPT_DIR/fm-merge-evidence.sh" collect "$ID" "$URL" "$FM_PR_MERGE_HEAD" 2>&1; then
-      echo "error: merge refused - evidence verification failed" >&2
+    # Shared merge boundary: verify forge evidence before merge.
+    # fm-merge-evidence.sh always exits 0 (HOLD is a reported verdict, not a
+    # script failure), so the gate is the parsed status/head, never the exit code.
+    evidence_json=$("$EVIDENCE_SCRIPT" collect "$ID" "$URL" "$FM_PR_MERGE_HEAD" 2>&1)
+    if ! printf '%s' "$evidence_json" | jq -e --arg sha "$FM_PR_MERGE_HEAD" \
+      '.status == "PASS" and .head_sha == $sha' >/dev/null 2>&1; then
+      printf 'error: merge refused - evidence verification failed: %s\n' "$evidence_json" >&2
       exit 1
     fi
     # The away record is locked first, so this last presence and authority read
@@ -1205,9 +1210,13 @@ case "$PROVIDER" in
     ;;
   gitlab)
     gitlab_verify_mergeable || exit 1
-    # Shared merge boundary: verify forge evidence before merge
-    if ! "$SCRIPT_DIR/fm-merge-evidence.sh" collect "$ID" "$URL" "$FM_PR_MERGE_HEAD" 2>&1; then
-      echo "error: merge refused - evidence verification failed" >&2
+    # Shared merge boundary: verify forge evidence before merge.
+    # fm-merge-evidence.sh always exits 0 (HOLD is a reported verdict, not a
+    # script failure), so the gate is the parsed status/head, never the exit code.
+    evidence_json=$("$EVIDENCE_SCRIPT" collect "$ID" "$URL" "$FM_PR_MERGE_HEAD" 2>&1)
+    if ! printf '%s' "$evidence_json" | jq -e --arg sha "$FM_PR_MERGE_HEAD" \
+      '.status == "PASS" and .head_sha == $sha' >/dev/null 2>&1; then
+      printf 'error: merge refused - evidence verification failed: %s\n' "$evidence_json" >&2
       exit 1
     fi
     # --sha binds the merge to the head this run verified, so a push that lands

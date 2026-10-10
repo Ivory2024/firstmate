@@ -17,6 +17,19 @@ PR_MERGE="$ROOT/bin/fm-pr-merge.sh"
 TMP_ROOT=$(fm_test_tmproot fm-pr-merge-tests)
 BASE_PATH=$PATH
 
+# fm-merge-evidence.sh's own forge-evidence logic is covered by
+# tests/fm-merge-policy.test.sh. This file tests fm-pr-merge.sh's own merge,
+# refusal, and outcome-verification behavior, so it stubs the evidence
+# collector to an unconditional PASS at the requested head by default; a case
+# that needs to prove the evidence gate itself sets
+# FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE before calling run_pr_merge.
+DEFAULT_EVIDENCE_STUB="$TMP_ROOT/default-evidence-pass.sh"
+cat > "$DEFAULT_EVIDENCE_STUB" <<'SH'
+#!/usr/bin/env bash
+printf '{"status":"PASS","head_sha":"%s","risk":"LOW","scope":"test","reasons":[]}\n' "${4:-}"
+SH
+chmod +x "$DEFAULT_EVIDENCE_STUB"
+
 # The GitLab fixture. A placeholder host that resolves nowhere, and a namespace
 # deeper than one group, because a GitLab project has no owner/repository pair.
 MR_HOST=gitlab.example
@@ -376,6 +389,7 @@ glab_merge_line() {
 
 run_pr_merge() {
   local case_dir=$1 rc; shift
+  FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE="${FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE:-$DEFAULT_EVIDENCE_STUB}" \
   FM_ROOT_OVERRIDE="$ROOT" \
   FM_HOME="${FM_TEST_HOME:-$case_dir/home}" \
   FM_STATE_OVERRIDE="$case_dir/state" \
@@ -492,6 +506,36 @@ test_merge_failure_propagates_after_recording() {
   assert_grep 'pr=https://github.com/example/repo/pull/13' "$case_dir/state/task-x1.meta" \
     "merge-fails: pr= should already be recorded even though the merge itself failed"
   pass "fm-pr-merge propagates a real merge failure without silently succeeding"
+}
+
+# fm-merge-evidence.sh always exits 0 (a HOLD verdict is reported, not a script
+# failure), so the merge boundary must gate on the parsed status/head rather
+# than the collector's exit code. This proves the gate itself refuses on HOLD
+# without ever reaching the forge merge call.
+test_merge_refuses_on_evidence_hold() {
+  local case_dir rc
+  case_dir=$(make_case evidence-hold)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 2020202020202020202020202020202020202020
+  : > "$case_dir/gh-axi.log"
+  cat > "$case_dir/fake-evidence.sh" <<'SH'
+#!/usr/bin/env bash
+printf '{"status":"HOLD","head_sha":"%s","reasons":["test-forced-hold"]}\n' "${4:-}"
+SH
+  chmod +x "$case_dir/fake-evidence.sh"
+
+  set +e
+  FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE="$case_dir/fake-evidence.sh" \
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/71 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] || fail "evidence-hold: fm-pr-merge should refuse on a HOLD verdict"
+  if grep -qF 'pr merge' "$case_dir/gh.log" 2>/dev/null; then
+    fail "evidence-hold: gh pr merge ran despite the HOLD verdict"
+  fi
+  pass "fm-pr-merge refuses to merge when evidence verification holds"
 }
 
 test_github_merged_outcome_is_verified() {
@@ -2158,6 +2202,7 @@ test_github_conflicting_queue_rules_report_ambiguity
 test_verified_merge_records_pr_and_head
 test_pr_metadata_is_recorded_before_the_forge_call
 test_merge_failure_propagates_after_recording
+test_merge_refuses_on_evidence_hold
 test_github_open_unqueued_outcome_refuses
 test_github_unreadable_outcome_keeps_pr_bookkeeping
 test_github_refusal_quotes_the_forge_output
