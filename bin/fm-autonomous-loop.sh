@@ -100,16 +100,16 @@ VALID_STATES=(
 # State transitions (fail-closed): from -> allowed to
 # Only these transitions are permitted; any other transition is rejected
 declare -A VALID_TRANSITIONS=(
-  ["READY"]="ASSIGNED WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD ESCALATED"
-  ["ASSIGNED"]="RUNNING WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD ESCALATED"
-  ["RUNNING"]="TESTING WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD ESCALATED"
-  ["TESTING"]="REVIEWING FIXING WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD"
-  ["REVIEWING"]="READY_FOR_MERGE FIXING WAITING_APPROVAL WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD"
-  ["FIXING"]="RETESTING WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD"
-  ["RETESTING"]="REVIEWING READY_FOR_MERGE WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD"
-  ["READY_FOR_MERGE"]="MERGE_VERIFIED WAITING_APPROVAL WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD"
-  ["MERGE_VERIFIED"]="DEPLOYMENT_GATE WAITING_APPROVAL WAITING_QUOTA RECOVERY_HOLD"
-  ["DEPLOYMENT_GATE"]="DONE WAITING_APPROVAL WAITING_QUOTA RECOVERY_HOLD"
+  ["READY"]="ASSIGNED WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD ESCALATED FAILED"
+  ["ASSIGNED"]="RUNNING WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD ESCALATED FAILED"
+  ["RUNNING"]="TESTING WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD ESCALATED FAILED"
+  ["TESTING"]="REVIEWING FIXING WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD FAILED"
+  ["REVIEWING"]="READY_FOR_MERGE FIXING WAITING_APPROVAL WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD FAILED"
+  ["FIXING"]="RETESTING WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD FAILED"
+  ["RETESTING"]="REVIEWING READY_FOR_MERGE WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD FAILED"
+  ["READY_FOR_MERGE"]="MERGE_VERIFIED WAITING_APPROVAL WAITING_QUOTA WAITING_EXTERNAL RECOVERY_HOLD FAILED"
+  ["MERGE_VERIFIED"]="DEPLOYMENT_GATE WAITING_APPROVAL WAITING_QUOTA RECOVERY_HOLD FAILED"
+  ["DEPLOYMENT_GATE"]="DONE WAITING_APPROVAL WAITING_QUOTA RECOVERY_HOLD FAILED"
   ["DONE"]=""  # Terminal
   ["FAILED"]=""  # Terminal
   ["WAITING_QUOTA"]="RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE"
@@ -757,9 +757,14 @@ auto_resume_task() {  # <task-id>
         review_findings) target_state="FIXING" ;;
       esac
       note="Auto-resume attempt $attempt after $interruption_type. Previous state: $lifecycle_state. Checkpoint: $(lifecycle_read "$id" resume_checkpoint)"
-      fm_control_relaunch "$id" "" "$note"
-      # Transition to RECOVERY_HOLD while relaunch is in progress
-      lifecycle_transition "$id" "RECOVERY_HOLD" "Auto-resume attempt $attempt initiated for $interruption_type"
+      if fm_control_relaunch "$id" "" "$note"; then
+        # Transition to RECOVERY_HOLD while relaunch is in progress
+        lifecycle_transition "$id" "RECOVERY_HOLD" "Auto-resume attempt $attempt initiated for $interruption_type"
+      else
+        append_evidence "$id" "Auto-resume attempt $attempt failed: fm_control_relaunch returned error"
+        recovery_lease_release "$id" "attempt-$attempt"
+        return 1
+      fi
       ;;
     quota_exhausted)
       lifecycle_transition "$id" "WAITING_QUOTA" "Quota exhausted. Awaiting quota recovery."
@@ -772,8 +777,13 @@ auto_resume_task() {  # <task-id>
       ;;
     *)
       note="Auto-resume attempt $attempt after $interruption_type. Previous state: $lifecycle_state."
-      fm_control_relaunch "$id" "" "$note"
-      lifecycle_transition "$id" "RECOVERY_HOLD" "Auto-resume attempt $attempt initiated for $interruption_type"
+      if fm_control_relaunch "$id" "" "$note"; then
+        lifecycle_transition "$id" "RECOVERY_HOLD" "Auto-resume attempt $attempt initiated for $interruption_type"
+      else
+        append_evidence "$id" "Auto-resume attempt $attempt failed: fm_control_relaunch returned error"
+        recovery_lease_release "$id" "attempt-$attempt"
+        return 1
+      fi
       ;;
   esac
 
@@ -1183,135 +1193,6 @@ cmd_task_done() {  # <task-id> --evidence <text>
 }
 
 # ============================================================================
-# FAULT INJECTION TESTS (required for acceptance)
-# ============================================================================
-
-cmd_test_inject() {  # <scenario>
-  local scenario=${1:-}
-  case "$scenario" in
-    worker_exit)
-      for meta in "$STATE"/*.meta; do
-        [ -f "$meta" ] || continue
-        local id=$(basename "$meta" .meta)
-        local state=$(classify_task "$id" | cut -d' ' -f1)
-        [ "$state" = "working" ] || continue
-        echo "Injecting worker exit for $id"
-        FM_HOME="$FM_HOME" "$SCRIPT_DIR/fm-control.sh" "$id" exit
-        sleep 2
-        cmd_reconcile
-        return
-      done
-      echo "No working task found for injection"
-      ;;
-    provider_503)
-      for meta in "$STATE"/*.meta; do
-        [ -f "$meta" ] || continue
-        local id=$(basename "$meta" .meta)
-        local state=$(classify_task "$id" | cut -d' ' -f1)
-        [ "$state" = "working" ] || continue
-        echo "Injecting provider 503 for $id"
-        append_evidence "$id" "TEST INJECTION: provider 503 simulated"
-        lifecycle_transition "$id" "RECOVERY_HOLD" "TEST INJECTION: provider 503"
-        return
-      done
-      echo "No working task found for injection"
-      ;;
-    quota_exhausted)
-      for meta in "$STATE"/*.meta; do
-        [ -f "$meta" ] || continue
-        local id=$(basename "$meta" .meta)
-        local state=$(classify_task "$id" | cut -d' ' -f1)
-        [ "$state" = "working" ] || continue
-        echo "Injecting quota exhaustion for $id"
-        append_evidence "$id" "TEST INJECTION: quota exhausted simulated"
-        lifecycle_transition "$id" "WAITING_QUOTA" "TEST INJECTION: quota exhausted"
-        return
-      done
-      echo "No working task found for injection"
-      ;;
-    stalled)
-      for meta in "$STATE"/*.meta; do
-        [ -f "$meta" ] || continue
-        local id=$(basename "$meta" .meta)
-        local state=$(classify_task "$id" | cut -d' ' -f1)
-        [ "$state" = "working" ] || continue
-        echo "Injecting STALLED for $id"
-        local old_time=$(date -v-20M +%Y%m%d%H%M 2>/dev/null) || old_time=$(date -d '20 minutes ago' +%Y%m%d%H%M 2>/dev/null)
-        touch -t "$old_time" "$STATE/$id.status" 2>/dev/null || touch -d '20 minutes ago' "$STATE/$id.status" 2>/dev/null
-        local wt=$(grep '^worktree=' "$meta" 2>/dev/null | cut -d= -f2-)
-        [ -n "$wt" ] && [ -d "$wt" ] && touch -t "$old_time" "$wt" 2>/dev/null || touch -d '20 minutes ago' "$wt" 2>/dev/null
-        cmd_scan_stalled
-        return
-      done
-      echo "No working task found for injection"
-      ;;
-    supervisor_restart)
-      echo "Simulating supervisor restart - running reconcile"
-      cmd_reconcile
-      ;;
-    duplicate_recovery)
-      cmd_reconcile
-      sleep 1
-      cmd_reconcile
-      echo "Duplicate recovery test complete"
-      ;;
-    ci_failure_repair)
-      for meta in "$STATE"/*.meta; do
-        [ -f "$meta" ] || continue
-        local id=$(basename "$meta" .meta)
-        local state=$(classify_task "$id" | cut -d' ' -f1)
-        [ "$state" = "working" ] || continue
-        echo "Injecting CI failure for $id"
-        append_evidence "$id" "TEST INJECTION: CI failure simulated"
-        lifecycle_transition "$id" "FIXING" "TEST INJECTION: CI failure"
-        return
-      done
-      echo "No working task found for injection"
-      ;;
-    review_findings)
-      for meta in "$STATE"/*.meta; do
-        [ -f "$meta" ] || continue
-        local id=$(basename "$meta" .meta)
-        local state=$(classify_task "$id" | cut -d' ' -f1)
-        [ "$state" = "working" ] || continue
-        echo "Injecting review findings for $id"
-        append_evidence "$id" "TEST INJECTION: review findings simulated"
-        lifecycle_transition "$id" "FIXING" "TEST INJECTION: review findings"
-        return
-      done
-      echo "No working task found for injection"
-      ;;
-    approval_wait)
-      for meta in "$STATE"/*.meta; do
-        [ -f "$meta" ] || continue
-        local id=$(basename "$meta" .meta)
-        local state=$(classify_task "$id" | cut -d' ' -f1)
-        [ "$state" = "working" ] || continue
-        echo "Injecting approval wait for $id"
-        append_evidence "$id" "TEST INJECTION: captain approval wait simulated"
-        lifecycle_transition "$id" "WAITING_APPROVAL" "TEST INJECTION: approval wait"
-        return
-      done
-      echo "No working task found for injection"
-      ;;
-    lane_isolation)
-      echo "Testing lane isolation - verifying other lanes continue"
-      for lane in $(get_active_lanes); do
-        echo "Lane $lane tasks:"
-        for id in $(get_lane_tasks "$lane"); do
-          local ls=$(lifecycle_read "$id" current_step)
-          local es=$(classify_task "$id" | cut -d' ' -f1)
-          echo "  $id: lifecycle=$ls external=$es"
-        done
-      done
-      ;;
-    *)
-      die "Unknown scenario: $scenario. Available: worker_exit, provider_503, quota_exhausted, stalled, supervisor_restart, duplicate_recovery, ci_failure_repair, review_findings, approval_wait, lane_isolation"
-      ;;
-  esac
-}
-
-# ============================================================================
 # ENTRY POINT
 # ============================================================================
 
@@ -1324,7 +1205,6 @@ case "${1:-}" in
   task-hold) shift; cmd_task_hold "$@" ;;
   task-done) shift; cmd_task_done "$@" ;;
   scan-stalled) cmd_scan_stalled ;;
-  test-inject) shift; cmd_test_inject "$@" ;;
   -h|--help|help) usage ;;
   *) die "Unknown command: ${1:-}. Use --help for usage." ;;
 esac
