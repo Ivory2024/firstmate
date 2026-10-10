@@ -2,23 +2,22 @@
 # fm-merge-policy.sh - policy engine for risk-based autonomous merge (isolated).
 #
 # Firstmate/Crewmate = execute; Claude = independent review; THIS engine = decide.
-# It never merges. It classifies risk by changed paths and decides merge
-# eligibility FAIL-CLOSED: HIGH risk or unknown risk requires an explicit policy
-# scope, and any missing evidence yields MERGE_HOLD.
+# It never merges. It classifies risk by changed paths and holds eligibility
+# until forge-verified evidence is available.
 #
 # Usage:
 #   fm-merge-policy.sh classify-risk <file> [<file>...]
-#   fm-merge-policy.sh merge-eligible --risk R --ci pass|fail --review pass|fail \
-#       --head-match yes|no --protected yes|no --unresolved yes|no --scope <none|low|med|high>
+#   fm-merge-policy.sh merge-eligible
 set -u
 
 # Protected / high-risk path patterns (firstmate core control, credentials, deploy).
-HIGH_PATTERNS='(^|/)(bin/(fm-watch|fm-wake|fm-control|fm-spawn|fm-teardown|fm-classify|fm-lease|fm-send|fm-crew-state|fm-blocker|fm-merge|fm-lock|fm-busy|fm-dispatch)[a-z-]*\.sh|\.github/workflows/|launchd/|.*credential.*|.*secret.*|.*\.env$|bin/deploy)'
+HIGH_PATTERNS='(^|/)(bin/(fm-watch|fm-wake|fm-control|fm-spawn|fm-teardown|fm-classify|fm-lease|fm-send|fm-crew-state|fm-blocker|fm-merge|fm-pr-merge|fm-lock|fm-busy|fm-dispatch)[a-z-]*\.sh|\.github/workflows/|launchd/|.*credential.*|.*secret.*|.*\.env$|bin/deploy)'
 # Medium-risk: general execution logic / limited bugfixes.
 MED_PATTERNS='(^|/)(bin/|AutomationSync/|pipelines/).*\.(sh|py)$'
 
 classify_risk() {
   local f risk=LOW
+  [ "$#" -gt 0 ] || { echo HIGH; return 0; }
   for f in "$@"; do
     # docs/tests stay LOW regardless of location
     case "$f" in
@@ -32,51 +31,6 @@ classify_risk() {
   echo "$risk"
 }
 
-merge_eligible() {
-  local risk='' ci='' review='' head='' prot='' unres='' scope=none apr='' asha='' hsha='' aprec=''
-  while [ $# -gt 0 ]; do case "$1" in
-    --risk) risk=$2; shift 2;; --ci) ci=$2; shift 2;; --review) review=$2; shift 2;;
-    --head-match) head=$2; shift 2;; --protected) prot=$2; shift 2;;
-    --unresolved) unres=$2; shift 2;; --scope) scope=$2; shift 2;;
-    --approved-pr) apr=$2; shift 2;; --approved-sha) asha=$2; shift 2;; --head-sha) hsha=$2; shift 2;;
-    --approval-record) aprec=$2; shift 2;;
-    *) shift;; esac; done
-
-  # fail-closed gates (any miss -> HOLD)
-  [ "$ci" = pass ] || { echo "MERGE_HOLD reason=ci-not-pass"; return 0; }
-  [ "$review" = pass ] || { echo "MERGE_HOLD reason=no-independent-review"; return 0; }
-  [ "$head" = yes ] || { echo "MERGE_HOLD reason=head-changed"; return 0; }
-  # Protected paths require a captain record with exact scope=high below.
-  case "$prot" in
-    yes) [ "$scope" = high ] || { echo "MERGE_HOLD reason=protected-path"; return 0; };;
-    no) ;;
-    *) echo "MERGE_HOLD reason=protected-path"; return 0;;
-  esac
-  [ "$unres" = no ] || { echo "MERGE_HOLD reason=unresolved-findings"; return 0; }
-
-  # scope=high is NOT self-grantable: it needs an explicit captain approval bound
-  # to a PR number AND an approved SHA that matches the current head SHA, AND a
-  # durable approval record the auto-executor cannot author (captain-hold record).
-  if [ "$scope" = high ]; then
-    [ -n "$apr" ] || { echo "MERGE_HOLD reason=high-scope-needs-approval-pr"; return 0; }
-    [ -n "$asha" ] && [ -n "$hsha" ] && [ "$asha" = "$hsha" ] \
-      || { echo "MERGE_HOLD reason=high-scope-sha-mismatch"; return 0; }
-    [ -n "$aprec" ] && [ -f "$aprec" ] || { echo "MERGE_HOLD reason=no-approval-record"; return 0; }
-    grep -qxF 'signer=captain' "$aprec" 2>/dev/null || { echo "MERGE_HOLD reason=approval-not-captain"; return 0; }
-    grep -qxF "pr=$apr" "$aprec" 2>/dev/null || { echo "MERGE_HOLD reason=approval-pr-mismatch"; return 0; }
-    grep -qxF "head=$hsha" "$aprec" 2>/dev/null || { echo "MERGE_HOLD reason=approval-head-mismatch"; return 0; }
-    grep -qxF 'scope=high' "$aprec" 2>/dev/null || { echo "MERGE_HOLD reason=approval-scope-mismatch"; return 0; }
-  fi
-
-  # risk scope: HIGH (or unknown) needs an explicit high scope
-  case "$risk" in
-    LOW)  case "$scope" in low|med|high) echo MERGE_ELIGIBLE;; *) echo "MERGE_HOLD reason=scope-low-required";; esac;;
-    MEDIUM) case "$scope" in med|high) echo MERGE_ELIGIBLE;; *) echo "MERGE_HOLD reason=scope-med-required";; esac;;
-    HIGH) case "$scope" in high) echo MERGE_ELIGIBLE;; *) echo "MERGE_HOLD reason=high-needs-explicit-scope";; esac;;
-    *) echo "MERGE_HOLD reason=unknown-risk";;
-  esac
-}
-
 review_route() { # --risk R -> reviewer tier plan (free-first, escalate for HIGH)
   local risk=''
   while [ $# -gt 0 ]; do case "$1" in --risk) risk=$2; shift 2;; *) shift;; esac; done
@@ -88,17 +42,10 @@ review_route() { # --risk R -> reviewer tier plan (free-first, escalate for HIGH
   esac
 }
 
-# independence gate: an implementation model may not be the sole reviewer.
-independent_ok() { # <impl-model> <review-model>
-  [ -n "$1" ] && [ -n "$2" ] || { echo "REVIEW_INDEPENDENCE_HOLD reason=missing-model"; return 0; }
-  [ "$1" != "$2" ] || { echo "REVIEW_INDEPENDENCE_HOLD reason=same-model"; return 0; }
-  echo "INDEPENDENT_OK"
-}
-
 case "${1:-}" in
   classify-risk) shift; classify_risk "$@";;
-  merge-eligible) shift; merge_eligible "$@";;
+  merge-eligible) echo "MERGE_HOLD reason=verified-evidence-required";;
   review-route) shift; review_route "$@";;
-  independent-ok) shift; independent_ok "$1" "$2";;
+  independent-ok) echo "REVIEW_INDEPENDENCE_HOLD reason=verified-review-provenance-required";;
   *) echo "usage: fm-merge-policy.sh classify-risk|merge-eligible|review-route|independent-ok ..." >&2; exit 2;;
 esac
