@@ -1372,9 +1372,17 @@ const stale = await report.execute("captain-stale", { task: "task-e", verdict: "
 if (!stale.isError) throw new Error("a replaced branch session's report tool was accepted");
 let finishReplacementPrompt;
 globalThis.__fmOnBranchPrompt = () => new Promise((resolve) => { finishReplacementPrompt = resolve; });
+const promptsBeforeReplacement = (globalThis.__fmPrompts ?? []).length;
 const replacementOffer = dispatch("signal: after replacement");
 if (!replacementOffer.accepted) throw new Error("branch refused a wake after the replacement");
-await settle(() => (globalThis.__fmSessions ?? []).length === 2, "replacement branch session");
+// Wait for the wake prompt to actually start, not merely for the replacement
+// session to exist: the delivery captures its durable-report baseline
+// immediately before it prompts, so a report appended in that window is
+// invisible to it and the wake reads as settled with no durable outcome.
+// Keep the scripted prompt open through its report, as the real AgentSession
+// does for tool execution.
+await settle(() => (globalThis.__fmPrompts ?? []).length === promptsBeforeReplacement + 1, "replacement branch prompt");
+if ((globalThis.__fmSessions ?? []).length !== 2) throw new Error("the replacement wake did not run in the rebuilt branch session");
 const report2 = globalThis.__fmSessions[1].options.customTools.find((tool) => tool.name === "fm_branch_report");
 const beforePair = requests().length;
 const second = await report2.execute("captain-2", { task: "branch-driver", verdict: "captain", summary: "PR https://example.com/pr/e is ready for review" }, undefined, undefined, {});
