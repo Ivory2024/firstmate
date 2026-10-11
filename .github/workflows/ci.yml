@@ -67,15 +67,6 @@ jobs:
       # and the pre-push gate on this script so a self-broken ci.yml still
       # fails locally before merge.
       - name: Lint canonical partition
-        # This matrix already runs two partitions concurrently on one 16 GiB
-        # runner, and each partition's shard workers peak near 12 GiB. Two
-        # concurrent workers therefore outgrow the runner and it kills the
-        # step with SIGTERM (exit 143) mid-analysis, before ShellCheck can
-        # report anything. Serializing the workers keeps the peak inside the
-        # runner; the measured wall time stays well inside the 30-minute
-        # tripwire above. Evidence: fork lint telemetry, 2026-10-11.
-        env:
-          FM_LINT_JOBS: '1'
         run: |
           set -eu
           mkdir -p "$RUNNER_TEMP/fm-lint"
