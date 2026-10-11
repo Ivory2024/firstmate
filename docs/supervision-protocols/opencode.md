@@ -4,7 +4,8 @@ When this session owns supervision and away mode is not active:
 1. Drain first with `bin/fm-wake-drain.sh`.
    After handling all emitted wakes and reconciling open decisions and unread status lines, run the exact `--ack-through` command printed as `WAKE_ACK_REQUIRED`; until then the work remains durable for idempotent re-handling after interruption.
 2. `.opencode/plugins/fm-primary-watch-arm.js` starts or re-arms `bin/fm-watch-arm.sh --restart` from either signal: a normalized `QUIESCENT` lifecycle signal, or its own poll of the durable liveness beacon.
-   The durable-signal half is `bin/fm-supervision-lib.sh`'s `fm_supervision_unhealthy`: while this home needs a watcher and none holds a fresh `state/.last-watcher-beat`, the plugin re-arms on a bounded poll.
+   The durable-signal half pairs two `bin/fm-supervision-lib.sh` predicates: `fm_supervision_needed` is the launch gate and the single owner of what counts as a supervision need (in-flight task metadata, an X-mode relay poll, a registered process-to-event source, or a registered custom check), and `fm_supervision_unhealthy` adds the fresh `state/.last-watcher-beat` check.
+   While both hold - this home needs a watcher and none holds a fresh beacon - the plugin re-arms on a bounded poll.
    A busy session that never reaches a quiescent boundary is still re-armed, and a healthy cycle is left alone.
 3. `OpenCodeLifecycleAdapter` maps legacy `session.idle` and v2 `session.execution.succeeded`, `session.execution.failed`, and `session.execution.interrupted` events to `QUIESCENT`.
 4. After an actionable child close, the plugin rechecks session-lock ownership and verifies one singleton successor before it calls `client.session.promptAsync`; its bounded fallback is defined in `docs/watcher-continuity.md`.

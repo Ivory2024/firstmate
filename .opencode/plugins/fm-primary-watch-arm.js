@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
 import { OpenCodeLifecycleAdapter, QUIESCENT } from "./lib/fm-opencode-lifecycle-adapter.js";
@@ -124,14 +124,29 @@ async function isPrimaryRoot(root, home) {
   return gitDir.stdout.trim() === commonDir.stdout.trim();
 }
 
+// The launch gate is the shared predicate, not a second copy of its condition
+// set: bin/fm-supervision-lib.sh's fm_supervision_needed is the single owner of
+// what counts as a supervision need - in-flight task metadata, an X-mode relay
+// poll, a registered process-to-event source, or a registered custom check.
+// Re-listing only the first of those here rejected a busy home whose sole need
+// was a source or a check on every poll (status "not-needed"), so the durable
+// re-arm never fired for exactly the homes a source-only watcher must serve.
+// Away mode stays outside the shared predicate because the away daemon, not
+// this plugin, owns supervision while state/.afk exists.
 function shouldArm(paths) {
   if (existsSync(`${paths.state}/.afk`)) return false;
-  if (existsSync(`${paths.config}/x-mode.env`)) return true;
-  try {
-    return readdirSync(paths.state).some((name) => name.endsWith(".meta"));
-  } catch {
-    return false;
-  }
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      '. "$1/bin/fm-supervision-lib.sh" && fm_supervision_needed "$2"',
+      "fm-primary-watch-arm",
+      paths.root,
+      paths.state,
+    ],
+    { stdio: "ignore" },
+  );
+  return result.status === 0;
 }
 
 // fm_supervision_unhealthy <state-dir> exits 0 exactly when the shared
