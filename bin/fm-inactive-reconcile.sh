@@ -615,7 +615,7 @@ scan_pass() { # <cursor> <after|through> <deadline> <secondmate-id-or-empty>
   done
 }
 
-scan() {
+scan() {  # [startup] [shared-deadline-epoch]
   local startup=${1:-0} self='' cursor deadline rc=0 marker_rc=0
   mkdir -p "$STATE" "$OUTCOME_DIR" || return 1
   [ ! -L "$OUTCOME_DIR" ] || return 1
@@ -637,7 +637,10 @@ scan() {
       "inactive terminal outcomes remain unreconciled: invalid .fm-secondmate-home marker" || true
     return 0
   fi
-  deadline=$(( $(date +%s) + FM_INACTIVE_RECONCILE_BUDGET_SECS ))
+  # Share the poll's single deadline when the caller supplies one, so the scan
+  # and the reconcile that follows it divide one budget rather than each taking
+  # a full one.
+  deadline=${2:-$(( $(date +%s) + FM_INACTIVE_RECONCILE_BUDGET_SECS ))}
   SCAN_FIRST_VISIT_PENDING=1
   scan_pass "$cursor" after "$deadline" "$self" || rc=$?
   if [ "$rc" -eq 0 ] && [ -n "$cursor" ]; then
@@ -684,17 +687,41 @@ case "$mode" in
     # process-group kill is only the backstop for a scan wedged outside every
     # bounded section (an unbounded lock wait), so it fires one second after
     # the deadline instead of racing the clean bounded exit it exists to guard.
-    if fm_run_timed $((FM_INACTIVE_RECONCILE_BUDGET_SECS + 1)) "$0" _scan-locked "$startup"; then
+    # One absolute deadline bounds the whole poll: the locked scan pass and the
+    # autonomous reconcile that follows it share it, so a slow pass can never
+    # add a second full budget to a watcher poll. The outer process-group kill
+    # stays the backstop, one second past the deadline.
+    deadline=$(( $(date +%s) + FM_INACTIVE_RECONCILE_BUDGET_SECS ))
+    scan_rc=0
+    if fm_run_timed $((FM_INACTIVE_RECONCILE_BUDGET_SECS + 1)) "$0" _scan-locked "$startup" "$deadline"; then
       :
-    elif [ "$?" -ne 124 ]; then
+    else
+      scan_rc=$?
+    fi
+    if [ "$scan_rc" -ne 0 ] && [ "$scan_rc" -ne 124 ]; then
       exit 1
     fi
     ;;
   _scan-locked)
-    [ "$#" -eq 2 ] || exit 2
+    [ "$#" -eq 3 ] || exit 2
     fm_lock_acquire_wait "$SCAN_LOCK" || exit 1
     trap 'fm_lock_release "$SCAN_LOCK"' EXIT
-    scan "$2"
+    scan "$2" "$3"
+    scan_rc=$?
+    # Share the poll's one deadline: whatever the scan left is all the reconcile
+    # gets, and a pass with no time left is deferred to the next poll rather
+    # than reported as a completed reconcile. Bounding it here, one second
+    # inside the outer backstop, keeps the backstop from ever landing on a
+    # running reconcile.
+    remaining=$(( $3 - $(date +%s) ))
+    if [ "$remaining" -ge 1 ]; then
+      autonomous_args=(reconcile)
+      [ "$2" -ne 1 ] || autonomous_args+=(--startup)
+      FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+        fm_run_timed "$remaining" \
+          "$SCRIPT_DIR/fm-autonomous-loop.sh" "${autonomous_args[@]}" >/dev/null 2>&1 || true
+    fi
+    exit "$scan_rc"
     ;;
   report)
     if [ "$#" -ne 2 ] || ! valid_id "$2"; then
