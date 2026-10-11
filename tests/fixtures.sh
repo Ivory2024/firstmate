@@ -191,13 +191,37 @@ case "$tool" in
             printf '{"author":{"login":"author"},"headRefOid":"%s","baseRefName":"main","changedFiles":1}\n' "$head"
             exit 0
             ;;
+          # The branch-protection re-verification reads the base branch on its
+          # own so the protection it checks is never a caller-supplied name.
+          # This must stay narrower than the combined view above, which also
+          # names baseRefName among its fields.
+          *"--json baseRefName"*)
+            log_call "$@"
+            printf '{"baseRefName":"main"}\n'
+            exit 0
+            ;;
         esac
         ;;
       "api user") log_call "$@"; printf '%s\n' '{"login":"captain"}'; exit 0 ;;
       "api "*)
         case " $* " in
           *"--slurp"*"/rules/branches/"*) serve gh-rulesets.json "$@"; exit 0 ;;
-          *"/branches/"*"/protection"*) serve gh-protection.json "$@"; exit 0 ;;
+          *"/branches/"*"/protection"*)
+            # Opt-in TOCTOU fixture: the first protection read serves the
+            # recorded evidence and creates the switch, and every later read
+            # serves FM_TEST_EVIDENCE_PROTECTION_AFTER instead. That value is a
+            # fixture filename in the evidence directory, and it is how a case
+            # drives protection being removed or weakened between evidence
+            # collection and the merge boundary's own re-read.
+            if [ -n "${FM_TEST_EVIDENCE_PROTECTION_AFTER:-}" ]; then
+              if [ -n "${FM_TEST_EVIDENCE_PROTECTION_SWITCH:-}" ] \
+                && [ ! -f "$FM_TEST_EVIDENCE_PROTECTION_SWITCH" ]; then
+                : > "$FM_TEST_EVIDENCE_PROTECTION_SWITCH"
+              else
+                serve "$FM_TEST_EVIDENCE_PROTECTION_AFTER" "$@"; exit 0
+              fi
+            fi
+            serve gh-protection.json "$@"; exit 0 ;;
           *"--slurp"*"/check-runs"*) serve gh-check-runs.json "$@"; exit 0 ;;
           *"--slurp"*"/statuses"*) serve gh-statuses.json "$@"; exit 0 ;;
           *"--slurp"*"/reviews"*) serve gh-reviews.json "$@"; exit 0 ;;

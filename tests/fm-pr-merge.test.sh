@@ -500,6 +500,8 @@ run_pr_merge() {
   FM_TEST_EVIDENCE_DIR="$case_dir/$EVIDENCE_DIRNAME" \
   FM_TEST_EVIDENCE_HEAD_FILE="$case_dir/github-head" \
   FM_TEST_EVIDENCE_PR_URL="${2:-}" \
+  FM_TEST_EVIDENCE_PROTECTION_AFTER="${FM_TEST_EVIDENCE_PROTECTION_AFTER:-}" \
+  FM_TEST_EVIDENCE_PROTECTION_SWITCH="${FM_TEST_EVIDENCE_PROTECTION_SWITCH:-}" \
   FM_ROOT_OVERRIDE="$ROOT" \
   FM_HOME="${FM_TEST_HOME:-$case_dir/home}" \
   FM_STATE_OVERRIDE="$case_dir/state" \
@@ -860,6 +862,38 @@ test_evidence_collector_passes_on_a_complete_fixture() {
   expect_code 0 "$rc" "evidence-complete-fixture: the shipped collector should pass and merge"
   assert_logged_gh_merge "$case_dir" 73 example/repo --squash
   pass "the shipped collector still passes on a complete forge fixture"
+}
+
+# The evidence gate read protection once; a merge decision is only as good as the
+# protection it was made under, so the boundary re-reads the same sources
+# immediately before the forge command and refuses when the evidence has moved.
+# The fixture serves the recorded protection on the first read and a weakened
+# one afterwards, which is exactly protection removed after evidence collection.
+test_merge_refuses_when_protection_changes_after_collection() {
+  local case_dir rc
+  case_dir=$(make_case protection-changed-after-collection)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 4242424242424242424242424242424242424242
+  : > "$case_dir/gh-axi.log"
+  # The required check the recorded decision was made under is gone.
+  printf '%s\n' '{"required_status_checks":{"contexts":[]},"required_pull_request_reviews":{}}' \
+    > "$case_dir/$EVIDENCE_DIRNAME/gh-protection-after.json"
+
+  set +e
+  FM_TEST_EVIDENCE_PROTECTION_AFTER=gh-protection-after.json \
+  FM_TEST_EVIDENCE_PROTECTION_SWITCH="$case_dir/protection-switch" \
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/74 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] || fail "protection-changed: a weakened protection was merged through"
+  assert_grep 'branch-protection-changed' "$case_dir/stderr" \
+    "protection-changed: the refusal did not name the changed protection evidence"
+  if grep -qF 'pr merge' "$case_dir/gh.log" 2>/dev/null; then
+    fail "protection-changed: gh pr merge ran on protection that had changed"
+  fi
+  pass "a merge refuses when protection changes after evidence collection"
 }
 
 test_github_merged_outcome_is_verified() {
@@ -2704,6 +2738,7 @@ test_merge_decision_is_persisted_and_survives_restart
 test_merge_refuses_when_the_decision_cannot_be_recorded
 test_evidence_collector_is_not_substitutable
 test_evidence_collector_passes_on_a_complete_fixture
+test_merge_refuses_when_protection_changes_after_collection
 test_github_open_unqueued_outcome_refuses
 test_github_mergeable_unknown_retries_then_succeeds
 test_github_mergeable_unknown_exhausts_bound_and_reports_pending
