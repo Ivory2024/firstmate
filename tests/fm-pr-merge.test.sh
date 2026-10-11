@@ -653,6 +653,82 @@ test_merge_refuses_on_evidence_hold() {
   pass "fm-pr-merge refuses to merge when evidence verification holds"
 }
 
+# The merge boundary's durable decision record. A HOLD that only ever existed as
+# the collector's return value dies with the process that read it, so the gate
+# records every verdict it gated on and enforces that record. These cases prove
+# the record carries the run's own identity and head, that a HOLD survives a
+# second independent run, and that a merge refuses when the record cannot be
+# published rather than proceeding on a verdict nothing durable holds.
+test_merge_decision_is_persisted_and_survives_restart() {
+  local case_dir rc head record
+  case_dir=$(make_case merge-decision-hold)
+  mkdir -p "$case_dir/wt"
+  head=4040404040404040404040404040404040404040
+  add_gh_mocks "$case_dir" "$head"
+  : > "$case_dir/gh-axi.log"
+  # No independent review at the head, so the shipped collector holds.
+  printf '%s\n' '[[]]' > "$case_dir/$EVIDENCE_DIRNAME/gh-reviews.json"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/73 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "merge-decision-hold: a HOLD fixture merged"
+  record="$case_dir/state/task-x1.merge-decision"
+  assert_present "$record" "merge-decision-hold: no durable decision was recorded"
+  [ "$(stat -c %a "$record" 2>/dev/null || stat -f %Lp "$record")" = 600 ] \
+    || fail "merge-decision-hold: the decision record is not mode 0600"
+  assert_equals HOLD "$(sed -n '7p' "$record")" \
+    "merge-decision-hold: the recorded decision was not HOLD"
+  assert_equals "$head" "$(sed -n '6p' "$record")" \
+    "merge-decision-hold: the record was not bound to the run's head"
+  assert_equals 73 "$(sed -n '5p' "$record")" \
+    "merge-decision-hold: the record was not bound to the run's pull request"
+
+  # A second, independent run is the restart: nothing of the first run's shell
+  # survives, so only the durable record can carry the HOLD forward.
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/73 \
+    > "$case_dir/stdout2" 2> "$case_dir/stderr2"
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "merge-decision-hold: a HOLD fixture merged after a restart"
+  assert_equals HOLD "$(sed -n '7p' "$record")" \
+    "merge-decision-hold: the HOLD did not survive the restart"
+  if grep -qF 'pr merge' "$case_dir/gh.log" 2>/dev/null; then
+    fail "merge-decision-hold: gh pr merge ran on a recorded HOLD"
+  fi
+  pass "a recorded HOLD is persisted and still refuses after a restart"
+}
+
+# The record is the decision the merge acts on, so a run whose record cannot be
+# published must refuse rather than fall back to the transient verdict. A
+# symlinked record path is exactly that case: the atomic publisher refuses a
+# destination that is not a single-link regular file on the state filesystem.
+test_merge_refuses_when_the_decision_cannot_be_recorded() {
+  local case_dir rc
+  case_dir=$(make_case merge-decision-unrecordable)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 4141414141414141414141414141414141414141
+  : > "$case_dir/gh-axi.log"
+  ln -s "$case_dir/elsewhere" "$case_dir/state/task-x1.merge-decision"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/73 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] || fail "merge-decision-unrecordable: the merge proceeded without a record"
+  assert_grep 'could not be recorded durably' "$case_dir/stderr" \
+    "merge-decision-unrecordable: the refusal did not name the unrecordable decision"
+  if grep -qF 'pr merge' "$case_dir/gh.log" 2>/dev/null; then
+    fail "merge-decision-unrecordable: gh pr merge ran without a durable decision"
+  fi
+  pass "a merge refuses when its decision cannot be recorded durably"
+}
+
 # The reviewer's finding: an earlier revision let a caller point the merge
 # boundary at its own evidence collector, so a stub that printed
 # {"status":"PASS"} merged with every forge, review, and risk check bypassed. The
@@ -2577,6 +2653,8 @@ test_verified_merge_records_pr_and_head
 test_pr_metadata_is_recorded_before_the_forge_call
 test_merge_failure_propagates_after_recording
 test_merge_refuses_on_evidence_hold
+test_merge_decision_is_persisted_and_survives_restart
+test_merge_refuses_when_the_decision_cannot_be_recorded
 test_evidence_collector_is_not_substitutable
 test_evidence_collector_passes_on_a_complete_fixture
 test_github_open_unqueued_outcome_refuses

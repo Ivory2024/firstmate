@@ -122,6 +122,12 @@
 # A failed forge command releases the lock after it returns. A successful one
 # retains the lock until the accepted merge authority is persisted against the
 # still-matching task metadata.
+# The merge-policy verdict the gate acted on is persisted too, bound to the PR
+# identity, the head SHA, the artifact digest of the classified change set, and
+# an expiry; the forge merge then runs only on a currently valid recorded PASS,
+# so a HOLD recorded before a restart still refuses after it and a decision for
+# another PR or another head can never be replayed. bin/fm-merge-decision-lib.sh
+# owns that record's shape and the fail-closed read this script enforces.
 #
 # Extra args must not include --repo or -R in any form, including a bundled
 # short-option cluster such as -yR, because the repository comes only from the
@@ -172,8 +178,17 @@ EVIDENCE_SCRIPT="$SCRIPT_DIR/fm-merge-evidence.sh"
 . "$SCRIPT_DIR/fm-merge-outcome-lib.sh"
 # shellcheck source=bin/fm-merge-authority-lib.sh
 . "$SCRIPT_DIR/fm-merge-authority-lib.sh"
+# shellcheck source=bin/fm-merge-decision-lib.sh
+. "$SCRIPT_DIR/fm-merge-decision-lib.sh"
 # shellcheck source=bin/fm-afk-contract.sh
 . "$SCRIPT_DIR/fm-afk-contract.sh"
+
+# How long a recorded merge decision stays current. A decision is evidence about
+# a head SHA that was true when it was read, so it stops being current rather
+# than being replayed indefinitely; the next run re-verifies and records a fresh
+# one. Fixed here rather than read from the environment: a caller-settable
+# lifetime would be a substitutable trust root for the record it governs.
+FM_MERGE_DECISION_TTL=3600
 
 if [ "$#" -lt 2 ]; then
   echo "error: invalid PR merge request" >&2
@@ -1174,6 +1189,44 @@ persist_accepted_merge_authority() {
   return 1
 }
 
+# Persist the verdict this run gated on, before acting on it. A HOLD that only
+# ever existed as a return value dies with the process that read it, so the
+# merge boundary records every decision - PASS, HOLD, and REJECT alike - bound
+# to this exact PR identity, head SHA, artifact digest, and an expiry. A record
+# that cannot be published refuses the merge rather than proceeding on a verdict
+# nothing durable holds.
+record_merge_decision() {  # <decision> <risk> <scope>
+  local decision=$1 risk=$2 scope=$3 now expiry
+  now=$(date +%s)
+  expiry=$((now + FM_MERGE_DECISION_TTL))
+  fm_merge_decision_persist "$STATE" "$ID" "$META" \
+    "$PROVIDER" "$PR_HOST" "$PR_PATH" "$PR_NUMBER" "$FM_PR_MERGE_HEAD" \
+    "$decision" "$risk" "$scope" "$expiry" || {
+    printf 'error: merge refused - the %s decision for %s could not be recorded durably\n' \
+      "$decision" "$URL" >&2
+    return 1
+  }
+}
+
+# The durable record, not the transient collector return, is what the merge acts
+# on. It must exist, be bound to exactly this PR and head, and still be current:
+# a recorded HOLD, a decision written for another head SHA or another PR, a
+# lapsed one, and an unreadable or malformed one each refuse with their own
+# cause. This is what makes a HOLD recorded before a restart still refuse after
+# it, and what keeps a stale decision from being replayed against a moved head.
+enforce_recorded_merge_decision() {
+  if fm_merge_decision_read "$STATE" "$ID" \
+      "$PROVIDER" "$PR_HOST" "$PR_PATH" "$PR_NUMBER" "$FM_PR_MERGE_HEAD"; then
+    [ "$FM_MERGE_DECISION" = PASS ] && return 0
+    printf 'error: merge refused - the recorded decision for %s is %s\n' \
+      "$URL" "$FM_MERGE_DECISION" >&2
+    return 1
+  fi
+  printf 'error: merge refused - no current durable merge decision for %s (%s)\n' \
+    "$URL" "$FM_MERGE_DECISION_REASON" >&2
+  return 1
+}
+
 # While away, a merge proceeds only when the base branch's rules prove no
 # merge queue, because a queued merge can land after its away authority
 # lapses with the record's archive. A repository whose
@@ -1408,11 +1461,19 @@ case "$PROVIDER" in
     [ "${#ALLOW_RED[@]}" -eq 0 ] || evidence_args+=(--waived-check "${ALLOW_RED[0]}")
     [ "${#ALLOW_MISSING[@]}" -eq 0 ] || evidence_args+=(--waived-check "${ALLOW_MISSING[0]}")
     evidence_json=$("$EVIDENCE_SCRIPT" "${evidence_args[@]}" 2>&1)
-    if ! printf '%s' "$evidence_json" | jq -e --arg sha "$FM_PR_MERGE_HEAD" \
+    evidence_risk=$(printf '%s' "$evidence_json" | jq -r '.risk // ""' 2>/dev/null) || evidence_risk=''
+    evidence_scope=$(printf '%s' "$evidence_json" | jq -r '.scope // ""' 2>/dev/null) || evidence_scope=''
+    merge_decision=HOLD
+    if printf '%s' "$evidence_json" | jq -e --arg sha "$FM_PR_MERGE_HEAD" \
       '.status == "PASS" and .head_sha == $sha' >/dev/null 2>&1; then
+      merge_decision=PASS
+    fi
+    record_merge_decision "$merge_decision" "$evidence_risk" "$evidence_scope" || exit 1
+    if [ "$merge_decision" != PASS ]; then
       printf 'error: merge refused - evidence verification failed: %s\n' "$evidence_json" >&2
       exit 1
     fi
+    enforce_recorded_merge_decision || exit 1
     # The away record is locked first, so this last presence and authority read
     # and the forge command below share one live-owner critical section.
     hold_away_record_for_merge || exit 1
