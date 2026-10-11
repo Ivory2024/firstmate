@@ -929,6 +929,33 @@ test_genuine_daemon_down_reports_blocked() {
   pass "genuine daemon-down blocked line still reports blocked"
 }
 
+# The command tower must emit a TYPED blocker, not merely echo the crew's prose:
+# with no explicit [blocker=] tag, fm-crew-state derives the type from the cause
+# text through bin/fm-blocker-classify-lib.sh. A provider quota cause is
+# PROVIDER_BLOCKED; a disk-quota cause is INFRA_BLOCKED (the shared word "quota"
+# must not steal the infrastructure failure). An explicit tag stays authoritative.
+test_blocked_cause_is_classified_by_command_tower() {
+  reset_fakes
+  local d out
+  d=$(new_case blocked-classified)
+  mkdir -p "$d/wt"
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/mate.meta" "window=fm:fm-mate" "worktree=$d/wt" "kind=secondmate" "harness=claude"
+  arm_idle_record "$d/state" mate
+  printf 'blocked: You have hit your usage limit; try again at 2:08 PM\n' > "$d/state/mate.status"
+  out=$(run_crew_state "$d" mate)
+  assert_contains "$out" "state: blocked" "provider quota blocker reads blocked"
+  assert_contains "$out" "blocker=PROVIDER_BLOCKED" "command tower classifies a provider quota cause"
+  printf 'blocked: disk quota exceeded while fetching the cache\n' > "$d/state/mate.status"
+  out=$(run_crew_state "$d" mate)
+  assert_contains "$out" "state: blocked" "disk quota blocker reads blocked"
+  assert_contains "$out" "blocker=INFRA_BLOCKED" "disk quota is infrastructure, not provider quota"
+  printf 'blocked [blocker=REVIEW_BLOCKED]: the reviewer said changes requested\n' > "$d/state/mate.status"
+  out=$(run_crew_state "$d" mate)
+  assert_contains "$out" "blocker=REVIEW_BLOCKED" "an explicit blocker tag wins over text"
+  pass "the command tower emits a typed blocker for a blocked crew"
+}
+
 # (c) genuine parked run + needs-decision log AGREE -> parked, NOT superseded
 test_genuine_parked_not_superseded() {
   reset_fakes
@@ -2677,6 +2704,11 @@ test_remote_alive_with_log_uses_status_log() {
   assert_contains "$out" "source: status-log" "alive remote mate reads current activity from the routed log"
   assert_contains "$out" "remote endpoint alive on remote-mac" "the remote liveness read should be visible"
   assert_not_contains "$out" "worktree gone" "a healthy remote mate must never read as torn down"
+  printf 'blocked: You have hit your usage limit\n' > "$d/state/rsm.status"
+  out=$(FM_FAKE_REMOTE_STATE_OUT=alive FM_FAKE_SSH_RC=0 run_remote_crew_state "$d" rsm); rc=$?
+  expect_code 0 "$rc" "remote alive blocked status exits 0"
+  assert_contains "$out" "state: blocked" "remote alive endpoint preserves blocked status"
+  assert_contains "$out" "blocker=PROVIDER_BLOCKED" "remote alive blocked status is typed"
   pass "fm-crew-state remote: alive endpoint falls through to the routed status log"
 }
 
@@ -2719,6 +2751,39 @@ test_remote_dead_reports_remote_verdict() {
   assert_contains "$out" "remote endpoint dead on remote-mac" \
     "a genuinely dead remote endpoint reports the remote host's own verdict"
   pass "fm-crew-state remote: the remote host's own dead verdict is reported truthfully"
+}
+
+# Endpoint-fail arms of the blocker contract: when the remote endpoint is dead
+# or unreachable the state line is `unknown`, never `blocked`, so the tower must
+# not guess a blocker TYPE from the routed log's cause text. Typing happens only
+# where a blocked result is actually reported (the alive arm above).
+test_remote_dead_with_blocked_log_guesses_no_blocker_type() {
+  reset_fakes
+  local d out rc
+  d=$(setup_remote_case remote-dead-blocked-log)
+  make_fakebin "$d" >/dev/null
+  printf 'blocked [at=1780000000]: provider outage on the remote quota adapter\n' > "$d/state/rsm.status"
+  out=$(FM_FAKE_REMOTE_STATE_OUT=dead FM_FAKE_SSH_RC=0 run_remote_crew_state "$d" rsm); rc=$?
+  expect_code 0 "$rc" "remote dead with blocked log exits 0"
+  assert_contains "$out" "state: unknown" "a dead endpoint reads unknown, never blocked"
+  assert_contains "$out" "remote endpoint dead on remote-mac" "the remote verdict is still reported"
+  assert_not_contains "$out" "blocker=" "a dead endpoint must never carry a guessed blocker type"
+  assert_not_contains "$out" "PROVIDER_BLOCKED" "endpoint failure must not be typed from cause text"
+  pass "fm-crew-state remote: endpoint failure emits unknown with no blocker type"
+}
+
+test_remote_unreachable_with_blocked_log_guesses_no_blocker_type() {
+  reset_fakes
+  local d out rc
+  d=$(setup_remote_case remote-unreachable-blocked-log)
+  make_fakebin "$d" >/dev/null
+  printf 'blocked [at=1780000000]: provider outage on the remote quota adapter\n' > "$d/state/rsm.status"
+  out=$(FM_FAKE_SSH_RC=255 run_remote_crew_state "$d" rsm); rc=$?
+  expect_code 0 "$rc" "remote unreachable with blocked log exits 0"
+  assert_contains "$out" "unknown-remote" "an unreachable host reads unknown-remote"
+  assert_not_contains "$out" "blocker=" "an unreachable endpoint must never carry a guessed blocker type"
+  assert_not_contains "$out" "PROVIDER_BLOCKED" "transport failure must not be typed from cause text"
+  pass "fm-crew-state remote: unreachable endpoint emits unknown with no blocker type"
 }
 
 test_missing_meta() {
@@ -4798,6 +4863,7 @@ test_socket_refusal_over_terminal_run_reports_blocked
 test_socket_refusal_override_expires_when_the_crew_moves_on
 test_ordinary_blocked_over_live_run_keeps_plain_superseded
 test_genuine_daemon_down_reports_blocked
+test_blocked_cause_is_classified_by_command_tower
 test_secondmate_open_block_survives_unrelated_append
 test_newest_open_decision_supplies_the_reported_detail
 test_single_owner_terminal_declaration_supersedes_stale_decision
@@ -4871,6 +4937,8 @@ test_remote_alive_with_log_uses_status_log
 test_remote_alive_idle_is_healthy_not_gone
 test_remote_unreachable_is_unknown_remote_not_dead
 test_remote_dead_reports_remote_verdict
+test_remote_dead_with_blocked_log_guesses_no_blocker_type
+test_remote_unreachable_with_blocked_log_guesses_no_blocker_type
 test_missing_meta
 test_provably_working_via_runs_list_fallback
 test_not_provably_working_when_stopped
