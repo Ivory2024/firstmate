@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
 import { OpenCodeLifecycleAdapter, QUIESCENT } from "./lib/fm-opencode-lifecycle-adapter.js";
@@ -28,6 +28,12 @@ const ARM_RETIRE_TIMEOUT_MS = positiveInteger("FM_WATCH_ARM_RETIRE_TIMEOUT_MS", 
 const REARM_RETRY_BASE_MS = positiveInteger("FM_WATCH_REARM_RETRY_BASE_MS", 250);
 const REARM_RETRY_MAX_MS = positiveInteger("FM_WATCH_REARM_RETRY_MAX_MS", 4000);
 const REARM_RETRY_LIMIT = positiveInteger("FM_WATCH_REARM_RETRY_LIMIT", 5);
+// Durable-signal re-arm poll interval. The event-driven arm fires only on a
+// quiescent boundary, and a session that stays busy can run for hours without
+// reaching one, which leaves supervision down for that whole window. The poll
+// instead asks the shared on-disk predicate whether this home needs a watcher
+// and none holds a fresh liveness beacon.
+const REARM_POLL_MS = positiveInteger("FM_OPENCODE_REARM_POLL_MS", 60000);
 
 let child = null;
 let armStatus = "idle";
@@ -118,14 +124,49 @@ async function isPrimaryRoot(root, home) {
   return gitDir.stdout.trim() === commonDir.stdout.trim();
 }
 
+// The launch gate is the shared predicate, not a second copy of its condition
+// set: bin/fm-supervision-lib.sh's fm_supervision_needed is the single owner of
+// what counts as a supervision need - in-flight task metadata, an X-mode relay
+// poll, a registered process-to-event source, or a registered custom check.
+// Re-listing only the first of those here rejected a busy home whose sole need
+// was a source or a check on every poll (status "not-needed"), so the durable
+// re-arm never fired for exactly the homes a source-only watcher must serve.
+// Away mode stays outside the shared predicate because the away daemon, not
+// this plugin, owns supervision while state/.afk exists.
 function shouldArm(paths) {
   if (existsSync(`${paths.state}/.afk`)) return false;
-  if (existsSync(`${paths.config}/x-mode.env`)) return true;
-  try {
-    return readdirSync(paths.state).some((name) => name.endsWith(".meta"));
-  } catch {
-    return false;
-  }
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      '. "$1/bin/fm-supervision-lib.sh" && fm_supervision_needed "$2"',
+      "fm-primary-watch-arm",
+      paths.root,
+      paths.state,
+    ],
+    { stdio: "ignore" },
+  );
+  return result.status === 0;
+}
+
+// fm_supervision_unhealthy <state-dir> exits 0 exactly when the shared
+// predicate says this home needs a watcher AND no watcher holds a fresh
+// liveness beacon (state/.last-watcher-beat). It is the durable-signal half of
+// re-arm: the decision reads only on-disk state, so it holds while the session
+// is mid-turn and publishes nothing at all.
+function supervisionUnhealthy(paths) {
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      '. "$1/bin/fm-supervision-lib.sh" && fm_supervision_unhealthy "$2"',
+      "fm-primary-watch-arm",
+      paths.root,
+      paths.state,
+    ],
+    { stdio: "ignore" },
+  );
+  return result.status === 0;
 }
 
 async function sessionOwnsLock(paths) {
@@ -551,12 +592,43 @@ export const FmPrimaryWatchArm = async ({ client, directory, worktree }) => {
     ensureArmed: (sessionID, activeClient) => ensureArm(paths, sessionID, activeClient ?? client),
   };
 
+  let sessionID = "";
+
+  // Durable-signal re-arm. The event-driven arm below fires only on a quiescent
+  // boundary, and OpenCode 2 publishes no `session.idle`, so a session that
+  // stays busy can go hours without arming the cycle at all - one home's
+  // watcher stayed dead for 10h25m with 1,259 wakes queued behind it. This poll
+  // reads the durable liveness beacon instead, so it holds with no event at all.
+  // ensureArm stays the single idempotent entry point (one child or one
+  // scheduled retry at a time) and bin/fm-watch-arm.sh attaches to a healthy
+  // live cycle rather than starting a second one, so a fresh beacon arms
+  // nothing and repeated re-arms are harmless.
+  const rearm = () => {
+    if (!sessionID) return;
+    if (child || retryTimer || launchInFlight) return;
+    if (!supervisionUnhealthy(paths)) return;
+    retryFailures = 0;
+    void ensureArm(paths, sessionID, client);
+  };
+  const rearmTimer = setInterval(rearm, REARM_POLL_MS);
+  rearmTimer.unref?.();
+
+  // Any event, not just a quiescent one, teaches the plugin which session to
+  // deliver a wake to; a busy session still yields these, so the durable poll
+  // has a target before any boundary arrives.
+  const remember = (id) => {
+    if (!id || sessionID) return;
+    sessionID = id;
+    rearm();
+  };
+
   const armFromEvent = async (event) => {
     const type = event?.type;
+    const id = event?.properties?.sessionID || event?.data?.sessionID;
+    remember(id);
     if (type !== "session.idle") return;
-    const sessionID = event?.properties?.sessionID || event?.data?.sessionID;
-    if (!sessionID) return;
-    void ensureArm(paths, sessionID, client);
+    if (!id) return;
+    void ensureArm(paths, id, client);
   };
 
   return {
@@ -565,12 +637,13 @@ export const FmPrimaryWatchArm = async ({ client, directory, worktree }) => {
     },
     quiescent: async (signal) => {
       if (signal?.type !== QUIESCENT || !signal.sessionID) return;
-      const sessionID = signal.sessionID;
-      void ensureArm(paths, sessionID, client);
+      remember(signal.sessionID);
+      void ensureArm(paths, signal.sessionID, client);
     },
+    observe: (id) => remember(id),
+    dispose: () => clearInterval(rearmTimer),
   };
 };
-FmPrimaryWatchArm.id = "fm-primary-watch-arm";
 FmPrimaryWatchArm.setup = async function setup(ctx) {
   const client = {
     session: {
@@ -590,6 +663,7 @@ FmPrimaryWatchArm.setup = async function setup(ctx) {
   let eventError = null;
   const eventTask = (async () => {
     for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+      hooks.observe(event?.data?.sessionID ?? event?.properties?.sessionID);
       const signal = lifecycle.normalize(event);
       if (signal) await hooks.quiescent(signal);
     }
@@ -600,8 +674,14 @@ FmPrimaryWatchArm.setup = async function setup(ctx) {
   return async () => {
     controller.abort();
     await eventTask;
+    hooks.dispose?.();
     if (eventError) throw eventError;
   };
 };
 
-export default FmPrimaryWatchArm;
+// OpenCode 2.0.26 requires the default export to be an OBJECT carrying an `id`
+// and an `effect` or `setup` function. A bare function default is rejected at
+// load with "Plugin must export a default definition with an id and an effect
+// or setup function. (Expected object at [\"default\"])", so the plugin never
+// loaded and neither arm path ever ran.
+export default { id: "fm-primary-watch-arm", setup: FmPrimaryWatchArm.setup };
