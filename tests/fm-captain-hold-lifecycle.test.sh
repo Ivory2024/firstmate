@@ -3416,6 +3416,10 @@ test_pr_merge_entrypoint_separates_an_unreadable_record_from_an_absent_one() {
   id=sample-missing-pr-authority
   pr=https://github.com/sample/sample/pull/43
   write_origin_meta "$home" "$id" ship
+  # The merge collector binds its test-evidence read to the task's recorded
+  # worktree, so this fixture's worktree must exist for the merge to reach the
+  # forge; the case is about the authority record, not a missing worktree.
+  mkdir -p "$home/projects/missing-$id"
 
   # A backlog that exists but cannot be read may hide a live captain hold, so
   # the merge must refuse without reaching the forge.

@@ -8,6 +8,10 @@
 # named check from the enforced set; every other configured check must still be
 # green, and a repository with no configured check still holds.
 #
+# The run-evidence read (`no-mistakes axi status`) is bound to the task's own
+# worktree, resolved from state/<task>.meta, never to the caller's inherited
+# cwd; an unbindable worktree holds instead of reading an unrelated run.
+#
 # The changed-file set must be COMPLETE before risk is classified, because a
 # truncated list hides protected paths and silently downgrades the risk verdict.
 # GitHub reads the paginated pulls/<n>/files endpoint and requires its distinct
@@ -31,6 +35,20 @@ hold() {
 }
 
 valid_sha() { [[ ${1:-} =~ ^[0-9a-fA-F]{40}$ ]]; }
+
+# The task's own worktree, from its private metadata. The `axi status` read must
+# be bound to this directory, never to the caller's inherited cwd: a supervisor
+# shell parked in FM_HOME would otherwise read an unrelated repository's run and
+# hold a pull request that has valid evidence. An absent, unreadable, empty, or
+# missing worktree cannot bind the read, so the caller holds rather than falling
+# back to the ambient directory.
+task_worktree() {  # <task-id>
+  local wt
+  [ -f "$STATE/$1.meta" ] && [ ! -L "$STATE/$1.meta" ] && [ -r "$STATE/$1.meta" ] || return 1
+  wt=$(grep '^worktree=' "$STATE/$1.meta" | tail -1 | cut -d= -f2- || true)
+  [ -n "$wt" ] && [ -d "$wt" ] || return 1
+  printf '%s' "$wt"
+}
 
 test_evidence_ok() {
   local head=$1 pr=$2 run_status=$3
@@ -186,7 +204,11 @@ collect_github() {
   findings=$(status_open_decisions "$STATE/$task_id.status" 2>/dev/null) || { hold task-ledger-unreadable; return 0; }
   [ -z "$findings" ] || { hold task-open-decisions; return 0; }
   run_status=''
-  if command -v no-mistakes >/dev/null 2>&1; then run_status=$(no-mistakes axi status 2>/dev/null) || run_status=''; fi
+  if command -v no-mistakes >/dev/null 2>&1; then
+    local wt
+    wt=$(task_worktree "$task_id") || { hold test-evidence-missing-or-stale; return 0; }
+    run_status=$(cd "$wt" && no-mistakes axi status 2>/dev/null) || run_status=''
+  fi
   test_evidence_ok "$LIVE_HEAD" "$FM_PR_URL" "$run_status" || { hold test-evidence-missing-or-stale; return 0; }
   changed_files=$(printf '%s' "$pr_json" | jq -er '.changedFiles | select(type == "number")' 2>/dev/null) \
     || { hold changed-files-count-unreadable; return 0; }
@@ -266,7 +288,11 @@ collect_gitlab() {
   findings=$(status_open_decisions "$STATE/$task_id.status" 2>/dev/null) || { hold task-ledger-unreadable; return 0; }
   [ -z "$findings" ] || { hold task-open-decisions; return 0; }
   run_status=''
-  if command -v no-mistakes >/dev/null 2>&1; then run_status=$(no-mistakes axi status 2>/dev/null) || run_status=''; fi
+  if command -v no-mistakes >/dev/null 2>&1; then
+    local wt
+    wt=$(task_worktree "$task_id") || { hold test-evidence-missing-or-stale; return 0; }
+    run_status=$(cd "$wt" && no-mistakes axi status 2>/dev/null) || run_status=''
+  fi
   test_evidence_ok "$LIVE_HEAD" "$FM_PR_URL" "$run_status" || { hold test-evidence-missing-or-stale; return 0; }
   changes=$(GITLAB_HOST="$FM_PR_HOST" glab api "projects/$encoded/merge_requests/$FM_PR_NUMBER/changes" 2>/dev/null) \
     || { hold changed-files-unreadable; return 0; }

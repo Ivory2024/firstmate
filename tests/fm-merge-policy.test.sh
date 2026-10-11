@@ -109,6 +109,11 @@ run:
 outcome: passed
 JSON
 printf '%s\n' 'done: validated' > "$TMP/home/state/$TASK.status"
+# The collector binds its `axi status` read to the task's own worktree, so the
+# shared fixture records one; the cwd-binding case below drives a stub that only
+# answers from that directory.
+mkdir -p "$TMP/wt"
+printf 'worktree=%s\n' "$TMP/wt" > "$TMP/home/state/$TASK.meta"
 evidence_env=(PATH="$TMP/fakebin:$PATH" FM_HOME="$TMP/home" FM_STATE_OVERRIDE="$TMP/home/state" \
   FM_TEST_PR_JSON="$TMP/pr.json" FM_TEST_REVIEWS_JSON="$TMP/reviews.json" \
   FM_TEST_PROTECTION_JSON="$TMP/protection.json" FM_TEST_RULESETS_JSON="$TMP/rulesets.json" \
@@ -116,6 +121,23 @@ evidence_env=(PATH="$TMP/fakebin:$PATH" FM_HOME="$TMP/home" FM_STATE_OVERRIDE="$
   FM_TEST_STATUS="$TMP/status")
 out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "verified producer accepts matching forge evidence" "$(printf '%s' "$out" | jq -r .status)" PASS
+# The `axi status` read is bound to the task's own worktree, never to the
+# caller's inherited cwd: a supervisor shell parked in FM_HOME would otherwise
+# read an unrelated repository's run and hold a PR that has valid evidence. This
+# stub answers only from the recorded worktree, so it passes only when the
+# collector changes directory into it first.
+mkdir -p "$TMP/elsewhere" "$TMP/cwd-bin"
+cat > "$TMP/cwd-bin/no-mistakes" <<'SH'
+#!/usr/bin/env bash
+[ "$PWD" = "$FM_TEST_CWD_WT" ] || exit 1
+cat "$FM_TEST_STATUS"
+SH
+chmod +x "$TMP/cwd-bin/no-mistakes"
+out=$(cd "$TMP/elsewhere" && env "${evidence_env[@]}" \
+  PATH="$TMP/cwd-bin:$TMP/fakebin:$PATH" FM_TEST_CWD_WT="$TMP/wt" \
+  "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "axi status read is bound to the task worktree, not the caller cwd" \
+  "$(printf '%s' "$out" | jq -r '.status + ":" + (.reasons | join(","))')" "PASS:"
 cat > "$TMP/high-pr.json" <<JSON
 {"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"main","changedFiles":1,"files":[{"path":"bin/fm-watch.sh"}]}
 JSON
