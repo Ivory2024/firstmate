@@ -64,6 +64,34 @@ case $- in *u*) _fm_classify_nounset=on ;; *) _fm_classify_nounset=off ;; esac
 [ "$_fm_classify_nounset" = on ] || set +u
 unset _fm_classify_nounset
 
+# Blocker taxonomy owner. Sourced so FM_BLOCKER_TYPES and fm_blocker_classify
+# stay in exactly one place; this library only READS the optional blocker key.
+# shellcheck source=bin/fm-blocker-classify-lib.sh
+# shellcheck disable=SC1091
+. "$_FM_CLASSIFY_LIB_DIR/fm-blocker-classify-lib.sh"
+
+# fm_status_line_blocker <status-line>
+# Print the blocker TYPE carried by a status line's `[blocker=<V>]` key.
+#   - no key           -> empty (a legacy record with no blocker metadata)
+#   - a known type     -> that type
+#   - any other value  -> UNKNOWN_BLOCKED (never trust an unrecognized label)
+# Additive and backward-compatible: existing parsers ignore the new keys.
+fm_status_line_blocker() {  # <status-line>
+  local line=$1 value
+  value=$(printf '%s\n' "$line" | sed -n 's/.*\[blocker=\([^]]*\)\].*/\1/p' | head -1)
+  [ -n "$value" ] || return 0
+  case " ${FM_BLOCKER_TYPES:-} " in
+    *" $value "*) printf '%s\n' "$value" ;;
+    *) printf 'UNKNOWN_BLOCKED\n' ;;
+  esac
+}
+
+# fm_status_line_stage <status-line>
+# Print the failure STAGE carried by an optional `[stage=<V>]` key, else empty.
+fm_status_line_stage() {  # <status-line>
+  printf '%s\n' "$1" | sed -n 's/.*\[stage=\([^]]*\)\].*/\1/p' | head -1
+}
+
 # Captain-relevant status verbs. A status line carrying any of these is work
 # firstmate must see. Lines without these verbs are no-verb signals: the watcher
 # absorbs them only with positive provably-working evidence, while the daemon uses
