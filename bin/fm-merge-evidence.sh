@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Read-only collector for the fixed Gate 0 forge and task-state evidence sources.
-# Usage: fm-merge-evidence.sh collect <task-id> <pr-url> <expected-head>
+# Usage: fm-merge-evidence.sh collect <task-id> <pr-url> <expected-head> [--waived-check <check-name>]
+#
+# --waived-check is the attended single-check waiver carried from
+# bin/fm-pr-merge.sh's own --allow-red as an argument bound to this one call, so
+# no ambient environment or file can stand in for it. It removes exactly that
+# named check from the enforced set; every other configured check must still be
+# green, and a repository with no configured check still holds.
 #
 # The changed-file set must be COMPLETE before risk is classified, because a
 # truncated list hides protected paths and silently downgrades the risk verdict.
@@ -41,14 +47,18 @@ test_evidence_ok() {
 }
 
 github_required_checks_ok() {
-  local protection=$1 rulesets=$2 check_runs=$3 statuses=$4 head=$5 required
+  local protection=$1 rulesets=$2 check_runs=$3 statuses=$4 head=$5 waived=${6:-} required
   required=$(jq -cn --argjson protection "$protection" --argjson rulesets "$rulesets" '
     [($protection.required_status_checks.contexts // [] | map({context:., app_id:null})),
      ($protection.required_status_checks.checks // [] | map({context:.context, app_id:(.app_id // null)})),
      ([$rulesets[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? |
        {context:.context, app_id:(.integration_id // .app_id // null)}])]
     | flatten | map(select(.context | type == "string" and length > 0)) | unique_by([.context,.app_id])') || return 1
+  # A repository that configures no required check still holds. Only after that
+  # is the attended single-check waiver applied, so waiving every configured
+  # check leaves an empty enforced set instead of an "unconfigured" refusal.
   [ "$(printf '%s' "$required" | jq 'length')" -gt 0 ] || return 1
+  required=$(printf '%s' "$required" | jq -c --arg waived "$waived" 'map(select(.context != $waived))') || return 1
   jq -en --argjson required "$required" --argjson runs "$check_runs" --argjson statuses "$statuses" --arg head "$head" '
     ($runs | type == "array") and ($statuses | type == "array") and
     all($required[]; . as $requirement |
@@ -58,7 +68,7 @@ github_required_checks_ok() {
         [$statuses[] | select(.context == $requirement.context and .sha == $head)]
        else [] end) as $matching_statuses |
       (all($matching_runs[]; (.started_at | type == "string" and length > 0) and
-        (.id | type == "number") and (.run_attempt | type == "number") and
+        (.id | type == "number") and
         (.app.id | type == "number") and (.status | type == "string") and
         ((.conclusion == null) or (.conclusion | type == "string"))) and
        all($matching_statuses[]; (.created_at | type == "string" and length > 0) and
@@ -119,9 +129,26 @@ collect_github() {
     || { hold forge-base-unreadable; return 0; }
   local base_encoded
   base_encoded=$(jq -rn --arg value "$base" '$value | @uri') || { hold base-encode-failed; return 0; }
-  protection=$(gh api "repos/$owner/$repo/branches/$base_encoded/protection" 2>/dev/null) \
+  # A branch protected only by a ruleset has no classic branch protection, so
+  # this endpoint answers 404. That is an empty classic source rather than an
+  # unreadable one: the applicable rulesets are what enforce its required checks.
+  # Any other failure still holds, and a non-object payload is still incomplete.
+  # stderr is captured to its own file rather than merged into the payload, so a
+  # forge that writes anything to stderr cannot corrupt an otherwise valid read.
+  local protection_err
+  protection_err=$(mktemp "${TMPDIR:-/tmp}/fm-merge-evidence-protection.XXXXXX") \
     || { hold branch-protection-unreadable; return 0; }
-  printf '%s' "$protection" | jq -e 'type == "object" and has("required_status_checks") and has("required_pull_request_reviews")' >/dev/null 2>&1 \
+  if ! protection=$(gh api "repos/$owner/$repo/branches/$base_encoded/protection" 2>"$protection_err"); then
+    if grep -q 'HTTP 404' "$protection_err"; then
+      protection='{}'
+    else
+      rm -f "$protection_err"
+      hold branch-protection-unreadable
+      return 0
+    fi
+  fi
+  rm -f "$protection_err"
+  printf '%s' "$protection" | jq -e 'type == "object"' >/dev/null 2>&1 \
     || { hold branch-protection-incomplete; return 0; }
   rulesets_json=$(gh api --paginate --slurp "repos/$owner/$repo/rules/branches/$base_encoded" 2>/dev/null) \
     || { hold rulesets-unreadable; return 0; }
@@ -137,7 +164,7 @@ collect_github() {
     || { hold required-statuses-unreadable; return 0; }
   statuses=$(printf '%s' "$statuses_json" | jq -ce '[.[] | .[]?]') \
     || { hold required-statuses-invalid; return 0; }
-  github_required_checks_ok "$protection" "$rulesets" "$check_runs" "$statuses" "$LIVE_HEAD" \
+  github_required_checks_ok "$protection" "$rulesets" "$check_runs" "$statuses" "$LIVE_HEAD" "$WAIVED_CHECK" \
     || { hold required-checks-not-green-or-unconfigured; return 0; }
   reviews=$(gh api --paginate --slurp "repos/$owner/$repo/pulls/$number/reviews" 2>/dev/null) \
     || { hold forge-reviews-unreadable; return 0; }
@@ -281,8 +308,17 @@ collect_gitlab() {
     '{status:"PASS",head_sha:$head,risk:$risk,scope:$scope,reasons:[]}'
 }
 
-if [ "$#" -ne 4 ] || [ "$1" != collect ] || ! fm_pr_task_id_valid "$2" || ! fm_pr_url_parse "$3" || ! valid_sha "$4"; then
-  echo 'usage: fm-merge-evidence.sh collect <task-id> <pr-url> <expected-head>' >&2
+if [ "$#" -ge 5 ]; then
+  if [ "$#" -ne 6 ] || [ "$5" != "--waived-check" ] || [ -z "${6:-}" ]; then
+    echo 'usage: fm-merge-evidence.sh collect <task-id> <pr-url> <expected-head> [--waived-check <check-name>]' >&2
+    exit 2
+  fi
+  WAIVED_CHECK=$6
+else
+  WAIVED_CHECK=''
+fi
+if [ "$#" -lt 4 ] || [ "$1" != collect ] || ! fm_pr_task_id_valid "$2" || ! fm_pr_url_parse "$3" || ! valid_sha "$4"; then
+  echo 'usage: fm-merge-evidence.sh collect <task-id> <pr-url> <expected-head> [--waived-check <check-name>]' >&2
   exit 2
 fi
 case "$FM_PR_PROVIDER" in

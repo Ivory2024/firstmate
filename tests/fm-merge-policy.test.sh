@@ -49,8 +49,12 @@ cat > "$TMP/protection.json" <<'JSON'
 {"required_status_checks":{"contexts":["ci"]},"required_pull_request_reviews":{}}
 JSON
 printf '%s\n' '[[]]' > "$TMP/rulesets.json"
+# Real-shaped Checks API check-run objects: id, name, status, conclusion,
+# started_at, completed_at, check_suite, app, output. They carry NO run_attempt
+# (that field belongs to the workflow-run object, not the check run), so a
+# collector that requires it refuses a normally successful GitHub Actions check.
 cat > "$TMP/check-runs.json" <<JSON
-[{"total_count":1,"check_runs":[{"id":1,"run_attempt":1,"started_at":"2026-10-10T00:00:00Z","app":{"id":17},"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"success"}]}]
+[{"total_count":1,"check_runs":[{"id":1,"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"success","started_at":"2026-10-10T00:00:00Z","completed_at":"2026-10-10T00:00:30Z","check_suite":{"id":7},"app":{"id":17,"slug":"github-actions"},"output":{"title":"ok","summary":null,"text":null}}]}]
 JSON
 printf '%s\n' '[[]]' > "$TMP/statuses.json"
 cat > "$TMP/fakebin/gh" <<'SH'
@@ -75,7 +79,13 @@ case "$1 ${2:-}" in
   "api user") printf '%s\n' '{"login":"captain"}' ;;
   "api repos/"*)
     case "$*" in
-      *branches/*/protection*) [ "${FM_TEST_FAIL_PROTECTION:-}" != yes ] || exit 1; cat "$FM_TEST_PROTECTION_JSON";;
+      *branches/*/protection*)
+        if [ "${FM_TEST_PROTECTION_MISSING:-}" = yes ]; then
+          printf '%s\n' 'gh: Not Found (HTTP 404)' >&2
+          exit 1
+        fi
+        [ "${FM_TEST_FAIL_PROTECTION:-}" != yes ] || exit 1
+        cat "$FM_TEST_PROTECTION_JSON";;
       *) exit 2;;
     esac
     ;;
@@ -140,6 +150,57 @@ out=$(env "${evidence_env[@]}" FM_TEST_PR_JSON="$TMP/excluded-pr.json" "$EVIDENC
 eq "branch-effective endpoint omits excluded patterns" "$(printf '%s' "$out" | jq -r .status)" PASS
 out=$(env "${evidence_env[@]}" FM_TEST_FAIL_RULES=yes "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "unreadable branch rules hold" "$(printf '%s' "$out" | jq -r .reasons[0])" rulesets-unreadable
+
+# --- ruleset-only branch ---
+# A branch protected only by a ruleset answers 404 on the classic protection
+# endpoint. That is an empty classic source, not an unreadable one, so the
+# applicable ruleset's required check decides instead of a refusal.
+cat > "$TMP/rulesets.json" <<'JSON'
+[[],[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"security-scan","integration_id":17}]}}]]
+JSON
+cat > "$TMP/check-runs.json" <<JSON
+[{"total_count":1,"check_runs":[{"id":9,"name":"security-scan","head_sha":"$HEAD","status":"completed","conclusion":"success","started_at":"2026-10-10T00:00:00Z","completed_at":"2026-10-10T00:00:30Z","check_suite":{"id":7},"app":{"id":17,"slug":"github-actions"},"output":{"title":"ok","summary":null,"text":null}}]}]
+JSON
+out=$(env "${evidence_env[@]}" FM_TEST_PROTECTION_MISSING=yes "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "ruleset-only branch enforces the effective ruleset check" "$(printf '%s' "$out" | jq -r '.status + ":" + (.reasons | join(","))')" "PASS:"
+cat > "$TMP/check-runs.json" <<JSON
+[{"total_count":1,"check_runs":[{"id":9,"name":"security-scan","head_sha":"$HEAD","status":"completed","conclusion":"failure","started_at":"2026-10-10T00:00:00Z","completed_at":"2026-10-10T00:00:30Z","check_suite":{"id":7},"app":{"id":17,"slug":"github-actions"},"output":{"title":"failed","summary":null,"text":null}}]}]
+JSON
+out=$(env "${evidence_env[@]}" FM_TEST_PROTECTION_MISSING=yes "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "ruleset-only branch holds a red ruleset check" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
+printf '%s\n' '[[]]' > "$TMP/rulesets.json"
+
+# --- attended single-check waiver (--waived-check) ---
+# The waiver arrives as an argument bound to one call, never from an environment
+# variable or a file. It removes exactly the named check from the enforced set:
+# every other configured check must still be green, and a repository that
+# configures no check at all still holds.
+cat > "$TMP/check-runs.json" <<JSON
+[{"total_count":1,"check_runs":[{"id":1,"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"failure","started_at":"2026-10-10T00:00:00Z","completed_at":"2026-10-10T00:00:30Z","check_suite":{"id":7},"app":{"id":17,"slug":"github-actions"},"output":{"title":"failed","summary":null,"text":null}}]}]
+JSON
+out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "no waiver holds a red required check" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
+out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD" --waived-check ci)
+eq "waived-check waives exactly its named required check" "$(printf '%s' "$out" | jq -r '.status + ":" + (.reasons | join(","))')" "PASS:"
+cat > "$TMP/protection.json" <<'JSON'
+{"required_status_checks":{"contexts":["ci","lint"]},"required_pull_request_reviews":{}}
+JSON
+cat > "$TMP/check-runs.json" <<JSON
+[{"total_count":2,"check_runs":[{"id":1,"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"failure","started_at":"2026-10-10T00:00:00Z","completed_at":"2026-10-10T00:00:30Z","check_suite":{"id":7},"app":{"id":17,"slug":"github-actions"},"output":{"title":"failed","summary":null,"text":null}},{"id":2,"name":"lint","head_sha":"$HEAD","status":"completed","conclusion":"failure","started_at":"2026-10-10T00:00:00Z","completed_at":"2026-10-10T00:00:30Z","check_suite":{"id":7},"app":{"id":17,"slug":"github-actions"},"output":{"title":"failed","summary":null,"text":null}}]}]
+JSON
+out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD" --waived-check ci)
+eq "waived-check leaves a different red required check holding" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
+if env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD" --waived-check >/dev/null 2>&1; then
+  no "waived-check without a name is refused"
+else
+  ok "waived-check without a name is refused"
+fi
+cat > "$TMP/protection.json" <<'JSON'
+{"required_status_checks":{"contexts":["ci"]},"required_pull_request_reviews":{}}
+JSON
+cat > "$TMP/check-runs.json" <<JSON
+[{"total_count":1,"check_runs":[{"id":1,"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"success","started_at":"2026-10-10T00:00:00Z","completed_at":"2026-10-10T00:00:30Z","check_suite":{"id":7},"app":{"id":17,"slug":"github-actions"},"output":{"title":"ok","summary":null,"text":null}}]}]
+JSON
 cat > "$TMP/pr.json" <<JSON
 {"author":{"login":"author"},"headRefOid":"$HEAD","baseRefName":"main","changedFiles":1,"files":[{"path":"docs/operations.md"}]}
 JSON
@@ -179,12 +240,12 @@ cat > "$TMP/reviews.json" <<JSON
 JSON
 cp "$TMP/check-runs.json" "$TMP/good-check-runs.json"
 cat > "$TMP/check-runs.json" <<JSON
-[{"total_count":2,"check_runs":[{"id":1,"run_attempt":1,"started_at":"2026-10-10T00:00:00Z","app":{"id":17},"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"success"},{"id":2,"run_attempt":1,"started_at":"2026-10-10T00:01:00Z","app":{"id":17},"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"failure"}]}]
+[{"total_count":2,"check_runs":[{"id":1,"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"success","started_at":"2026-10-10T00:00:00Z","completed_at":"2026-10-10T00:00:30Z","check_suite":{"id":7},"app":{"id":17,"slug":"github-actions"},"output":{"title":"ok","summary":null,"text":null}},{"id":2,"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"failure","started_at":"2026-10-10T00:01:00Z","completed_at":"2026-10-10T00:01:30Z","check_suite":{"id":7},"app":{"id":17,"slug":"github-actions"},"output":{"title":"failed","summary":null,"text":null}}]}]
 JSON
 out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "later failed check run invalidates success" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
 cat > "$TMP/check-runs.json" <<JSON
-[{"total_count":2,"check_runs":[{"id":1,"run_attempt":1,"started_at":"2026-10-10T00:00:00Z","app":{"id":17},"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"success"},{"id":2,"run_attempt":1,"started_at":"2026-10-10T00:01:00Z","app":{"id":17},"name":"ci","head_sha":"$HEAD","status":"in_progress","conclusion":null}]}]
+[{"total_count":2,"check_runs":[{"id":1,"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"success","started_at":"2026-10-10T00:00:00Z","completed_at":"2026-10-10T00:00:30Z","check_suite":{"id":7},"app":{"id":17,"slug":"github-actions"},"output":{"title":"ok","summary":null,"text":null}},{"id":2,"name":"ci","head_sha":"$HEAD","status":"in_progress","conclusion":null,"started_at":"2026-10-10T00:01:00Z","completed_at":null,"check_suite":{"id":7},"app":{"id":17,"slug":"github-actions"},"output":{"title":null,"summary":null,"text":null}}]}]
 JSON
 out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "later in-progress check run invalidates success" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
@@ -202,7 +263,7 @@ out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "newer legacy failure supersedes earlier check run" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
 cp "$TMP/good-check-runs.json" "$TMP/check-runs.json"
 printf '%s\n' '[[]]' > "$TMP/statuses.json"
-printf '%s\n' '[{"total_count":1,"check_runs":[{"id":1,"run_attempt":1,"started_at":"2026-10-10T00:00:00Z","app":{"id":17},"name":"ci","head_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","status":"completed","conclusion":"success"}]}]' > "$TMP/check-runs.json"
+printf '%s\n' '[{"total_count":1,"check_runs":[{"id":1,"name":"ci","head_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","status":"completed","conclusion":"success","started_at":"2026-10-10T00:00:00Z","completed_at":"2026-10-10T00:00:30Z","check_suite":{"id":7},"app":{"id":17,"slug":"github-actions"},"output":{"title":"ok","summary":null,"text":null}}]}]' > "$TMP/check-runs.json"
 out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "producer rejects required check at wrong SHA" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
 cp "$TMP/good-check-runs.json" "$TMP/check-runs.json"
@@ -368,17 +429,23 @@ out=$(env "${evidence_env[@]}" "$TMP/empty-bin/fm-merge-evidence.sh" collect "$T
 eq "empty risk classification output holds" "$(printf '%s' "$out" | jq -r .reasons[0])" risk-unknown
 
 # --- bite-check: the same fixtures must NOT hold on the pre-fix logic ---
-# The pre-fix collector had none of the completeness guards, so neutralizing
-# exactly those guards reproduces its behaviour. A fixture that still passes
-# here proves the new assertion, not the fixture, is what produces the HOLD.
-# shellcheck disable=SC2016 # sed must receive "$risk" literally, not expanded.
-# The pre-fix implementation must be the REAL prior revision, not a source edit:
-# editing source with sed and asserting on its text is a source-content-only test.
+# The pre-fix collector had none of the completeness guards, so a fixture that
+# still passes on it proves the new assertion, not the fixture, is what produces
+# the HOLD. The pre-fix implementation must be a REAL prior revision, not a
+# source edit: editing source with sed and asserting on its text would be a
+# source-content-only test.
+#
+# The revision is resolved from this branch's own history rather than hardcoded,
+# so the object is always an ancestor of the checked-out commit. A hardcoded SHA
+# from a rewritten lineage is not an ancestor and a fresh checkout need not
+# contain it, which made this suite fail before any behavioural assertion ran.
 PREFIX_SRC="$TMP/prefix-src/fm-merge-evidence.sh"
 mkdir -p "$TMP/prefix-src"
-git -C "$ROOT" show 5b6744de90bc16f3fec5ba6384ada5fa00391297:bin/fm-merge-evidence.sh > "$PREFIX_SRC" 2>/dev/null \
+GUARD_COMMIT=$(git -C "$ROOT" log --format=%H -S'changed-files-truncated' -- bin/fm-merge-evidence.sh | tail -1)
+PREFIX_REV=$(git -C "$ROOT" rev-parse --verify "${GUARD_COMMIT}^" 2>/dev/null) \
+  || { echo "not ok - bite-check could not resolve the real pre-fix collector"; exit 1; }
+git -C "$ROOT" show "$PREFIX_REV:bin/fm-merge-evidence.sh" > "$PREFIX_SRC" 2>/dev/null \
   || { echo "not ok - bite-check could not read the real pre-fix collector"; exit 1; }
-eq "bite-check uses the real prior revision, not a source edit" "$(grep -c 'changed-files-truncated' "$PREFIX_SRC")" 0
 make_evidence_dir "$TMP/prefix-bin" "$PREFIX_SRC" real
 make_evidence_dir "$TMP/prefix-empty-bin" "$PREFIX_SRC" empty
 PREFIX="$TMP/prefix-bin/fm-merge-evidence.sh"
@@ -386,7 +453,12 @@ out=$(env "${gl_env[@]}" "${gl_gap[@]}" FM_TEST_GL_CHANGES_JSON="$TMP/gl-changes
 eq "bite: pre-fix logic accepts an overflowing GitLab diff" "$(printf '%s' "$out" | jq -r .status)" PASS
 out=$(env "${gl_env[@]}" "${gl_gap[@]}" FM_TEST_GL_CHANGES_JSON="$TMP/gl-changes-mismatch.json" "$PREFIX" collect "$TASK" "$GL_PR" "$HEAD")
 eq "bite: pre-fix logic accepts a mismatched GitLab diff" "$(printf '%s' "$out" | jq -r .status)" PASS
-out=$(env "${evidence_env[@]}" "$TMP/prefix-empty-bin/fm-merge-evidence.sh" collect "$TASK" "$PR" "$HEAD")
+# This pre-fix revision predates the Checks-API field fix, so it demands the
+# invented run_attempt field; its own fixture supplies that field. This run
+# drives the pre-fix completeness logic, never the current collector's field
+# expectations, which the real-shaped fixture above owns.
+printf '%s\n' "[{\"total_count\":1,\"check_runs\":[{\"id\":1,\"run_attempt\":1,\"started_at\":\"2026-10-10T00:00:00Z\",\"app\":{\"id\":17},\"name\":\"ci\",\"head_sha\":\"$HEAD\",\"status\":\"completed\",\"conclusion\":\"success\"}]}]" > "$TMP/prefix-check-runs.json"
+out=$(env "${evidence_env[@]}" FM_TEST_CHECK_RUNS_JSON="$TMP/prefix-check-runs.json" "$TMP/prefix-empty-bin/fm-merge-evidence.sh" collect "$TASK" "$PR" "$HEAD")
 eq "bite: pre-fix logic accepts empty risk output" "$(printf '%s' "$out" | jq -r .status)" PASS
 
 echo "# fm-merge-policy.test.sh PASS=$PASS FAIL=$FAIL"

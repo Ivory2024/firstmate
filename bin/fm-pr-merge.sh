@@ -20,7 +20,10 @@
 # state needs gh and jq, and either one absent stops the merge before any
 # state is recorded. An attended --allow-red <check-name> may be passed once,
 # with the name as a separate argument; it waives only checks with that exact
-# name, still requires every other check green, and still binds the head. It is
+# name, still requires every other check green, and still binds the head. The
+# same name is carried into the evidence collector as a call-scoped
+# --waived-check argument, so the collector waives exactly that check too and
+# never a check the caller did not name. It is
 # refused while the away-posture record exists, and it never
 # applies on GitLab, where a merge already requires the head pipeline to have
 # succeeded. After gh returns success, GitHub's live state is read back and
@@ -1163,7 +1166,12 @@ case "$PROVIDER" in
     # Shared merge boundary: verify forge evidence before merge.
     # fm-merge-evidence.sh always exits 0 (HOLD is a reported verdict, not a
     # script failure), so the gate is the parsed status/head, never the exit code.
-    evidence_json=$("$EVIDENCE_SCRIPT" collect "$ID" "$URL" "$FM_PR_MERGE_HEAD" 2>&1)
+    # An attended --allow-red is carried as an argument bound to this exact call,
+    # never as an inherited environment variable or a file: an ambient waiver
+    # would be a substitutable trust root another run could pick up.
+    evidence_args=(collect "$ID" "$URL" "$FM_PR_MERGE_HEAD")
+    [ "${#ALLOW_RED[@]}" -eq 0 ] || evidence_args+=(--waived-check "${ALLOW_RED[0]}")
+    evidence_json=$("$EVIDENCE_SCRIPT" "${evidence_args[@]}" 2>&1)
     if ! printf '%s' "$evidence_json" | jq -e --arg sha "$FM_PR_MERGE_HEAD" \
       '.status == "PASS" and .head_sha == $sha' >/dev/null 2>&1; then
       printf 'error: merge refused - evidence verification failed: %s\n' "$evidence_json" >&2

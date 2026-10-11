@@ -91,6 +91,25 @@ write_github_red_json() {
 JSON
 }
 
+# The shipped collector's own required-check source. Real-shaped Checks API
+# check-run objects (id, name, status, conclusion, started_at, completed_at,
+# check_suite, app, output, and deliberately no run_attempt) at the case's live
+# head, one per named check, with the legacy status contexts cleared so the run
+# is what decides. Args: case_dir conclusion <check-name>...
+write_evidence_check_runs() {
+  local case_dir=$1 conclusion=$2 name id=0 runs='' entry
+  shift 2
+  for name in "$@"; do
+    id=$((id + 1))
+    entry=$(printf '{"id":%d,"name":"%s","head_sha":"__HEAD__","status":"completed","conclusion":"%s","started_at":"2026-10-10T00:00:00Z","completed_at":"2026-10-10T00:00:30Z","check_suite":{"id":7},"app":{"id":17,"slug":"github-actions"},"output":{"title":"x","summary":null,"text":null}}' \
+      "$id" "$name" "$conclusion")
+    runs="${runs:+$runs,}$entry"
+  done
+  printf '[{"total_count":%d,"check_runs":[%s]}]\n' "$id" "$runs" \
+    > "$case_dir/$EVIDENCE_DIRNAME/gh-check-runs.json"
+  printf '%s\n' '[[]]' > "$case_dir/$EVIDENCE_DIRNAME/gh-statuses.json"
+}
+
 # One CheckRun rollup entry the way GitHub reports it. A conclusion or timestamp
 # of "-" is emitted as JSON null. Args: name status conclusion [startedAt]
 # [completedAt]
@@ -2836,6 +2855,65 @@ test_allow_red_still_waives_only_the_current_failure() {
   pass "fm-pr-merge keeps --allow-red scoped to its named check beside a superseded failure"
 }
 
+# --allow-red must reach the evidence collector, which is a second, independent
+# gate over the same required checks. A bad fix round wired the collector in
+# without the waiver, so every attended --allow-red merge stopped there instead
+# of merging. Both directions are executed: the named check is waived and the
+# merge proceeds, while a different red required check still holds.
+test_allow_red_waiver_reaches_the_evidence_gate() {
+  local case_dir rc head
+  head=0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c
+
+  # (1) The named check is the only red required check: the merge proceeds.
+  case_dir=$(make_case github-allow-red-evidence-waived)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_red_json "$case_dir" "$head" ci
+  write_evidence_check_runs "$case_dir" failure ci
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/98 \
+    --allow-red ci > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "allow-red-evidence-waived: the named waiver should reach the collector"$'\n'"$(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 98 example/repo --squash
+
+  # (2) The waiver is narrow: a different red required check still holds.
+  case_dir=$(make_case github-allow-red-evidence-other-red)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_red_json "$case_dir" "$head" ci
+  printf '%s\n' '{"required_status_checks":{"contexts":["ci","lint"]},"required_pull_request_reviews":{}}' \
+    > "$case_dir/$EVIDENCE_DIRNAME/gh-protection.json"
+  write_evidence_check_runs "$case_dir" failure ci lint
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/99 \
+    --allow-red ci > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "allow-red-evidence-other-red: an unwaived red required check must hold"
+  assert_grep 'required-checks-not-green-or-unconfigured' "$case_dir/stderr" \
+    "allow-red-evidence-other-red: the collector's own refusal reason was not reported"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "allow-red-evidence-other-red: gh pr merge ran with an unwaived red required check"
+
+  # (3) No waiver at all: a red required check holds at the collector too.
+  case_dir=$(make_case github-evidence-red-no-waiver)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_live_json "$case_dir" "$head"
+  write_evidence_check_runs "$case_dir" failure ci
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/100 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "evidence-red-no-waiver: a red required check must hold without a waiver"
+  assert_grep 'required-checks-not-green-or-unconfigured' "$case_dir/stderr" \
+    "evidence-red-no-waiver: the collector's own refusal reason was not reported"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "evidence-red-no-waiver: gh pr merge ran on a red required check"
+
+  pass "fm-pr-merge carries --allow-red into the evidence gate and waives only that check"
+}
+
 test_allow_red_is_refused_while_away() {
   local case_dir rc head
   head=abababababababababababababababababababab
@@ -3396,6 +3474,7 @@ test_unfinished_rerun_keeps_a_check_red
 test_supersession_never_crosses_check_names
 test_undated_runs_never_supersede
 test_allow_red_still_waives_only_the_current_failure
+test_allow_red_waiver_reaches_the_evidence_gate
 test_allow_red_is_refused_while_away
 test_allow_red_requires_one_separate_name
 test_away_grant_and_yolo_and_hold_for_return
