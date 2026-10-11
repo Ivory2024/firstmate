@@ -11,24 +11,22 @@ set -u
 
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=tests/fixtures.sh
+. "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
 fm_git_identity fmtest fmtest@example.invalid
 
 PR_MERGE="$ROOT/bin/fm-pr-merge.sh"
 TMP_ROOT=$(fm_test_tmproot fm-pr-merge-tests)
 BASE_PATH=$PATH
 
-# fm-merge-evidence.sh's own forge-evidence logic is covered by
-# tests/fm-merge-policy.test.sh. This file tests fm-pr-merge.sh's own merge,
-# refusal, and outcome-verification behavior, so it stubs the evidence
-# collector to an unconditional PASS at the requested head by default; a case
-# that needs to prove the evidence gate itself sets
-# FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE before calling run_pr_merge.
-DEFAULT_EVIDENCE_STUB="$TMP_ROOT/default-evidence-pass.sh"
-cat > "$DEFAULT_EVIDENCE_STUB" <<'SH'
-#!/usr/bin/env bash
-printf '{"status":"PASS","head_sha":"%s","risk":"LOW","scope":"test","reasons":[]}\n' "${4:-}"
-SH
-chmod +x "$DEFAULT_EVIDENCE_STUB"
+# fm-pr-merge.sh runs the evidence collector shipped beside it
+# (bin/fm-merge-evidence.sh) and that path is not caller-selectable, so the
+# merge cases here drive the real collector and satisfy it by stubbing the
+# forge CLI it reads (see fm_test_write_forge_evidence_fixture and
+# fm_test_install_forge_evidence_shims). A case that must prove the gate refuses
+# changes the fixture so the shipped collector holds; a case that must prove the
+# merge proceeds changes it so the collector passes.
+EVIDENCE_DIRNAME=evidence
 
 # The GitLab fixture. A placeholder host that resolves nowhere, and a namespace
 # deeper than one group, because a GitLab project has no owner/repository pair.
@@ -65,6 +63,9 @@ make_case() {
     'base=main' > "$case_dir/github-outcome"
   : > "$case_dir/github-rules"
   : > "$case_dir/gh.log"
+  # The shipped collector reads the task's own status ledger, so the fixture
+  # carries one that records no open captain call.
+  printf '%s\n' 'done: fixture' > "$case_dir/state/task-x1.status"
   # No worktree/project on disk; fm-pr-check.sh tolerates a worktree it cannot
   # stat and simply skips the pr_head lookup via `gh` in that case, so give it
   # one that resolves for cases that want pr_head recorded.
@@ -138,6 +139,12 @@ assert_logged_gh_merge() {
 add_gh_mocks() {
   local case_dir=$1 head=$2
   write_github_live_json "$case_dir" "$head"
+  # Real collector, stubbed forge: the shim answers only the shipped
+  # collector's own reads and delegates the merge, verify, and poll reads to
+  # this case's mock below.
+  mkdir -p "$case_dir/$EVIDENCE_DIRNAME"
+  fm_test_write_forge_evidence_fixture "$case_dir/$EVIDENCE_DIRNAME"
+  fm_test_install_forge_evidence_shims "$case_dir/evidencebin" "$case_dir/fakebin"
   cat > "$case_dir/fakebin/gh-axi" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FM_TEST_GH_AXI_LOG"
@@ -330,14 +337,20 @@ write_mr_json() {
     esac
   done
   if [ "$pipeline" = present ]; then
-    pipeline=$(printf '{"sha":"%s","status":"%s"}' "$pipeline_sha" "$pipeline_status")
+    pipeline=$(printf '{"id":5,"sha":"%s","status":"%s"}' "$pipeline_sha" "$pipeline_status")
   fi
   printf '{"iid":7,"state":"%s","detailed_merge_status":"%s","has_conflicts":%s,' \
     "$state" "$detail" "$conflicts" > "$file"
-  printf '"blocking_discussions_resolved":%s,"sha":"%s","head_pipeline":%s,' \
-    "$discussions" "$head" "$pipeline" >> "$file"
-  printf '"merge_when_pipeline_succeeds":%s,"merge_after":%s}\n' \
-    "$merge_when_pipeline_succeeds" "$merge_after" >> "$file"
+  {
+    printf '"blocking_discussions_resolved":%s,"sha":"%s","head_pipeline":%s,' \
+      "$discussions" "$head" "$pipeline"
+    # author and target_branch are the shipped collector's own evidence fields;
+    # the pre-merge verify reads only the named fields above, so carrying them
+    # here lets one payload satisfy both reads of `glab mr view -F json`.
+    printf '"author":{"username":"author"},"target_branch":"main",'
+    printf '"merge_when_pipeline_succeeds":%s,"merge_after":%s}\n' \
+      "$merge_when_pipeline_succeeds" "$merge_after"
+  } >> "$file"
 }
 
 # make_gitlab_case <name> [<field>=<value> ...]: a case dir with both forge
@@ -389,8 +402,9 @@ glab_merge_line() {
 
 run_pr_merge() {
   local case_dir=$1 rc; shift
-  FM_TEST_EVIDENCE_OVERRIDE=1 \
-    FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE="${FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE:-$DEFAULT_EVIDENCE_STUB}" \
+  FM_TEST_EVIDENCE_DIR="$case_dir/$EVIDENCE_DIRNAME" \
+  FM_TEST_EVIDENCE_HEAD_FILE="$case_dir/github-head" \
+  FM_TEST_EVIDENCE_PR_URL="${2:-}" \
   FM_ROOT_OVERRIDE="$ROOT" \
   FM_HOME="${FM_TEST_HOME:-$case_dir/home}" \
   FM_STATE_OVERRIDE="$case_dir/state" \
@@ -416,7 +430,7 @@ run_pr_merge() {
   FM_TEST_GLAB_LOG="$case_dir/glab.log" \
   FM_TEST_GLAB_JSON="$case_dir/mr.json" \
   HOME="${FM_TEST_USER_HOME:-$case_dir/user-home}" \
-  PATH="$case_dir/fakebin:$PATH" \
+  PATH="${FM_TEST_PR_MERGE_PATH:-$case_dir/evidencebin:$case_dir/fakebin:$PATH}" \
     "$PR_MERGE" "$@"
   rc=$?
   if [ "${case_dir##*/}" = unsafe-url-segment ] && [ "$rc" -eq 2 ]; then
@@ -519,25 +533,153 @@ test_merge_refuses_on_evidence_hold() {
   mkdir -p "$case_dir/wt"
   add_gh_mocks "$case_dir" 2020202020202020202020202020202020202020
   : > "$case_dir/gh-axi.log"
-  cat > "$case_dir/fake-evidence.sh" <<'SH'
-#!/usr/bin/env bash
-printf '{"status":"HOLD","head_sha":"%s","reasons":["test-forced-hold"]}\n' "${4:-}"
-SH
-  chmod +x "$case_dir/fake-evidence.sh"
+  # No independent review at the head, so the shipped collector holds. The
+  # collector itself still exits 0, which is what makes this a test of the
+  # parsed verdict rather than of its exit code.
+  printf '%s\n' '[[]]' > "$case_dir/$EVIDENCE_DIRNAME/gh-reviews.json"
 
   set +e
-  FM_TEST_EVIDENCE_OVERRIDE=1 \
-    FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE="$case_dir/fake-evidence.sh" \
-    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/71 \
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/71 \
     > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
   set -e
 
   [ "$rc" -ne 0 ] || fail "evidence-hold: fm-pr-merge should refuse on a HOLD verdict"
+  assert_grep 'independent-review-missing-or-stale' "$case_dir/stderr" \
+    "evidence-hold: the shipped collector's own HOLD reason was not the refusal"
   if grep -qF 'pr merge' "$case_dir/gh.log" 2>/dev/null; then
     fail "evidence-hold: gh pr merge ran despite the HOLD verdict"
   fi
   pass "fm-pr-merge refuses to merge when evidence verification holds"
+}
+
+# The reviewer's finding: an earlier revision let a caller point the merge
+# boundary at its own evidence collector, so a stub that printed
+# {"status":"PASS"} merged with every forge, review, and risk check bypassed. The
+# collector is now the file shipped beside fm-pr-merge.sh and nothing else, so
+# every row below must reach the real collector: the marker-writing stub never
+# runs and the forge is never called. Each row's fixture is deliberately
+# incomplete, so the shipped collector holds and the refusal names its own
+# reason - which is the proof that the real collector, not the stub, decided.
+evidence_substitution_row() {  # <label> <case-name> <env...> [-- <merge args...>]
+  local label=$1 case_name=$2 case_dir rc stub marker fake_root fake_state url
+  shift 2
+  local -a row_env=()
+  while [ "$#" -gt 0 ] && [ "$1" != -- ]; do row_env+=("$1"); shift; done
+  if [ "${1:-}" = -- ]; then shift; fi
+  url=https://github.com/example/repo/pull/72
+  case_dir=$(make_case "$case_name")
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 3030303030303030303030303030303030303030
+  : > "$case_dir/gh-axi.log"
+  marker="$case_dir/stub-ran"
+  stub="$case_dir/stub-evidence.sh"
+  cat > "$stub" <<SH
+#!/usr/bin/env bash
+: > "$marker"
+printf '{"status":"PASS","head_sha":"%s","risk":"LOW","scope":"stub","reasons":[]}\n' "\${4:-}"
+SH
+  chmod +x "$stub"
+  printf '%s\n' '[[]]' > "$case_dir/$EVIDENCE_DIRNAME/gh-reviews.json"
+  # The FM_ROOT_OVERRIDE row gets a fake root whose bin/ carries a substituted
+  # collector, so a collector resolved through FM_ROOT would run the stub. The
+  # FM_STATE_OVERRIDE row gets a real state dir that also carries a stub named
+  # like the collector, so a state-relative resolution would run the stub too.
+  fake_root="$case_dir/fake-root"
+  fake_state="$case_dir/state-with-stub"
+  mkdir -p "$fake_root/bin"
+  cp -R "$case_dir/state" "$fake_state"
+  cp "$stub" "$fake_root/bin/fm-merge-evidence.sh"
+  cp "$stub" "$fake_state/fm-merge-evidence.sh"
+  chmod +x "$fake_root/bin/fm-merge-evidence.sh" "$fake_state/fm-merge-evidence.sh"
+  local item
+  local -a resolved_env=()
+  for item in ${row_env[@]+"${row_env[@]}"}; do
+    item=${item//STUB/$stub}
+    item=${item//FAKEROOT/$fake_root}
+    item=${item//STATEDIR/$fake_state}
+    resolved_env+=("$item")
+  done
+
+  set +e
+  env \
+    FM_ROOT_OVERRIDE="$ROOT" \
+    FM_HOME="$case_dir/home" \
+    FM_STATE_OVERRIDE="$case_dir/state" \
+    FM_TEST_GH_AXI_LOG="$case_dir/gh-axi.log" \
+    FM_TEST_GH_LOG="$case_dir/gh.log" \
+    FM_TEST_GH_OUTCOME="$case_dir/github-outcome" \
+    FM_TEST_GH_RULES="$case_dir/github-rules" \
+    FM_TEST_GH_VIEW_JSON="$case_dir/github-view.json" \
+    FM_TEST_GH_HEAD="$case_dir/github-head" \
+    FM_TEST_GLAB_LOG="$case_dir/glab.log" \
+    FM_TEST_GLAB_JSON="$case_dir/mr.json" \
+    FM_TEST_EVIDENCE_DIR="$case_dir/$EVIDENCE_DIRNAME" \
+    FM_TEST_EVIDENCE_HEAD_FILE="$case_dir/github-head" \
+    FM_TEST_EVIDENCE_PR_URL="$url" \
+    PATH="$case_dir/evidencebin:$case_dir/fakebin:$PATH" \
+    ${resolved_env[@]+"${resolved_env[@]}"} \
+    "$PR_MERGE" task-x1 "$url" "$@" \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  if [ -e "$marker" ]; then stub_executed=yes; else stub_executed=no; fi
+  if grep -qF 'pr merge' "$case_dir/gh.log" 2>/dev/null; then forge_called=yes; else forge_called=no; fi
+  printf 'evidence-substitution row=%s rc=%s stub_executed=%s forge_called=%s\n' \
+    "$label" "$rc" "$stub_executed" "$forge_called"
+
+  [ "$stub_executed" = no ] \
+    || fail "evidence-substitution ($label): a caller-supplied collector executed"
+  [ "$forge_called" = no ] \
+    || fail "evidence-substitution ($label): gh pr merge ran despite an incomplete fixture"
+  [ "$rc" -ne 0 ] \
+    || fail "evidence-substitution ($label): the merge boundary accepted a HOLD fixture"
+  assert_grep 'independent-review-missing-or-stale' "$case_dir/stderr" \
+    "evidence-substitution ($label): the refusal did not come from the shipped collector"
+}
+
+test_evidence_collector_is_not_substitutable() {
+  evidence_substitution_row "override alone" substitution-override-alone \
+    FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE=STUB
+  evidence_substitution_row "test flag alone" substitution-test-flag-alone \
+    FM_TEST_EVIDENCE_OVERRIDE=1
+  evidence_substitution_row "both together" substitution-both-together \
+    FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE=STUB FM_TEST_EVIDENCE_OVERRIDE=1
+  evidence_substitution_row "flag=0 plus override" substitution-flag-zero \
+    FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE=STUB FM_TEST_EVIDENCE_OVERRIDE=0
+  evidence_substitution_row "flag=true plus override" substitution-flag-true \
+    FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE=STUB FM_TEST_EVIDENCE_OVERRIDE=true
+  evidence_substitution_row "fake FM_ROOT_OVERRIDE root" substitution-fake-root \
+    FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE=STUB FM_ROOT_OVERRIDE=FAKEROOT
+  evidence_substitution_row "allow-red plus override" substitution-allow-red \
+    FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE=STUB -- --allow-red ci
+  evidence_substitution_row "attended-override plus override" substitution-attended \
+    FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE=STUB -- --attended-override
+  evidence_substitution_row "state override plus override" substitution-state-override \
+    FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE=STUB FM_STATE_OVERRIDE=STATEDIR
+  pass "the merge boundary runs only the collector shipped beside it"
+}
+
+# The other direction: the seam above must not be dead. With a complete fixture
+# the same shipped collector passes and the merge proceeds, so the rows that
+# refuse are refusing on evidence and not on a broken fixture.
+test_evidence_collector_passes_on_a_complete_fixture() {
+  local case_dir rc
+  case_dir=$(make_case evidence-complete-fixture)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 4040404040404040404040404040404040404040
+  : > "$case_dir/gh-axi.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/73 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "evidence-complete-fixture: the shipped collector should pass and merge"
+  assert_logged_gh_merge "$case_dir" 73 example/repo --squash
+  pass "the shipped collector still passes on a complete forge fixture"
 }
 
 test_github_merged_outcome_is_verified() {
@@ -1101,7 +1243,7 @@ test_github_without_gh_still_uses_gh_axi_merge() {
   : > "$case_dir/gh-axi.log"
 
   set +e
-  PATH="$ghless_path" run_pr_merge "$case_dir" task-x1 \
+  FM_TEST_PR_MERGE_PATH="$ghless_path" run_pr_merge "$case_dir" task-x1 \
     https://github.com/example/repo/pull/60 \
     > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
@@ -1128,7 +1270,7 @@ test_github_without_gh_failed_read_keeps_bookkeeping() {
   : > "$case_dir/gh-axi.log"
 
   set +e
-  PATH="$ghless_path" run_pr_merge "$case_dir" task-x1 \
+  FM_TEST_PR_MERGE_PATH="$ghless_path" run_pr_merge "$case_dir" task-x1 \
     https://github.com/example/repo/pull/61 \
     > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
@@ -2205,6 +2347,8 @@ test_verified_merge_records_pr_and_head
 test_pr_metadata_is_recorded_before_the_forge_call
 test_merge_failure_propagates_after_recording
 test_merge_refuses_on_evidence_hold
+test_evidence_collector_is_not_substitutable
+test_evidence_collector_passes_on_a_complete_fixture
 test_github_open_unqueued_outcome_refuses
 test_github_unreadable_outcome_keeps_pr_bookkeeping
 test_github_refusal_quotes_the_forge_output

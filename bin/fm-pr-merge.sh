@@ -113,20 +113,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
-# The evidence collector is the merge boundary's trust root, so its path is
-# never caller-selectable in production. Tests that must stub it opt in with
-# FM_TEST_EVIDENCE_OVERRIDE=1; any other override is refused rather than
-# silently honoured, because a substituted collector can print
-# {"status":"PASS"} and bypass every forge, review, and risk check.
-if [ -n "${FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE:-}" ]; then
-  if [ "${FM_TEST_EVIDENCE_OVERRIDE:-}" != "1" ]; then
-    printf 'error: FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE is refused outside a test run; set FM_TEST_EVIDENCE_OVERRIDE=1 only in tests\n' >&2
-    exit 2
-  fi
-  EVIDENCE_SCRIPT="$FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE"
-else
-  EVIDENCE_SCRIPT="$SCRIPT_DIR/fm-merge-evidence.sh"
-fi
+# The evidence collector is the merge boundary's trust root, so it is the file
+# shipped beside this script and nothing else. There is deliberately no
+# environment, argument, or path seam: an earlier revision honoured
+# FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE behind an FM_TEST_EVIDENCE_OVERRIDE=1 flag,
+# but a flag that only asserts "this is a test" is itself just another
+# environment variable, so a caller could set both and stand in a script that
+# prints {"status":"PASS"}, bypassing every forge, review, and risk check.
+# Resolving from SCRIPT_DIR also keeps FM_ROOT_OVERRIDE, FM_HOME, and
+# FM_STATE_OVERRIDE from reaching it. Tests satisfy the shipped collector by
+# stubbing the forge CLI it reads, never by replacing the collector.
+EVIDENCE_SCRIPT="$SCRIPT_DIR/fm-merge-evidence.sh"
 
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"

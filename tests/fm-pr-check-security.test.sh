@@ -5,6 +5,8 @@ set -u
 
 # shellcheck source=tests/lib.sh disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=tests/fixtures.sh disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
 # shellcheck source=/dev/null
 . "$ROOT/bin/fm-pr-lib.sh"
 # shellcheck source=/dev/null
@@ -19,18 +21,10 @@ REGISTER="$ROOT/bin/fm-check-register.sh"
 TMP_ROOT=$(fm_test_tmproot fm-pr-check-security)
 BASE_PATH=${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}
 
-# fm-merge-evidence.sh's own forge-evidence logic is covered by
-# tests/fm-merge-policy.test.sh; this file's PR_MERGE calls exercise poll and
-# authority behavior, so stub the evidence collector to an unconditional PASS
-# at the requested head.
-DEFAULT_EVIDENCE_STUB="$TMP_ROOT/default-evidence-pass.sh"
-cat > "$DEFAULT_EVIDENCE_STUB" <<'SH'
-#!/usr/bin/env bash
-printf '{"status":"PASS","head_sha":"%s","risk":"LOW","scope":"test","reasons":[]}\n' "${4:-}"
-SH
-chmod +x "$DEFAULT_EVIDENCE_STUB"
-export FM_TEST_EVIDENCE_OVERRIDE=1
-export FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE="$DEFAULT_EVIDENCE_STUB"
+# fm-pr-merge.sh runs the evidence collector shipped beside it and that path is
+# not caller-selectable, so the merge cases here drive the real collector and
+# satisfy it by stubbing the forge CLI it reads: this suite's own gh mock answers
+# the collector's reads from the fixture make_case writes.
 REAL_CP=$(command -v cp)
 REAL_MV=$(command -v mv)
 REAL_STAT=$(command -v stat)
@@ -163,11 +157,40 @@ case "${1:-} ${2:-}" in
         printf '%s\n' "{\"state\":\"OPEN\",\"isDraft\":false,\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"headRefOid\":\"${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}\",\"baseRefName\":\"main\",\"statusCheckRollup\":[{\"__typename\":\"CheckRun\",\"name\":\"ci\",\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\"}]}"
         exit 0
         ;;
+      *author,headRefOid,baseRefName,changedFiles*)
+        # The shipped merge-evidence collector's own pull request read.
+        printf '%s\n' "{\"author\":{\"login\":\"author\"},\"headRefOid\":\"${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}\",\"baseRefName\":\"main\",\"changedFiles\":1}"
+        exit 0
+        ;;
       *headRefOid,reviewDecision*)
         printf '%s\n' "{\"headRefOid\":\"${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}\",\"reviewDecision\":\"APPROVED\"}"
         exit 0
         ;;
     esac
+    ;;
+  "api user") printf '%s\n' '{"login":"captain"}'; exit 0 ;;
+  "api "*)
+    # The shipped merge-evidence collector's own forge reads. Anything this
+    # inner case does not match falls through to the generic api handling below,
+    # so the poll, teardown, and guard reads keep their own fixtures.
+    if [ -n "${FM_TEST_EVIDENCE_DIR:-}" ] && [ -d "$FM_TEST_EVIDENCE_DIR" ]; then
+      case " $* " in
+        *"--slurp"*"/rules/branches/"*) cat "$FM_TEST_EVIDENCE_DIR/gh-rulesets.json"; exit 0 ;;
+        *"/branches/"*"/protection"*) cat "$FM_TEST_EVIDENCE_DIR/gh-protection.json"; exit 0 ;;
+        *"--slurp"*"/check-runs"*) cat "$FM_TEST_EVIDENCE_DIR/gh-check-runs.json"; exit 0 ;;
+        *"--slurp"*"/statuses"*)
+          sed "s/__HEAD__/${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}/g" \
+            "$FM_TEST_EVIDENCE_DIR/gh-statuses.json"
+          exit 0
+          ;;
+        *"--slurp"*"/reviews"*)
+          sed "s/__HEAD__/${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}/g" \
+            "$FM_TEST_EVIDENCE_DIR/gh-reviews.json"
+          exit 0
+          ;;
+        *"--slurp"*"/files"*) cat "$FM_TEST_EVIDENCE_DIR/gh-files.json"; exit 0 ;;
+      esac
+    fi
     ;;
   "pr merge")
     [ -z "${FM_TEST_GH_MERGE_HOOK:-}" ] || "$FM_TEST_GH_MERGE_HOOK"
@@ -220,6 +243,23 @@ printf '%s\n' "$*" >> "$FM_TEST_GLAB_LOG"
 printf 'title:\tfixture merge request\nstate:\t%s\nauthor:\tsomeone\n' "${FM_TEST_GLAB_STATE:-opened}"
 SH
   chmod +x "$fakebin/gh" "$fakebin/gh-axi" "$fakebin/glab"
+  # The shipped collector reads the forge payloads with jq and asks
+  # `no-mistakes axi status` for the run evidence; BASE_PATH is deliberately
+  # restricted, so this case supplies both. The fixture is the controlled forge
+  # output the mock above serves the collector's own reads from.
+  mkdir -p "$dir/evidence"
+  fm_test_write_forge_evidence_fixture "$dir/evidence"
+  ln -sf "$REAL_JQ" "$fakebin/jq"
+  cat > "$fakebin/no-mistakes" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = axi ] && [ "${2:-}" = status ]; then
+  printf 'run:\n  id: fixture-run\n  status: completed\n  head_sha: %s\n  pr: "%s"\n  findings: 0 awaiting\n  steps[1]{step,status,findings,duration_ms}:\n    test,completed,0,1\noutcome: passed\n' \
+    "${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}" "${FM_TEST_EVIDENCE_PR_URL:-}"
+  exit 0
+fi
+exit 0
+SH
+  chmod +x "$fakebin/no-mistakes"
   : > "$dir/gh.log"
   : > "$dir/gh-axi.log"
   : > "$dir/glab.log"
@@ -261,11 +301,22 @@ run_check_entry() {
 }
 
 run_merge_entry() {
-  local dir=$1
+  local dir=$1 id=${2:-} url=${3:-}
   shift
+  # The shipped collector reads the task's own status ledger, so a valid merge
+  # request carries one recording no open captain call. An invalid id or URL is
+  # refused before the collector, and this helper must leave that refusal's
+  # zero-side-effect contract untouched.
+  if [ -n "$id" ] && [ -n "$url" ] && fm_pr_task_id_valid "$id" \
+    && ( fm_pr_url_parse "$url" ) >/dev/null 2>&1 \
+    && [ ! -e "$dir/home/state/$id.status" ]; then
+    printf '%s\n' 'done: fixture' > "$dir/home/state/$id.status"
+  fi
   FM_ROOT_OVERRIDE="$dir/root" FM_HOME="$dir/home" \
     FM_TEST_GUARD_LOG="$dir/guard.log" FM_TEST_GH_LOG="$dir/gh.log" \
     FM_TEST_GH_AXI_LOG="$dir/gh-axi.log" FM_TEST_GLAB_LOG="$dir/glab.log" \
+    FM_TEST_EVIDENCE_DIR="$dir/evidence" \
+    FM_TEST_EVIDENCE_PR_URL="$url" \
     PATH="$dir/fakebin:$BASE_PATH" \
     "$PR_MERGE" "$@"
 }
@@ -2399,8 +2450,13 @@ test_authority_retirement_preserves_replacement() {
 #!/usr/bin/env bash
 "$PR_CHECK" task-a "$url_b" >/dev/null
 (
+  # The shipped evidence collector reads the task's own status ledger; this
+  # task reaches the merge boundary, so it carries one recording no open
+  # captain call.
+  printf '%s\n' 'done: fixture' > "$dir/home/state/task-a.status"
   FM_TEST_GH_GRAPHQL_STATE=OPEN FM_TEST_GH_GRAPHQL_MERGED=false \\
   FM_TEST_GH_GRAPHQL_QUEUED=true \\
+  FM_TEST_EVIDENCE_DIR="$dir/evidence" FM_TEST_EVIDENCE_PR_URL="$url_b" \\
   "$PR_MERGE" task-a "$url_b" > "$dir/replacement-merge.out" 2> "$dir/replacement-merge.err"
   printf '%s\n' \$? > "$dir/replacement-merge.rc"
 ) &

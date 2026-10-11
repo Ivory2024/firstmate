@@ -8,6 +8,9 @@ set -u
 # shellcheck source=tests/lib.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=tests/fixtures.sh
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
 # shellcheck source=bin/fm-timeout-lib.sh
 . "$ROOT/bin/fm-timeout-lib.sh"
 
@@ -16,16 +19,10 @@ BEARINGS="$ROOT/bin/fm-bearings-snapshot.sh"
 TMP_ROOT=$(fm_test_tmproot fm-captain-hold)
 TASKS_AXI_BIN=$(command -v tasks-axi || true)
 
-# fm-merge-evidence.sh's own forge-evidence logic is covered by
-# tests/fm-merge-policy.test.sh; this file's fm-pr-merge.sh calls exercise
-# captain-hold/teardown behavior, so stub the evidence collector to an
-# unconditional PASS at the requested head.
-DEFAULT_EVIDENCE_STUB="$TMP_ROOT/default-evidence-pass.sh"
-cat > "$DEFAULT_EVIDENCE_STUB" <<'SH'
-#!/usr/bin/env bash
-printf '{"status":"PASS","head_sha":"%s","risk":"LOW","scope":"test","reasons":[]}\n' "${4:-}"
-SH
-chmod +x "$DEFAULT_EVIDENCE_STUB"
+# fm-pr-merge.sh runs the evidence collector shipped beside it and that path is
+# not caller-selectable, so the merges below drive the real collector and
+# satisfy it by stubbing the forge CLI it reads (configure_merged_github).
+MERGE_EVIDENCE_HEAD=1111111111111111111111111111111111111111
 
 command -v jq >/dev/null 2>&1 || { echo "skip: jq not found"; exit 0; }
 command -v tasks-axi >/dev/null 2>&1 || { echo "skip: tasks-axi not found"; exit 0; }
@@ -110,6 +107,12 @@ request_reconciles() {  # <home> <source-id> <task-id>...
 
 configure_merged_github() {  # <home>
   local home=$1
+  # Real collector, stubbed forge: the shim answers only the shipped
+  # collector's own reads and delegates the merge, verify, and poll reads to
+  # the gh mock below.
+  mkdir -p "$home/evidence"
+  fm_test_write_forge_evidence_fixture "$home/evidence"
+  fm_test_install_forge_evidence_shims "$home/evidencebin" "$home/fakebin"
   cat > "$home/fakebin/gh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FM_TEST_GH_LOG"
@@ -141,14 +144,20 @@ SH
 }
 
 run_pr_merge() {  # <home> <id> <url>
-  local home=$1
+  local home=$1 id=$2 url=$3
   shift
-  PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
+  # The shipped collector reads the task's own status ledger; the merge cases
+  # here drive it, so give a task with no ledger one that records no open
+  # captain call rather than letting the collector hold for an unreadable one.
+  [ -e "$home/state/$id.status" ] \
+    || printf '%s\n' 'done: fixture' > "$home/state/$id.status"
+  PATH="$home/evidencebin:$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_CONFIG_OVERRIDE="$home/config" FM_TEST_GH_LOG="$home/gh.log" \
     FM_TEST_GH_AXI_LOG="$home/gh-axi.log" \
-    FM_TEST_EVIDENCE_OVERRIDE=1 \
-    FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE="${FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE:-$DEFAULT_EVIDENCE_STUB}" \
+    FM_TEST_EVIDENCE_DIR="$home/evidence" \
+    FM_TEST_EVIDENCE_HEAD="$MERGE_EVIDENCE_HEAD" \
+    FM_TEST_EVIDENCE_PR_URL="$url" \
     "$ROOT/bin/fm-pr-merge.sh" "$@"
 }
 
