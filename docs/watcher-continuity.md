@@ -49,6 +49,11 @@ Each adapter:
 
 Pi treats an arm child whose process is already gone as an empty slot even while its close event is still pending, so a repair call or a scheduled retry starts a fresh arm instead of answering unchanged.
 A failed follow-up never cancels continuity restoration.
+OpenCode's adapter additionally re-arms from a durable signal, because its session lifecycle is not guaranteed to publish a quiescent boundary at all: a session that stays busy can run for hours without reaching one, which is how one home's watcher stayed dead for 10h25m with 1,259 wakes queued.
+So besides the event-driven arm, `.opencode/plugins/fm-primary-watch-arm.js` polls `bin/fm-supervision-lib.sh`'s `fm_supervision_unhealthy` for the state directory, and re-arms while this home needs a watcher and none holds a fresh `state/.last-watcher-beat`.
+That poll is idempotent - one child or one scheduled retry at a time - and `bin/fm-watch-arm.sh` attaches to a healthy live cycle instead of starting a second one, so a healthy cycle is never disturbed and repeated re-arms are harmless.
+The two signals stay independent: the lifecycle signal keeps its own quiescent-event path, and the durable-wake liveness guard keeps reading the same beacon without either depending on the other.
+Regression coverage: `tests/fm-opencode-watch-arm-rearm.test.sh`.
 
 ### Pi session replacement
 
