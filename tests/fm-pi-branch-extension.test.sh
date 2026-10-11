@@ -1371,7 +1371,11 @@ if (requests().length !== before) throw new Error("an acknowledged outcome was p
 const stale = await report.execute("captain-stale", { task: "task-e", verdict: "captain", summary: "must be refused" }, undefined, undefined, {});
 if (!stale.isError) throw new Error("a replaced branch session's report tool was accepted");
 let finishReplacementPrompt;
-globalThis.__fmOnBranchPrompt = () => new Promise((resolve) => { finishReplacementPrompt = resolve; });
+let replacementPromptSession;
+globalThis.__fmOnBranchPrompt = ({ session }) => new Promise((resolve) => {
+  replacementPromptSession = session;
+  finishReplacementPrompt = resolve;
+});
 const promptsBeforeReplacement = (globalThis.__fmPrompts ?? []).length;
 const replacementOffer = dispatch("signal: after replacement");
 if (!replacementOffer.accepted) throw new Error("branch refused a wake after the replacement");
@@ -1383,6 +1387,7 @@ if (!replacementOffer.accepted) throw new Error("branch refused a wake after the
 // does for tool execution.
 await settle(() => (globalThis.__fmPrompts ?? []).length === promptsBeforeReplacement + 1, "replacement branch prompt");
 if ((globalThis.__fmSessions ?? []).length !== 2) throw new Error("the replacement wake did not run in the rebuilt branch session");
+if (replacementPromptSession !== globalThis.__fmSessions[1]) throw new Error("the replacement wake prompted the stale session, not the rebuilt one");
 const report2 = globalThis.__fmSessions[1].options.customTools.find((tool) => tool.name === "fm_branch_report");
 const beforePair = requests().length;
 const second = await report2.execute("captain-2", { task: "branch-driver", verdict: "captain", summary: "PR https://example.com/pr/e is ready for review" }, undefined, undefined, {});
