@@ -53,14 +53,17 @@ task_worktree() {  # <task-id>
 test_evidence_ok() {
   local head=$1 pr=$2 run_status=$3
   [ -n "$run_status" ] || return 1
+  # The findings field is required: a status that never states it leaves f
+  # unset, and an unset awk variable compares equal to 0, so the gate would
+  # pass on evidence it never read. saw_findings keeps that absence fatal.
   printf '%s\n' "$run_status" | awk -v head="$head" -v pr="$pr" '
     /^  head_sha: / { h=$2; gsub(/"/, "", h) }
     /^  pr: / { p=$2; gsub(/"/, "", p) }
     /^  status: / { s=$2; gsub(/"/, "", s) }
-    /^  findings: / { f=$2; gsub(/"/, "", f) }
+    /^  findings: / { f=$2; gsub(/"/, "", f); saw_findings=1 }
     /^    test,/ { split($0,a,","); ts=a[2]; tf=a[3] }
     /^outcome: / { o=$2; gsub(/"/, "", o) }
-    END { exit !(h == head && p == pr && s == "completed" && (f == 0 || f == "none") && ts == "completed" && tf == 0 && o ~ /^passed/) }
+    END { exit !(h == head && p == pr && s == "completed" && saw_findings && (f == 0 || f == "none") && ts == "completed" && tf == 0 && o ~ /^passed/) }
   '
 }
 

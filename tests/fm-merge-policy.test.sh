@@ -231,6 +231,21 @@ chmod 600 "$TMP/home/state/$TASK.test-evidence"
 out=$(env "${evidence_env[@]}" FM_TEST_FAIL_STATUS=yes "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
 eq "producer ignores caller-writable test record" "$(printf '%s' "$out" | jq -r .reasons[0])" test-evidence-missing-or-stale
 rm -f "$TMP/home/state/$TASK.test-evidence"
+# A status that never states its findings is not clean evidence. An unset awk
+# variable compares equal to 0, so a parser that only tests `f == 0` passes on a
+# field it never read; the line itself is required.
+cat > "$TMP/status-no-findings" <<JSON
+run:
+  id: test-run-id
+  status: completed
+  head_sha: $HEAD
+  pr: "$PR"
+  steps[1]{step,status,findings,duration_ms}:
+    test,completed,0,1
+outcome: passed
+JSON
+out=$(env "${evidence_env[@]}" FM_TEST_STATUS="$TMP/status-no-findings" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "producer holds a status that never states its findings" "$(printf '%s' "$out" | jq -r .reasons[0])" test-evidence-missing-or-stale
 cat > "$TMP/home/state/$TASK.review-evidence" <<JSON
 {"reviewer":"reviewer","model":"independent","reviewed_sha":"$HEAD","verdict":"APPROVED"}
 JSON
