@@ -1,0 +1,60 @@
+ok - docs -> LOW
+ok - test -> LOW
+ok - pipeline py -> MEDIUM
+ok - automation py -> MEDIUM
+ok - watcher -> HIGH
+ok - PR merge -> HIGH
+ok - local merge -> HIGH
+ok - workflow -> HIGH
+ok - credential -> HIGH
+ok - credential markdown -> HIGH
+ok - secret markdown -> HIGH
+ok - unknown path -> HIGH
+ok - missing path detection -> HIGH
+ok - mixed docs+bin -> HIGH
+ok - review-route command is unavailable
+ok - verified producer accepts matching forge evidence
+ok - axi status read is bound to the task worktree, not the caller cwd
+ok - later captain rejection invalidates approval
+ok - verified producer holds stale SHA
+ok - verified producer holds forge API failure
+ok - branch-effective endpoint omits non-applicable rules
+ok - branch-effective ? pattern required check is enforced
+ok - branch-effective endpoint omits excluded patterns
+ok - unreadable branch rules hold
+ok - ruleset-only branch enforces the effective ruleset check
+ok - ruleset-only branch holds a red ruleset check
+ok - no waiver holds a red required check
+ok - waived-check waives exactly its named required check
+ok - waived-check leaves a different red required check holding
+ok - waived-check without a name is refused
+ok - verified producer holds missing test evidence
+ok - producer ignores caller-writable test record
+ok - producer ignores caller-writable review record
+ok - producer ignores caller-writable captain approval
+ok - later failed check run invalidates success
+ok - later in-progress check run invalidates success
+ok - later legacy status invalidates success
+ok - newer legacy failure supersedes earlier check run
+ok - producer rejects required check at wrong SHA
+ok - producer rejects caller evidence flags
+ok - completed required check with conclusion neutral is accepted
+ok - completed required check with conclusion skipped is accepted
+ok - GitLab producer accepts matching forge evidence
+ok - GitLab producer rejects failed pipeline job
+ok - GitLab producer holds stale SHA
+ok - GitLab producer accepts required pipeline success
+ok - GitLab producer rejects failed required pipeline
+ok - GitLab producer rejects missing required pipeline
+ok - GitHub truncated changed-file list holds
+ok - GitHub protected path past file 100 is classified
+ok - GitHub unreadable changed-file pages hold
+ok - GitHub empty changed-file pages hold
+ok - GitHub missing changed-file count holds
+ok - GitLab complete diff passes
+ok - GitLab overflowing diff holds
+ok - GitLab changes/changes_count mismatch holds
+ok - GitLab missing overflow flag holds
+ok - GitLab unreadable changes_count holds
+ok - empty risk classification output holds
+# fm-merge-policy.test.sh PASS=59 FAIL=0
