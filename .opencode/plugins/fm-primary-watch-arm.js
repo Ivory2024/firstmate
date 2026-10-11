@@ -136,7 +136,10 @@ function shouldArm(paths) {
 }
 
 // fm_supervision_needed <state-dir> exits 0 exactly when the shared predicate
-// says the home needs supervision; exit 0 means arm here.
+// says the home needs supervision - in-flight task metadata, an X-mode relay
+// poll, a registered process-to-event source, or a registered custom check -
+// so a home whose only need is a source or a check still passes the gate;
+// exit 0 means arm here.
 function supervisionNeeded(paths) {
   const result = spawnSync(
     "bash",

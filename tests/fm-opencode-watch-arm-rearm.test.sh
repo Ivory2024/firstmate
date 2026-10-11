@@ -16,10 +16,17 @@
 #   A. no quiescent event ever, beacon missing  -> re-armed
 #   B. no quiescent event ever, beacon fresh    -> NOT re-armed
 #   C. no quiescent event ever, beacon stale    -> re-armed
+#   D. beacon fresh at capture, then stale with no further event -> re-armed
+#   E. the only need is a registered event source (no *.meta, no x-mode.env) -> re-armed
 #
 # Case C is the observed outage shape exactly: the beacon existed and was far
 # past the guard grace. Case A is the sharper one: a cycle that never beat at
 # all, which the tracked event-driven arm could not recover from.
+# Case D pins TIMER-driven recovery: the session is already captured, no further
+# event ever arrives, and only the plugin's own bounded poll can arm - so
+# deleting setInterval() fails this case alone. Case E pins the launch gate's
+# condition set: a home whose only need is a process-to-event source carries no
+# *.meta and no config/x-mode.env.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -32,7 +39,7 @@ DRIVER="$TMP_ROOT/drive-rearm.mjs"
 write_driver() {
   cat > "$DRIVER" <<'JS'
 import { pathToFileURL } from "node:url";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, utimesSync } from "node:fs";
 
 const mod = await import(pathToFileURL(process.env.FM_TEST_PLUGIN).href);
 const d = mod.default;
@@ -52,6 +59,13 @@ const ctx = {
         // A busy session: real traffic, and never a quiescent event.
         yield { type: "session.step.started", data: { sessionID: "ses_rearm_case" } };
         yield { type: "session.text.delta", data: { sessionID: "ses_rearm_case" } };
+        // Case D: the session is captured by the two events above. Let the
+        // beacon go stale now with no further event, so only the plugin's own
+        // bounded poll can arm the cycle.
+        if (process.env.FM_TEST_STALE_AFTER_CAPTURE === "1") {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          utimesSync(`${home}/state/.last-watcher-beat`, new Date(0), new Date(0));
+        }
         await new Promise((resolve) => {
           if (signal?.aborted) return resolve();
           signal.addEventListener("abort", () => resolve(), { once: true });
@@ -78,16 +92,24 @@ process.exit(0);
 JS
 }
 
-# make_fake_home <dir>: a home the plugin accepts as a primary root, with the
-# shared supervision predicate available and this test process recorded as the
-# session-lock owner (the plugin walks the node host's ancestry to check that).
+# make_fake_home <dir> [need]: a home the plugin accepts as a primary root, with
+# the shared supervision predicate available and this test process recorded as
+# the session-lock owner (the plugin walks the node host's ancestry to check
+# that). <need> is "meta" (default: one in-flight task) or "source" (only a
+# registered process-to-event source, so the home carries no *.meta and no
+# config/x-mode.env).
 make_fake_home() {
-  local home=$1
+  local home=$1 need=${2:-meta}
   mkdir -p "$home/bin" "$home/state" "$home/config"
   git -C "$home" init -q
   : > "$home/AGENTS.md"
   cp "$ROOT/bin/fm-supervision-lib.sh" "$home/bin/fm-supervision-lib.sh"
-  : > "$home/state/rearm-case.meta"
+  if [ "$need" = source ]; then
+    mkdir -p "$home/state/procevent"
+    : > "$home/state/procevent/bot-manager-issues.source"
+  else
+    : > "$home/state/rearm-case.meta"
+  fi
   printf '%s\n' "$$" > "$home/state/.lock"
   cat > "$home/bin/fm-watch-arm.sh" <<'SH'
 #!/usr/bin/env bash
@@ -99,15 +121,17 @@ SH
   chmod +x "$home/bin/fm-watch-arm.sh"
 }
 
-# drive_case <name> <grace> <beacon>  -> prints "armed" or "quiet"
-# <beacon> is "missing", "fresh", or "stale".
+# drive_case <name> <grace> <beacon> [need]  -> prints "armed" or "quiet"
+# <beacon> is "missing", "fresh", "stale", or "fresh-then-stale".
+# <need> is handed to make_fake_home ("meta" by default).
 drive_case() {
-  local name=$1 grace=$2 beacon=$3 home out rc
+  local name=$1 grace=$2 beacon=$3 need=${4:-meta} home out rc stale_after_capture=0
   home="$TMP_ROOT/$name"
-  make_fake_home "$home"
+  make_fake_home "$home" "$need"
   case "$beacon" in
     fresh) : > "$home/state/.last-watcher-beat" ;;
     stale) : > "$home/state/.last-watcher-beat"; touch -t 202001010000 "$home/state/.last-watcher-beat" ;;
+    fresh-then-stale) : > "$home/state/.last-watcher-beat"; stale_after_capture=1 ;;
   esac
   out="$TMP_ROOT/$name.out"
   # No command substitution here: the node host must stay a direct child of this
@@ -115,6 +139,7 @@ drive_case() {
   FM_TEST_PLUGIN="$PLUGIN" \
     FM_TEST_HOME="$home" \
     FM_TEST_WAIT_MS=4000 \
+    FM_TEST_STALE_AFTER_CAPTURE="$stale_after_capture" \
     FM_ROOT_OVERRIDE="$home" \
     FM_HOME="$home" \
     FM_CONFIG_OVERRIDE="$home/config" \
@@ -143,10 +168,12 @@ pass "case A: supervision is re-armed from the durable beacon with no session ev
 
 # --- B: no quiescent event, beacon fresh (a healthy cycle) ------------------
 home_b="$TMP_ROOT/case-b"
+got=$(drive_case case-b 300 fresh)
+# Checked after drive_case() builds the home: on a nonexistent state dir the
+# predicate reports "not needed", which would make this assertion vacuous.
 if fm_supervision_unhealthy "$home_b/state"; then
   fail "case B fixture is wrong: the shared predicate must call a fresh beacon healthy"
 fi
-got=$(drive_case case-b 300 fresh)
 assert_equals "quiet" "$got" "case B: a fresh beacon means a healthy cycle, so no second watcher may be armed"
 assert_absent "$home_b/state/arm-calls.log" \
   "case B: the plugin armed a watcher while a healthy cycle held a fresh beacon"
@@ -159,5 +186,28 @@ assert_equals "armed" "$got" "case C: a stale beacon must re-arm supervision"
 assert_contains "$(cat "$home_c/state/arm-calls.log")" "--restart" \
   "case C: the stale-beacon re-arm must drive bin/fm-watch-arm.sh through its restart path"
 pass "case C: the 37506s-stale-beacon outage shape now re-arms itself"
+
+# --- D: a healthy cycle goes stale with no further event --------------------
+# Timer-driven recovery only: the session is captured, no further event ever
+# arrives, and the beacon goes stale after capture. Deleting setInterval() would
+# leave cases A, B, and C passing, so this case is what pins the poll.
+home_d="$TMP_ROOT/case-d"
+got=$(drive_case case-d 300 fresh-then-stale)
+assert_equals "armed" "$got" \
+  "case D: a healthy cycle that goes stale with no further event must be re-armed by the poll"
+assert_contains "$(cat "$home_d/state/arm-calls.log")" "--restart" \
+  "case D: the timer-driven re-arm must drive bin/fm-watch-arm.sh through its restart path"
+pass "case D: the bounded poll recovers a cycle whose beacon went stale after capture"
+
+# --- E: the only supervision need is a registered event source --------------
+# No *.meta and no config/x-mode.env: the launch gate must read the shared
+# predicate's whole condition set, not just in-flight task metadata.
+home_e="$TMP_ROOT/case-e"
+got=$(drive_case case-e 300 missing source)
+assert_equals "armed" "$got" \
+  "case E: a home whose only need is a registered event source must re-arm supervision"
+assert_contains "$(cat "$home_e/state/arm-calls.log")" "--restart" \
+  "case E: the source-only re-arm must drive bin/fm-watch-arm.sh through its restart path"
+pass "case E: a process-to-event source alone counts as a supervision need"
 
 echo "all fm-opencode-watch-arm-rearm tests passed"
