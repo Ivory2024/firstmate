@@ -20,7 +20,10 @@
 # state needs gh and jq, and either one absent stops the merge before any
 # state is recorded. An attended --allow-red <check-name> may be passed once,
 # with the name as a separate argument; it waives only checks with that exact
-# name, still requires every other check green, and still binds the head. It is
+# name, still requires every other check green, and still binds the head. The
+# same name is carried into the evidence collector as a call-scoped
+# --waived-check argument, so the collector waives exactly that check too and
+# never a check the caller did not name. It is
 # refused while the away-posture record exists, and it never
 # applies on GitLab, where a merge already requires the head pipeline to have
 # succeeded. After gh returns success, GitHub's live state is read back and
@@ -113,6 +116,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+# The evidence collector is the merge boundary's trust root, so it is the file
+# shipped beside this script and nothing else. There is deliberately no
+# environment, argument, or path seam: an earlier revision honoured
+# FM_MERGE_EVIDENCE_SCRIPT_OVERRIDE behind an FM_TEST_EVIDENCE_OVERRIDE=1 flag,
+# but a flag that only asserts "this is a test" is itself just another
+# environment variable, so a caller could set both and stand in a script that
+# prints {"status":"PASS"}, bypassing every forge, review, and risk check.
+# Resolving from SCRIPT_DIR also keeps FM_ROOT_OVERRIDE, FM_HOME, and
+# FM_STATE_OVERRIDE from reaching it. Tests satisfy the shipped collector by
+# stubbing the forge CLI it reads, never by replacing the collector.
+EVIDENCE_SCRIPT="$SCRIPT_DIR/fm-merge-evidence.sh"
 
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
@@ -1149,6 +1163,20 @@ case "$PROVIDER" in
     fi
     FM_PR_GITHUB_CALLER_METHOD=$(caller_merge_method "$@")
     github_verify_mergeable || exit 1
+    # Shared merge boundary: verify forge evidence before merge.
+    # fm-merge-evidence.sh always exits 0 (HOLD is a reported verdict, not a
+    # script failure), so the gate is the parsed status/head, never the exit code.
+    # An attended --allow-red is carried as an argument bound to this exact call,
+    # never as an inherited environment variable or a file: an ambient waiver
+    # would be a substitutable trust root another run could pick up.
+    evidence_args=(collect "$ID" "$URL" "$FM_PR_MERGE_HEAD")
+    [ "${#ALLOW_RED[@]}" -eq 0 ] || evidence_args+=(--waived-check "${ALLOW_RED[0]}")
+    evidence_json=$("$EVIDENCE_SCRIPT" "${evidence_args[@]}" 2>&1)
+    if ! printf '%s' "$evidence_json" | jq -e --arg sha "$FM_PR_MERGE_HEAD" \
+      '.status == "PASS" and .head_sha == $sha' >/dev/null 2>&1; then
+      printf 'error: merge refused - evidence verification failed: %s\n' "$evidence_json" >&2
+      exit 1
+    fi
     # The away record is locked first, so this last presence and authority read
     # and the forge command below share one live-owner critical section.
     hold_away_record_for_merge || exit 1
@@ -1200,6 +1228,15 @@ case "$PROVIDER" in
     ;;
   gitlab)
     gitlab_verify_mergeable || exit 1
+    # Shared merge boundary: verify forge evidence before merge.
+    # fm-merge-evidence.sh always exits 0 (HOLD is a reported verdict, not a
+    # script failure), so the gate is the parsed status/head, never the exit code.
+    evidence_json=$("$EVIDENCE_SCRIPT" collect "$ID" "$URL" "$FM_PR_MERGE_HEAD" 2>&1)
+    if ! printf '%s' "$evidence_json" | jq -e --arg sha "$FM_PR_MERGE_HEAD" \
+      '.status == "PASS" and .head_sha == $sha' >/dev/null 2>&1; then
+      printf 'error: merge refused - evidence verification failed: %s\n' "$evidence_json" >&2
+      exit 1
+    fi
     # --sha binds the merge to the head this run verified, so a push that lands
     # in between is refused by GitLab instead of merged unverified. --yes only
     # skips the interactive confirmation, which no supervised run can answer;

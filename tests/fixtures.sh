@@ -89,6 +89,159 @@ fm_test_fake_gh_axi() {
   fm_fake_version_tool "$fakebin" gh-axi FM_FAKE_GH_AXI_VERSION "$FM_TEST_GH_AXI_VERSION"
 }
 
+# --- merge-evidence forge fixture -------------------------------------------
+#
+# bin/fm-pr-merge.sh runs the evidence collector shipped beside it
+# (bin/fm-merge-evidence.sh) and that path is not caller-selectable, so a suite
+# that drives a real merge must satisfy the shipped collector instead of
+# standing in for it. These helpers write a controlled forge fixture and install
+# shims that answer only the shipped collector's own reads (plus `no-mistakes axi
+# status`), delegating every other forge invocation to the suite's own mock. The
+# gate under test is therefore the real collector: a case changes its verdict by
+# changing the fixture, not by replacing the collector.
+
+# fm_test_write_forge_evidence_fixture <dir> [changed-path]
+# Writes the GitHub and GitLab payloads the shipped collector reads. The token
+# __HEAD__ is replaced with the case's live head when the shim serves a file, so
+# one fixture stays consistent with whatever head the case reads.
+fm_test_write_forge_evidence_fixture() {
+  local dir=$1 path=${2:-docs/fixture.md}
+  mkdir -p "$dir"
+  cat > "$dir/gh-protection.json" <<'JSON'
+{"required_status_checks":{"contexts":["ci"]},"required_pull_request_reviews":{}}
+JSON
+  printf '%s\n' '[[]]' > "$dir/gh-rulesets.json"
+  printf '%s\n' '[{"check_runs":[]}]' > "$dir/gh-check-runs.json"
+  cat > "$dir/gh-statuses.json" <<'JSON'
+[[{"context":"ci","sha":"__HEAD__","created_at":"2026-10-10T00:00:00Z","id":1,"state":"success"}]]
+JSON
+  cat > "$dir/gh-reviews.json" <<'JSON'
+[[{"state":"APPROVED","user":{"login":"reviewer"},"commit_id":"__HEAD__","submitted_at":"2026-10-10T00:00:00Z"},{"state":"APPROVED","user":{"login":"captain"},"commit_id":"__HEAD__","submitted_at":"2026-10-10T00:01:00Z"}]]
+JSON
+  printf '[[{"filename":"%s"}]]\n' "$path" > "$dir/gh-files.json"
+  printf '%s\n' '[{"name":"main","required_pipeline":{"id":5}}]' > "$dir/glab-protected.json"
+  cat > "$dir/glab-jobs.json" <<'JSON'
+[{"pipeline":{"id":5},"commit":{"id":"__HEAD__"},"status":"success"}]
+JSON
+  printf '%s\n' '{"approvals_left":0,"approved_by":[{"user":{"username":"reviewer","id":2}}]}' \
+    > "$dir/glab-approvals.json"
+  printf '%s\n' '{"reset_approvals_on_push":true}' > "$dir/glab-project.json"
+  printf '{"overflow":false,"changes_count":"1","changes":[{"new_path":"%s","old_path":"%s"}]}\n' \
+    "$path" "$path" > "$dir/glab-changes.json"
+}
+
+# fm_test_install_forge_evidence_shims <dir> [<delegate-bin-dir>]
+# Installs the gh/glab/no-mistakes shims in <dir>. Prepending <dir> to PATH is
+# what makes them answer, so a suite that builds its own PATH must include it.
+# Every unrecognised invocation is delegated to <delegate-bin-dir>, so the
+# suite's existing mocks keep owning the merge, verify, and poll reads.
+fm_test_install_forge_evidence_shims() {
+  local dir=$1 delegate=${2:-} tmp
+  mkdir -p "$dir"
+  tmp="$dir/.forge-evidence-shim.$$"
+  cat > "$tmp" <<'SH'
+#!/usr/bin/env bash
+# Answers only the reads bin/fm-merge-evidence.sh makes of the forge, plus
+# `no-mistakes axi status`; everything else goes to the suite's own mock.
+set -u
+tool=${0##*/}
+D=${FM_TEST_EVIDENCE_DIR:-}
+delegate() {
+  if [ -x "__DELEGATE__/$tool" ]; then
+    exec "__DELEGATE__/$tool" "$@"
+  fi
+  case "$tool" in
+    no-mistakes) exit 0 ;;
+    *) exit 1 ;;
+  esac
+}
+log_call() {
+  case "$tool" in
+    gh) [ -n "${FM_TEST_GH_LOG:-}" ] && printf '%s\n' "$*" >> "$FM_TEST_GH_LOG" ;;
+    glab) [ -n "${FM_TEST_GLAB_LOG:-}" ] && printf '%s\n' "$*" >> "$FM_TEST_GLAB_LOG" ;;
+  esac
+  return 0
+}
+# Without a controlled fixture this invocation is not the merge boundary's own
+# evidence read, so hand it straight to the suite's mock.
+if [ -z "$D" ] || [ ! -d "$D" ]; then
+  delegate "$@"
+fi
+head=${FM_TEST_EVIDENCE_HEAD:-}
+if [ -n "${FM_TEST_EVIDENCE_HEAD_FILE:-}" ] && [ -r "${FM_TEST_EVIDENCE_HEAD_FILE}" ]; then
+  head=$(tr -d '\n' < "$FM_TEST_EVIDENCE_HEAD_FILE")
+fi
+# A GitLab case's live head is the merge request's own head, not the GitHub head
+# file it never uses, so derive it from the payload both reads already share.
+if [ -r "${FM_TEST_GLAB_JSON:-}" ] && command -v jq >/dev/null 2>&1; then
+  mh=$(jq -r '.sha // empty' "$FM_TEST_GLAB_JSON" 2>/dev/null) || mh=
+  case "$mh" in
+    '' | *[!0-9a-fA-F]*) ;;
+    *) [ "${#mh}" -eq 40 ] && head=$mh ;;
+  esac
+fi
+serve() { local f=$1; shift; log_call "$@"; sed "s/__HEAD__/$head/g" "$D/$f"; }
+case "$tool" in
+  gh)
+    case "${1:-} ${2:-}" in
+      "pr view")
+        case " $* " in
+          *author,headRefOid,baseRefName,changedFiles*)
+            log_call "$@"
+            printf '{"author":{"login":"author"},"headRefOid":"%s","baseRefName":"main","changedFiles":1}\n' "$head"
+            exit 0
+            ;;
+        esac
+        ;;
+      "api user") log_call "$@"; printf '%s\n' '{"login":"captain"}'; exit 0 ;;
+      "api "*)
+        case " $* " in
+          *"--slurp"*"/rules/branches/"*) serve gh-rulesets.json "$@"; exit 0 ;;
+          *"/branches/"*"/protection"*) serve gh-protection.json "$@"; exit 0 ;;
+          *"--slurp"*"/check-runs"*) serve gh-check-runs.json "$@"; exit 0 ;;
+          *"--slurp"*"/statuses"*) serve gh-statuses.json "$@"; exit 0 ;;
+          *"--slurp"*"/reviews"*) serve gh-reviews.json "$@"; exit 0 ;;
+          *"--slurp"*"/files"*) serve gh-files.json "$@"; exit 0 ;;
+        esac
+        ;;
+    esac
+    ;;
+  glab)
+    case "${1:-} ${2:-}" in
+      "api "*)
+        case " $* " in
+          *"/protected_branches"*) serve glab-protected.json "$@"; exit 0 ;;
+          *"/jobs"*) serve glab-jobs.json "$@"; exit 0 ;;
+          *"/approvals"*) serve glab-approvals.json "$@"; exit 0 ;;
+          *"/changes"*) serve glab-changes.json "$@"; exit 0 ;;
+          *"merge_requests/"*) exit 1 ;;
+          *"projects/"*) serve glab-project.json "$@"; exit 0 ;;
+        esac
+        ;;
+    esac
+    ;;
+  no-mistakes)
+    if [ "${1:-}" = axi ] && [ "${2:-}" = status ]; then
+      printf 'run:\n  id: fixture-run\n  status: completed\n  head_sha: %s\n  pr: "%s"\n  findings: 0 awaiting\n  steps[1]{step,status,findings,duration_ms}:\n    test,completed,0,1\noutcome: passed\n' \
+        "$head" "${FM_TEST_EVIDENCE_PR_URL:-}"
+      exit 0
+    fi
+    ;;
+esac
+delegate "$@"
+SH
+  if [ -n "$delegate" ]; then
+    sed "s|__DELEGATE__|$delegate|g" "$tmp" > "$dir/forge-evidence-shim"
+    rm -f "$tmp"
+  else
+    mv "$tmp" "$dir/forge-evidence-shim"
+  fi
+  chmod +x "$dir/forge-evidence-shim"
+  ln -sf forge-evidence-shim "$dir/gh"
+  ln -sf forge-evidence-shim "$dir/glab"
+  ln -sf forge-evidence-shim "$dir/no-mistakes"
+}
+
 # --- fake tmux / ssh / sleep ------------------------------------------------
 
 # fm_test_fake_tmux_spawn <fakebin>
