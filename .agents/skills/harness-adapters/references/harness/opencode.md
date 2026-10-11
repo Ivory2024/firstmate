@@ -13,8 +13,9 @@ The task launch command was re-verified live on 2026-10-04 against the installed
 | Interrupt | Double Escape; it is known to be flaky while a long shell command runs, so use `../../../bin/fm-control.sh <task-id> relaunch` for a wedged pane. |
 | Skill invocation | No separate verified form beyond normal slash-command behavior; use natural language when the exact command is uncertain. |
 | Resume | Relaunch with `--continue` to resume the most recent session for the current directory, then send the next instruction after the TUI is ready because `--prompt` does not auto-submit alongside `--continue`. |
+| Model flag | `--model <provider/model>`. |
 | Interactive task launch | Firstmate probes `opencode mini --help` for an `opencode mini` usage token on its own line (matching both `Usage: opencode mini` and OpenCode 2.0.18's `USAGE\n  opencode mini`). When `mini` is a real subcommand, the launch is `opencode mini --model <provider/model> --prompt "<brief>"`; a release without it falls back to the legacy top-level interactive form `opencode --model <provider/model> --prompt "<brief>"`. |
-| Effort flag | None for the interactive task launch; `opencode run` has `--variant`, but that is a different, non-interactive path. |
+| Effort flag | None for the interactive task launch; `opencode run` has `--variant`, but that is a different, non-interactive path. The effort instead rides the launch's `OPENCODE_CONFIG_CONTENT` JSON as the `build` agent's `variant` keyed to the resolved model, the config schema's per-model reasoning-effort field verified on 1.18.32. It is emitted only when the resolved model's provider is known to expose that effort as a variant (`anthropic/*`: high, max; `openai/*`: low, medium, high, xhigh); with no model resolved, another provider, or an effort outside its family's list, the variant is omitted and the permission-only launch is unchanged. |
 | Model discovery | Run `opencode models` with no argument to list every available `provider/model` identifier. The legacy `opencode models <provider>` form is rejected by OpenCode v2 ("Unexpected positional argument") and prints usage text rather than a catalog, so `../../../bin/fm-spawn.sh` reads the whole catalog and matches the exact id. |
 | Trust dialog | None. |
 | Marker | None; OpenCode publishes no identity marker, so `../../../bin/fm-harness.sh` identifies it from process ancestry. |
@@ -54,6 +55,7 @@ Their adapter maps v2 `event.data` into the legacy handler event shape; the cont
 `.opencode/plugins/fm-primary-turnend-guard.js` listens for `session.idle`.
 Throwing from `session.idle` does not block `opencode run`, so the primary adapter treats the event as passive and uses `client.session.promptAsync` to force one follow-up turn when `../../../bin/fm-turnend-guard.sh` returns 2.
 The follow-up was verified in the interactive TUI.
+In a home with `config/supervision-host` and no `config/supervision-host-off` the watch-arm plugin spawns the supervision host instead of `../../../bin/fm-watch-arm.sh`, with Claude's print mode as its headless engine; [`supervision-host.md`](../../../../../docs/supervision-host.md) owns the host.
 `opencode run` can exit before displaying a queued follow-up, so the adapter steps aside in headless mode.
 On native Windows, the operational-input adapter runs its Bash helper through `bash`; macOS and Linux invoke it directly.
 
