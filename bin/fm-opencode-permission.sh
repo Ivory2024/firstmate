@@ -201,11 +201,11 @@ push_captain_decision() {  # <task-id> <request-id> <action> <resources-json> <s
   local task_id=$1 request_id=$2 action=$3 resources=$4 save=$5
   local summary saved_note
   if [ "$save" != "[]" ]; then
-    saved_note="Choosing 'remember this' would save these paths: $save"
+    saved_note=$(printf '허용하고 이 경로를 기억을 고르면 다음 경로가 저장됩니다: %s' "$save")
   else
-    saved_note="Nothing would be remembered: this ask has no save pattern."
+    saved_note='이 요청은 저장할 패턴이 없어 아무것도 기억되지 않습니다.'
   fi
-  summary=$(printf 'OpenCode worker needs permission: action=%s resources=%s | %s | Recommendation: approve once and keep the saved scope unchanged; approve with remember only when the same path will be needed again this run.' \
+  summary=$(printf 'OpenCode 작업자가 권한 허가를 요청합니다: 동작=%s 대상=%s | %s | 권장: 이 1회만 허용하고 저장 범위는 그대로 유지하세요. 같은 경로를 이번 실행에서 다시 쓸 때만 허용하고 이 경로를 기억을 선택하세요.' \
     "$action" "$resources" "$saved_note")
   [ "${#summary}" -le 1800 ] || summary="${summary:0:1800}…"
   "$SCRIPT_DIR/fm-discord-notify.sh" "$TRIGGER" "$task_id" "perm-$request_id" \

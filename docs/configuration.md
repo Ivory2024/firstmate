@@ -711,15 +711,16 @@ Optional configuration variables in `.env`:
 - `FM_DISCORD_AUTHORIZED_USER_IDS`: comma-separated Discord user IDs allowed to answer pushed decisions, including the captain and any trusted operators; unset or empty authorizes nobody.
 - `FM_DISCORD_COMMAND_CHANNELS`: optional comma-separated channel IDs where an **authorized** user's plain message (no `@mention`) is an inbound Firstmate request. This is separate from the polling allowlist (`FM_DISCORD_CHANNEL_ID`/`FM_DISCORD_ALLOWED_CHANNELS`): the bot must poll the channel, and the channel must also be explicitly listed here for mention-free capture. The built-in exclusion for `1551134713727426570` is overridden by explicitly allowlisting that channel, but an explicitly configured exclusion takes precedence over both lists. A command channel still excluded after polling configuration is dropped with a `fm-discord: command channel … is also excluded; exclusion wins` diagnostic. Unauthorized authors and bot messages are ignored.
 Replies and follow-ups for self-hosted Discord mentions post directly to Discord's REST API using `FM_DISCORD_BOT_TOKEN`.
-The connector best-effort adds 👁️ when durable ingress is accepted, 🛠️ when `fmx-respond` records its consumer claim, 🟢 after a successful terminal reply or applied decision, and ⚠️ after captain intervention is durably recorded.
+The connector best-effort adds ✅ when durable ingress is accepted, 🛠️ when `fmx-respond` records its consumer claim, 🟢 after a successful terminal reply or applied decision, and ⚠️ after captain intervention is durably recorded.
 Each reaction targets only the Discord message identity captured in matching private `x-inbox/` and `x-context/` state; reactions are receipts of that state, and failed reaction calls do not fail ingress, handling, or decision recording.
 Reaction additions are idempotent, so a replay does not create a duplicate reaction.
 Quiet-mode status reports also use the first configured channel; the report command refuses to run during away mode.
 
 When the self-hosted connector is enabled, firstmate also posts captain decisions to the first configured channel: a newly recorded captain hold (including a genuinely escalated `nm-` ask-user gate, held with the real question in its reason per `ask-user-authority`) or a pull request ready for review when `yolo=off`.
 A raw `nm-` ask-user gate observed in a worker's status log never posts by itself - most gates are decided in-scope with no captain involvement, so only the captain-hold recorded at actual escalation time reaches Discord.
-Each message states why contact is needed, what decision is required, the available choices, and a recommended choice that must match one of them, plus the task id.
+Each message states why contact is needed, what decision is required, the available choices, and a recommended choice that must match one of them, plus the task id and its backlog title.
 Pull-request review messages name the repository or project when the URL is an accepted GitHub or GitLab merge-request URL, so the captain can identify it before opening it.
+Captain-facing notification text is written in Korean, and a completed-task report names the task title, the task id, and the recorded outcome.
 Keep the configured channel private to the captain and trusted operators; only IDs in `FM_DISCORD_AUTHORIZED_USER_IDS` can answer decisions, and replies from other channel members are ignored.
 Reply directly to a decision message.
 The watcher captures that reply into the existing `state/x-inbox/` flow and `fmx-respond` applies it through `fm-captain-hold.sh answer-one` for a held task, or `fm-send.sh --resolve-key` for other keyed decisions.

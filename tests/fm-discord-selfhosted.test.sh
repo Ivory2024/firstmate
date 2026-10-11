@@ -98,7 +98,7 @@ test_ingestion_payload_shape_and_wake() {
   assert_present "$inbox_file" "inbox payload exists"
   assert_present "$ctx_file" "context record exists"
   assert_equals "PUT" "$(jq -r '.method' "$log")" "ingress reaction uses Discord's idempotent add endpoint"
-  assert_contains "$(jq -r '.url' "$log")" "/reactions/%F0%9F%91%81%EF%B8%8F/@me" "ingress accepted reaction target"
+  assert_contains "$(jq -r '.url' "$log")" "/reactions/%E2%9C%85/@me" "ingress read reaction is the green check on the captain's own message"
   assert_present "$home/state/x-context/discord-lifecycle-discord-sh-1352000000000000099-accepted.json.applied" "ingress reaction receipt is durable"
 
   platform=$(jq -r '.platform' "$inbox_file")

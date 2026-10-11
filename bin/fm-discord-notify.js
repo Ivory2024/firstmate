@@ -117,7 +117,7 @@ async function sendRecord(path, record, botId, recover) {
 	saveRecord(path, sending);
 	const payload = {
 		content: [
-			`**결정 필요** - 작업: ${record.task_id}`,
+			`**결정 필요** - 작업: ${taskLabel(record)}`,
 			"",
 			`왜 연락했나: ${localize(record.summary)}`,
 			"",
@@ -217,6 +217,14 @@ function decisionPrompt(trigger) {
 		"pr-ready": "풀 리퀘스트를 병합할지",
 		"perm-ask": "OpenCode 요청에 권한을 줄지",
 	})[trigger] || "어떻게 진행할지";
+}
+
+// A decision message names the task by its backlog title beside its id, with
+// the id alone as the fallback for a task whose title the backlog cannot
+// resolve. The title arrives from the wrapper, which owns the backlog read.
+function taskLabel(record) {
+	const title = typeof record.task_title === "string" ? record.task_title.replace(/[\r\n]+/g, " ").trim() : "";
+	return title ? `${title} [${record.task_id}]` : record.task_id;
 }
 
 async function main() {
@@ -345,6 +353,7 @@ async function main() {
 		event_id: digest,
 		trigger,
 		task_id: taskId,
+		task_title: (process.env.FM_DISCORD_TASK_TITLE || "").replace(/[\r\n]+/g, " ").trim(),
 		key,
 		status_task_id: statusTaskId,
 		summary,
