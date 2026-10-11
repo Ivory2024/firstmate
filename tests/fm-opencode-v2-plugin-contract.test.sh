@@ -9,7 +9,7 @@ out_file=$(mktemp "${TMPDIR:-/tmp}/fm-opencode-contract.XXXXXX") || fail "OpenCo
 node --input-type=module - "$ROOT" >"$out_file" 2>&1 <<'EOF'
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -162,6 +162,10 @@ try {
   writeFileSync(join(fixture, "AGENTS.md"), "fixture\n");
   execFileSync("git", ["init", "--quiet", fixture]);
 
+  // The arm gate reads the shared supervision predicate, so the fixture root
+  // must carry it, exactly as the re-arm suite's fake home does.
+  copyFileSync(join(root, "bin", "fm-supervision-lib.sh"), join(fixture, "bin", "fm-supervision-lib.sh"));
+
   // The session-start hook is executable against a fixture nudge command.
   writeFileSync(join(fixture, "bin", "fm-sessionstart-nudge.sh"), "#!/bin/sh\nprintf 'fixture nudge'\n");
   chmodSync(join(fixture, "bin", "fm-sessionstart-nudge.sh"), 0o755);
@@ -191,6 +195,9 @@ try {
 
   // Watch-arm consumes the adapter's normalized signal from the v2 execution lifecycle.
   writeFileSync(join(fixture, "config", "x-mode.env"), "\n");
+  // The shared supervision predicate counts an X-mode relay shim as a need, so
+  // the fixture carries the canonical signal rather than the cadence file alone.
+  writeFileSync(join(fixture, "state", "x-watch.check.sh"), "");
   process.env.FM_HOME = fixture;
   process.env.FM_ROOT_OVERRIDE = fixture;
   process.env.FM_CONFIG_OVERRIDE = join(fixture, "config");
