@@ -15,6 +15,17 @@ import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
 // as they do for the arm, with a longer readiness budget for the host's own
 // startup. On a home that does not run the host nothing below changes.
 const COORDINATOR_KEY = "__firstmateOpenCodeWatchArm";
+// OpenCode 2.0.26 publishes no `session.idle`, so the quiescent boundary is the
+// execution lifecycle end. These stay the EVENT-DRIVEN arm signal; the
+// durable-signal re-arm below never depends on any of them firing.
+const QUIESCENT_EVENTS = new Set([
+  "session.idle",
+  "session.execution.succeeded",
+  "session.execution.failed",
+  "session.execution.interrupted",
+  "session.execution.cancelled",
+  "session.execution.canceled",
+]);
 // 35s on Windows so the budget stays above arm's MSYS confirm default (30s in
 // bin/fm-watch-arm.sh): a slow but successful Git Bash cold start must not be
 // SIGTERMed mid-confirmation. Conditioned on win32 so other platforms keep 12s.
@@ -27,6 +38,12 @@ const ARM_RETIRE_TIMEOUT_MS = positiveInteger("FM_WATCH_ARM_RETIRE_TIMEOUT_MS", 
 const REARM_RETRY_BASE_MS = positiveInteger("FM_WATCH_REARM_RETRY_BASE_MS", 250);
 const REARM_RETRY_MAX_MS = positiveInteger("FM_WATCH_REARM_RETRY_MAX_MS", 4000);
 const REARM_RETRY_LIMIT = positiveInteger("FM_WATCH_REARM_RETRY_LIMIT", 5);
+// Durable-signal re-arm poll interval. A session that stays busy can run for
+// hours without ever publishing a quiescent event, and an event-driven arm
+// alone then leaves supervision down for that whole window. The poll instead
+// asks the shared on-disk predicate whether this home needs a watcher and none
+// holds a fresh liveness beacon.
+const REARM_POLL_MS = positiveInteger("FM_OPENCODE_REARM_POLL_MS", 60000);
 
 let child = null;
 let armStatus = "idle";
@@ -136,6 +153,26 @@ function supervisionNeeded(paths) {
     [
       "-c",
       '. "$1/bin/fm-supervision-lib.sh" && fm_supervision_needed "$2"',
+      "fm-primary-watch-arm",
+      paths.root,
+      paths.state,
+    ],
+    { stdio: "ignore" },
+  );
+  return result.status === 0;
+}
+
+// fm_supervision_unhealthy <state-dir> exits 0 exactly when the shared
+// predicate says this home needs supervision AND no watcher holds a fresh
+// liveness beacon (state/.last-watcher-beat). It is the durable-signal half of
+// re-arm: the decision reads only on-disk state, so it holds while the session
+// is mid-turn and publishes nothing at all.
+function supervisionUnhealthy(paths) {
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      '. "$1/bin/fm-supervision-lib.sh" && fm_supervision_unhealthy "$2"',
       "fm-primary-watch-arm",
       paths.root,
       paths.state,
@@ -266,12 +303,7 @@ function observeArmOutput(hostMode, stdout, stderr, settleReadiness) {
 
 async function sendPrompt(paths, client, sessionID, text) {
   const encoded = await encodeFirstmateOperationalInput(paths.root, "watcher", text);
-  await client.session.promptAsync({
-    path: { id: sessionID },
-    body: {
-      parts: [{ type: "text", text: encoded }],
-    },
-  });
+  await client.session.promptAsync({ sessionID, text: encoded });
 }
 
 function confirmHandlingDelivery(paths, recovery) {
@@ -561,19 +593,73 @@ async function ensureArm(paths, sessionID, client, predecessorArmPid = "", inclu
   return armAttempt(await waitForArmReady(armChild), armChild, includeArmChild);
 }
 
-export const FmPrimaryWatchArm = async ({ client, directory, worktree }) => {
-  const root = worktree ? resolvePath(worktree) : await resolveRoot(directory);
-  const paths = effectivePaths(root);
-  globalThis[COORDINATOR_KEY] = {
-    ensureArmed: (sessionID, activeClient) => ensureArm(paths, sessionID, activeClient ?? client),
-  };
+export default {
+  id: "fm-primary-watch-arm",
+  async setup(ctx) {
+    // OpenCode 2.x plugin shape. The 1.x ctx fields are gone: working dir is
+    // `ctx.location.directory`, the old `event` hook is a
+    // `ctx.event.subscribe({ signal })` stream, and `client.session.promptAsync`
+    // is `ctx.session.prompt`. The internal `client` shim keeps the call sites
+    // below unchanged while the injected call uses the V2 shape.
+    const client = { session: { promptAsync: (args) => ctx.session.prompt(args) } };
+    const controller = new AbortController();
+    let sessionID = "";
 
-  return {
-    event: async ({ event }) => {
-      if (event.type !== "session.idle") return;
-      const sessionID = event.properties?.sessionID;
+    // Resolve before publishing so a caller that joins right after setup finds
+    // the coordinator, exactly as the turn-end guard expects to.
+    const root = await resolveRoot(ctx.location?.directory);
+    const paths = effectivePaths(root);
+    globalThis[COORDINATOR_KEY] = {
+      ensureArmed: (id, activeClient) => ensureArm(paths, id, activeClient ?? client),
+    };
+
+    // Durable-signal re-arm. The event-driven arm below fires only on a
+    // quiescent session event, and a session that stays busy publishes none -
+    // that gap left a home's watcher dead for 10h25m with 1,259 wakes queued.
+    // This loop arms from the on-disk liveness beacon instead, so it holds with
+    // no event at all. ensureArm is idempotent (one child or one scheduled
+    // retry at a time) and bin/fm-watch-arm.sh attaches to a healthy live cycle
+    // rather than starting a second one, so repeated re-arms are harmless.
+    const rearm = () => {
       if (!sessionID) return;
+      if (child || retryTimer || launchInFlight) return;
+      if (!supervisionUnhealthy(paths)) return;
+      retryFailures = 0;
       void ensureArm(paths, sessionID, client);
-    },
-  };
+    };
+    const rearmTimer = setInterval(rearm, REARM_POLL_MS);
+    rearmTimer.unref?.();
+
+    void (async () => {
+      try {
+        for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+          // Any event, not just a quiescent one, teaches the plugin which
+          // session to deliver a wake to; a busy session still yields these.
+          const id = event?.data?.sessionID ?? event?.properties?.sessionID;
+          if (id && !sessionID) {
+            sessionID = id;
+            rearm();
+          }
+          if (!QUIESCENT_EVENTS.has(event?.type)) continue;
+          if (!id) continue;
+          void ensureArm(paths, id, client);
+        }
+      } catch {
+      }
+    })();
+
+    // Unload must not leave an orphan arm child owning wake delivery for a home
+    // this plugin instance no longer supervises.
+    return () => {
+      controller.abort();
+      clearInterval(rearmTimer);
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      const retiring = child;
+      child = null;
+      if (retiring) void retireArm(retiring);
+    };
+  },
 };

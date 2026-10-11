@@ -45,6 +45,12 @@ Each adapter:
 Pi treats an arm child whose process is already gone as an empty slot even while its close event is still pending, so a repair call or a scheduled retry starts a fresh arm instead of answering unchanged.
 A failed follow-up never cancels continuity restoration.
 
+OpenCode's adapter additionally re-arms from a durable signal, because its session lifecycle is not guaranteed to publish a quiescent event at all.
+A session that stays busy can publish none for hours, which is how one home's watcher stayed dead for 10h25m with 1,259 wakes queued.
+So besides the event-driven arm, `.opencode/plugins/fm-primary-watch-arm.js` polls `bin/fm-supervision-lib.sh`'s `fm_supervision_unhealthy` for the state directory: while this home needs a watcher and none holds a fresh `state/.last-watcher-beat`, the plugin re-arms.
+That poll is idempotent - one child or one scheduled retry at a time - and `bin/fm-watch-arm.sh` attaches to a healthy live cycle instead of starting a second one, so a healthy cycle is never disturbed and repeated re-arms are harmless.
+The two signals stay independent: the turn-end hook keeps its own quiescent-event path, and the durable-wake liveness guard keeps reading the same beacon without either depending on the other.
+
 ### Pi session replacement
 
 Pi same-process session replacement follows the generation-owner contract in `.pi/extensions/fm-primary-pi-watch.ts`:
@@ -409,6 +415,14 @@ Only positive decimal integers are accepted, including leading-zero forms such a
 A live foreign holder therefore cannot strand a TERM'd watcher in this marker-lock wait: on timeout the recovery transition fails without releasing the singleton, leaving dead-pid stale evidence for the next arm to republish and clear.
 
 ## Regression coverage
+
+### OpenCode durable-signal re-arm
+
+`tests/fm-opencode-watch-arm-rearm.test.sh` drives the real watch-arm plugin in a plain Node host against a fake primary home whose arm is a recorder, and pins all three re-arm clauses with no quiescent session event ever published:
+
+- No beacon at all and supervision needed: the plugin re-arms.
+- A fresh beacon: the plugin arms nothing, so a healthy cycle is never doubled.
+- A beacon stale past the guard grace, the observed outage shape: the plugin re-arms.
 
 ### Pi and OpenCode watch extension
 

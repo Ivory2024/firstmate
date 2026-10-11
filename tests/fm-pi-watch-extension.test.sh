@@ -7,6 +7,12 @@ set -u
 
 TMP_ROOT=$(fm_test_tmproot fm-pi-watch-extension)
 EXT="$ROOT/.pi/extensions/fm-primary-pi-watch.ts"
+CTX_LIB="$ROOT/tests/lib/fm-opencode-ctx.mjs"
+# The ported OpenCode cases drive the plugin's event stream directly; the
+# durable-signal re-arm poll is parked out of their way and
+# tests/fm-opencode-watch-arm-rearm.test.sh owns that path.
+FM_OPENCODE_REARM_POLL_MS=3600000
+export CTX_LIB FM_OPENCODE_REARM_POLL_MS
 # Node 24 warns when these test-only dynamic imports load tracked ESM plugins
 # from a clean checkout with no tracked .opencode/package.json. The warning is
 # unrelated to plugin output, which the assertions intentionally require empty.
@@ -4157,13 +4163,12 @@ SH
 import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+const { makeOpenCodeCtx, eventHandle } = await import(pathToFileURL(process.env.CTX_LIB).href);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 const client = { session: { promptAsync: async () => {} } };
-const hooks = await mod.FmPrimaryWatchArm({
-  client,
-  directory: process.env.WORKTREE,
-  worktree: process.env.WORKTREE,
-});
+const { ctx, emit } = makeOpenCodeCtx({ directory: process.env.WORKTREE, client });
+await mod.default.setup(ctx);
+const hooks = eventHandle(emit);
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } });
 for (let i = 0; i < 250 && !existsSync(process.env.FM_ARM_LOG); i += 1) {
@@ -4207,13 +4212,12 @@ SH
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+const { makeOpenCodeCtx, eventHandle } = await import(pathToFileURL(process.env.CTX_LIB).href);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 const client = { session: { promptAsync: async () => {} } };
-const hooks = await mod.FmPrimaryWatchArm({
-  client,
-  directory: process.env.WORKTREE,
-  worktree: process.env.WORKTREE,
-});
+const { ctx, emit } = makeOpenCodeCtx({ directory: process.env.WORKTREE, client });
+await mod.default.setup(ctx);
+const hooks = eventHandle(emit);
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } });
 for (let i = 0; i < 250 && !existsSync(process.env.FM_ARM_LOG); i += 1) {
@@ -4257,13 +4261,12 @@ SH
 import { existsSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+const { makeOpenCodeCtx, eventHandle } = await import(pathToFileURL(process.env.CTX_LIB).href);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 const client = { session: { promptAsync: async () => {} } };
-const hooks = await mod.FmPrimaryWatchArm({
-  client,
-  directory: process.env.WORKTREE,
-  worktree: process.env.WORKTREE,
-});
+const { ctx, emit } = makeOpenCodeCtx({ directory: process.env.WORKTREE, client });
+await mod.default.setup(ctx);
+const hooks = eventHandle(emit);
 const event = { event: { type: "session.idle", properties: { sessionID: "session-test" } } };
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, "999999\n");
 await hooks.event(event);
@@ -4319,13 +4322,11 @@ SH
 import { existsSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+const { makeOpenCodeCtx } = await import(pathToFileURL(process.env.CTX_LIB).href);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 const client = { session: { promptAsync: async () => {} } };
-await mod.FmPrimaryWatchArm({
-  client,
-  directory: process.env.WORKTREE,
-  worktree: process.env.WORKTREE,
-});
+const { ctx } = makeOpenCodeCtx({ directory: process.env.WORKTREE, client });
+await mod.default.setup(ctx);
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 const status = await globalThis.__firstmateOpenCodeWatchArm.ensureArmed("session-test", client);
 await new Promise((resolve) => setTimeout(resolve, 120));
@@ -4379,6 +4380,7 @@ SH
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+const { makeOpenCodeCtx, eventHandle } = await import(pathToFileURL(process.env.CTX_LIB).href);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 let prompts = 0;
 let rowsAtPrompt = 0;
@@ -4397,11 +4399,9 @@ const client = {
     },
   },
 };
-const hooks = await mod.FmPrimaryWatchArm({
-  client,
-  directory: process.env.WORKTREE,
-  worktree: process.env.WORKTREE,
-});
+const { ctx, emit } = makeOpenCodeCtx({ directory: process.env.WORKTREE, client });
+await mod.default.setup(ctx);
+const hooks = eventHandle(emit);
 const event = { event: { type: "session.idle", properties: { sessionID: "session-test" } } };
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 await hooks.event(event);
@@ -4495,10 +4495,13 @@ SH
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+const { makeOpenCodeCtx, eventHandle } = await import(pathToFileURL(process.env.CTX_LIB).href);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 const prompts = [];
 const client = { session: { promptAsync: async (request) => { prompts.push(request.body.parts[0].text); } } };
-const hooks = await mod.FmPrimaryWatchArm({ client, directory: process.env.WORKTREE, worktree: process.env.WORKTREE });
+const { ctx, emit } = makeOpenCodeCtx({ directory: process.env.WORKTREE, client });
+await mod.default.setup(ctx);
+const hooks = eventHandle(emit);
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } });
 for (let i = 0; i < 400 && prompts.length < 1; i += 1) await new Promise((resolve) => setTimeout(resolve, 10));
@@ -4570,6 +4573,7 @@ SH
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+const { makeOpenCodeCtx, eventHandle } = await import(pathToFileURL(process.env.CTX_LIB).href);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 const prompts = [];
 const client = {
@@ -4579,11 +4583,9 @@ const client = {
     },
   },
 };
-const hooks = await mod.FmPrimaryWatchArm({
-  client,
-  directory: process.env.WORKTREE,
-  worktree: process.env.WORKTREE,
-});
+const { ctx, emit } = makeOpenCodeCtx({ directory: process.env.WORKTREE, client });
+await mod.default.setup(ctx);
+const hooks = eventHandle(emit);
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } });
 for (let i = 0; i < 500; i += 1) {
@@ -4644,6 +4646,7 @@ SH
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+const { makeOpenCodeCtx, eventHandle } = await import(pathToFileURL(process.env.CTX_LIB).href);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 let prompt = "";
 let rowsAtPrompt = 0;
@@ -4657,11 +4660,9 @@ const client = {
     },
   },
 };
-const hooks = await mod.FmPrimaryWatchArm({
-  client,
-  directory: process.env.WORKTREE,
-  worktree: process.env.WORKTREE,
-});
+const { ctx, emit } = makeOpenCodeCtx({ directory: process.env.WORKTREE, client });
+await mod.default.setup(ctx);
+const hooks = eventHandle(emit);
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } });
 // Three unready successors each cost the full readiness budget, so wait well
@@ -4721,6 +4722,7 @@ SH
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+const { makeOpenCodeCtx, eventHandle } = await import(pathToFileURL(process.env.CTX_LIB).href);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 let prompt = "";
 let rowsAtPrompt = 0;
@@ -4734,11 +4736,9 @@ const client = {
     },
   },
 };
-const hooks = await mod.FmPrimaryWatchArm({
-  client,
-  directory: process.env.WORKTREE,
-  worktree: process.env.WORKTREE,
-});
+const { ctx, emit } = makeOpenCodeCtx({ directory: process.env.WORKTREE, client });
+await mod.default.setup(ctx);
+const hooks = eventHandle(emit);
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } });
 for (let i = 0; i < 500 && !prompt; i += 1) {
@@ -4802,6 +4802,7 @@ SH
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+const { makeOpenCodeCtx, eventHandle } = await import(pathToFileURL(process.env.CTX_LIB).href);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 const prompts = [];
 const client = {
@@ -4821,11 +4822,9 @@ async function waitFor(predicate, message) {
   }
   throw new Error(message);
 }
-const hooks = await mod.FmPrimaryWatchArm({
-  client,
-  directory: process.env.WORKTREE,
-  worktree: process.env.WORKTREE,
-});
+const { ctx, emit } = makeOpenCodeCtx({ directory: process.env.WORKTREE, client });
+await mod.default.setup(ctx);
+const hooks = eventHandle(emit);
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } });
 await waitFor(
@@ -4887,6 +4886,7 @@ SH
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+const { makeOpenCodeCtx, eventHandle } = await import(pathToFileURL(process.env.CTX_LIB).href);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 let prompts = 0;
 const client = {
@@ -4896,11 +4896,9 @@ const client = {
     },
   },
 };
-const hooks = await mod.FmPrimaryWatchArm({
-  client,
-  directory: process.env.WORKTREE,
-  worktree: process.env.WORKTREE,
-});
+const { ctx, emit } = makeOpenCodeCtx({ directory: process.env.WORKTREE, client });
+await mod.default.setup(ctx);
+const hooks = eventHandle(emit);
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } });
 for (let i = 0; i < 250; i += 1) {
@@ -4944,6 +4942,7 @@ SH
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+const { makeOpenCodeCtx, eventHandle } = await import(pathToFileURL(process.env.CTX_LIB).href);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 let prompt = "";
 const client = {
@@ -4953,11 +4952,9 @@ const client = {
     },
   },
 };
-const hooks = await mod.FmPrimaryWatchArm({
-  client,
-  directory: process.env.WORKTREE,
-  worktree: process.env.WORKTREE,
-});
+const { ctx, emit } = makeOpenCodeCtx({ directory: process.env.WORKTREE, client });
+await mod.default.setup(ctx);
+const hooks = eventHandle(emit);
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } });
 for (let i = 0; i < 250 && !prompt; i += 1) {
@@ -5000,6 +4997,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+const { makeOpenCodeCtx, eventHandle } = await import(pathToFileURL(process.env.CTX_LIB).href);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 let prompt = "";
 const client = {
@@ -5009,11 +5007,9 @@ const client = {
     },
   },
 };
-const hooks = await mod.FmPrimaryWatchArm({
-  client,
-  directory: process.env.WORKTREE,
-  worktree: process.env.WORKTREE,
-});
+const { ctx, emit } = makeOpenCodeCtx({ directory: process.env.WORKTREE, client });
+await mod.default.setup(ctx);
+const hooks = eventHandle(emit);
 const lock = `${process.env.FM_HOME}/state/.lock`;
 writeFileSync(lock, `${process.pid}\n`);
 const eventPromise = hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } });
@@ -5071,6 +5067,7 @@ SH
 import { existsSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+const { makeOpenCodeCtx } = await import(pathToFileURL(process.env.CTX_LIB).href);
 const armMod = await import(pathToFileURL(process.env.ARM_PLUGIN).href);
 const guardMod = await import(pathToFileURL(process.env.GUARD_PLUGIN).href);
 let promptBody = "";
@@ -5081,11 +5078,8 @@ const client = {
     },
   },
 };
-await armMod.FmPrimaryWatchArm({
-  client,
-  directory: process.env.WORKTREE,
-  worktree: process.env.WORKTREE,
-});
+const { ctx } = makeOpenCodeCtx({ directory: process.env.WORKTREE, client });
+await armMod.default.setup(ctx);
 const guardHooks = await guardMod.FmPrimaryTurnendGuard({
   client,
   directory: process.env.WORKTREE,
@@ -5145,6 +5139,7 @@ SH
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+const { makeOpenCodeCtx } = await import(pathToFileURL(process.env.CTX_LIB).href);
 const armMod = await import(pathToFileURL(process.env.ARM_PLUGIN).href);
 const guardMod = await import(pathToFileURL(process.env.GUARD_PLUGIN).href);
 let promptBody = "";
@@ -5155,11 +5150,8 @@ const client = {
     },
   },
 };
-await armMod.FmPrimaryWatchArm({
-  client,
-  directory: process.env.WORKTREE,
-  worktree: process.env.WORKTREE,
-});
+const { ctx } = makeOpenCodeCtx({ directory: process.env.WORKTREE, client });
+await armMod.default.setup(ctx);
 const guardHooks = await guardMod.FmPrimaryTurnendGuard({
   client,
   directory: process.env.WORKTREE,

@@ -1662,11 +1662,13 @@ if (existsSync(`${state}/.afk`)) {
   expected = verdict;
 }
 
+const { makeOpenCodeCtx } = await import(pathToFileURL(process.env.CTX_LIB).href);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 const client = { session: { promptAsync: async () => {} } };
-await mod.FmPrimaryWatchArm({ client, directory: process.env.WORKTREE, worktree: process.env.WORKTREE });
+const { ctx, promptClient } = makeOpenCodeCtx({ directory: process.env.WORKTREE, client });
+await mod.default.setup(ctx);
 writeFileSync(`${state}/.lock`, `${process.pid}\n`);
-const status = await globalThis.__firstmateOpenCodeWatchArm.ensureArmed("session-test", client);
+const status = await globalThis.__firstmateOpenCodeWatchArm.ensureArmed("session-test", promptClient);
 if (expected === "no-arm") {
   if (status !== "not-needed") {
     console.error(`expected a not-needed decline, got ${status}`);
@@ -1705,6 +1707,7 @@ EOF
     esac
     out=$(FM_ROOT_OVERRIDE="$dir/repo" WORKTREE="$dir/repo" FM_HOME="$dir/home" \
       FM_ARM_LOG="$dir/arm.log" NODE_NO_WARNINGS=1 \
+      CTX_LIB="$ROOT/tests/lib/fm-opencode-ctx.mjs" FM_OPENCODE_REARM_POLL_MS=3600000 \
       PLUGIN="$ROOT/.opencode/plugins/fm-primary-watch-arm.js" node "$driver" 2>&1)
     status=$?
     expect_code 0 "$status" "OpenCode arm plugin must decide with the shared predicate ($case_name): $out"
