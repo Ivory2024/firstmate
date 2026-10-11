@@ -1377,6 +1377,21 @@ EOF
 
 # --- primary-death rediscovery ------------------------------------------------
 
+# fm_task_block <out> <id>: the slice of session-start output between a
+# task's "--- id ---" header and the next task header (or end of output), so
+# an assertion about one task's endpoint classification cannot be satisfied
+# by a different task's line landing anywhere else in the output.
+fm_task_block() {
+  local out=$1 id=$2
+  awk -v header="--- $id ---" '
+    index($0, header) { found=1; next }
+    found && /^--- / { exit }
+    found { print }
+  ' <<EOF
+$out
+EOF
+}
+
 # fm_recovery_record_files <home>: the durable-record file list (state/ and
 # data/) at one instant, sorted. A recovery run may legitimately create NEW
 # files (the session lock, seen-markers), so the non-destruction proof below
@@ -1386,16 +1401,22 @@ fm_recovery_record_files() {
   (cd "$home" && find state data -type f 2>/dev/null | LC_ALL=C sort)
 }
 
-# fm_recovery_record_dump <home> <files>: the exact bytes of each named record,
-# so two dumps compare equal only when every pre-existing record is byte-
-# identical. A deleted record shows as a missing body rather than silently
-# vanishing from the comparison.
+# fm_recovery_record_dump <home> <files>: a per-file content hash of each
+# named record, so two dumps compare equal only when every pre-existing
+# record is byte-identical, including its trailing bytes and any NUL byte.
+# Hashing each file directly (rather than capturing its bytes through
+# command substitution) avoids bash's trailing-newline stripping and the
+# inability to hold NUL bytes in a shell variable. A deleted record shows as
+# a missing body rather than silently vanishing from the comparison.
 fm_recovery_record_dump() {
   local home=$1 files=$2 f
   while IFS= read -r f; do
     [ -n "$f" ] || continue
-    printf '=== %s ===\n' "$f"
-    cat "$home/$f" 2>/dev/null || printf '<missing>\n'
+    if [ -f "$home/$f" ]; then
+      printf '%s %s\n' "$f" "$(shasum -a 256 "$home/$f" | awk '{print $1}')"
+    else
+      printf '%s <missing>\n' "$f"
+    fi
   done <<EOF
 $files
 EOF
@@ -1438,10 +1459,12 @@ EOF
   assert_contains "$out" "harness=claude" "recovery did not read a task's durable meta body"
   assert_contains "$out" "working [at=2]: dead task step" "recovery did not read the dead task's durable status log"
 
-  # (2) each recorded endpoint is classified, including the primary-death case.
-  assert_contains "$out" "endpoint: alive (backend=tmux window=fm-sess:live-window)" "surviving pane not reported alive"
-  assert_contains "$out" "endpoint: dead (backend=tmux window=fm-sess:dead-window)" "primary-death pane not reported dead"
-  assert_contains "$out" "endpoint: unknown (no window recorded)" "windowless task not reported unknown"
+  # (2) each recorded endpoint is classified within its own task's block,
+  # including the primary-death case, so a classification cannot satisfy the
+  # assertion by landing under the wrong task.
+  assert_contains "$(fm_task_block "$out" task-live)" "endpoint: alive (backend=tmux window=fm-sess:live-window)" "surviving pane not reported alive under task-live"
+  assert_contains "$(fm_task_block "$out" task-dead)" "endpoint: dead (backend=tmux window=fm-sess:dead-window)" "primary-death pane not reported dead under task-dead"
+  assert_contains "$(fm_task_block "$out" task-nowin)" "endpoint: unknown (no window recorded)" "windowless task not reported unknown under task-nowin"
 
   # (3) no pre-existing durable record is consumed or rewritten by recovery.
   after=$(fm_recovery_record_dump "$home" "$files")
@@ -1452,10 +1475,15 @@ $before
 $after"
 
   # A second recovery run rediscovers exactly the same set, so the first run
-  # retired nothing.
+  # retired nothing: every task is still named, and every endpoint is still
+  # classified under its own task's block.
   out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  assert_contains "$out" "--- task-live ---" "second recovery run lost the surviving-pane task"
   assert_contains "$out" "--- task-dead ---" "second recovery run lost the dead-pane task"
   assert_contains "$out" "--- task-nowin ---" "second recovery run lost the windowless task"
+  assert_contains "$(fm_task_block "$out" task-live)" "endpoint: alive (backend=tmux window=fm-sess:live-window)" "second recovery run misclassified task-live's endpoint"
+  assert_contains "$(fm_task_block "$out" task-dead)" "endpoint: dead (backend=tmux window=fm-sess:dead-window)" "second recovery run misclassified task-dead's endpoint"
+  assert_contains "$(fm_task_block "$out" task-nowin)" "endpoint: unknown (no window recorded)" "second recovery run misclassified task-nowin's endpoint"
 
   pass "a new session rediscovers every in-flight task from durable records and classifies each endpoint without mutating a record"
 }
