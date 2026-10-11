@@ -2304,7 +2304,9 @@ signal_discord_decision_notifications() {  # <status-file> ...
           case "$FM_SIGNAL_AUTO_RESOLVED_KEYS" in *$'\n'"$f"$'\t'"$key"$'\n'*) continue ;; esac
           ;;
       esac
-      "$SCRIPT_DIR/fm-discord-notify-status.sh" "$task" "$line" >/dev/null \
+      # Best-effort like the retry sweep below: the watcher's stderr stays empty,
+      # and a fail-closed diagnostic reaches the triage log instead.
+      "$SCRIPT_DIR/fm-discord-notify-status.sh" "$task" "$line" >/dev/null 2>&1 \
         || triage_log "Discord status notification failed for $task"
     done <<EOF
 $chunk
@@ -2749,7 +2751,12 @@ while :; do
   # alive. Supervision scripts warn when this goes stale with tasks in flight.
   touch "$STATE/.last-watcher-beat"
 
-  "$SCRIPT_DIR/fm-discord-notify.sh" --retry-pending >/dev/null \
+  # Both streams are discarded, exactly as the same best-effort sweeps in
+  # bin/fm-watcher-liveness-alert.sh do: an unconfigured home fails this call
+  # closed with a diagnostic on stderr, and a home with no Discord credential is
+  # a supported state rather than a watcher error. The failure itself still
+  # reaches the triage log on the next line.
+  "$SCRIPT_DIR/fm-discord-notify.sh" --retry-pending >/dev/null 2>&1 \
     || triage_log "Discord decision notification retry failed"
 
   # Opt-in fleet activity ledger (docs/fleet-ledger.md): pick up newly appended
