@@ -93,7 +93,12 @@ github_required_checks_ok() {
         (.id | type == "number") and (.state | type == "string"))) as $ordered |
       if ((($matching_runs | length) + ($matching_statuses | length)) == 0) or ($ordered | not) then false
       else
-        ([$matching_runs[] | {time:.started_at,success:(.status == "completed" and .conclusion == "success")} ] +
+        # A completed required check is green to GitHub when its conclusion is
+        # success, neutral, or skipped, so a conditional required job that GitHub
+        # skips must not turn a valid merge into a HOLD. This is the same set the
+        # verifier in bin/fm-pr-merge.sh accepts, so the collector and the
+        # verifier agree on what counts as a passing required check.
+        ([$matching_runs[] | {time:.started_at,success:(.status == "completed" and (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped"))} ] +
          [$matching_statuses[] | {time:.created_at,success:(.state == "success")}]) as $results |
         ($results | map(.time) | max) as $latest_time |
         all($results[] | select(.time == $latest_time); .success)

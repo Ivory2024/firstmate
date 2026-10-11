@@ -2,12 +2,11 @@
 # fm-merge-policy.sh - policy engine for risk-based autonomous merge (isolated).
 #
 # Firstmate/Crewmate = execute; Claude = independent review; THIS engine = decide.
-# It never merges. It classifies risk by changed paths and holds eligibility
-# until forge-verified evidence is available.
+# It never merges. It classifies risk by changed paths; the evidence collector
+# holds eligibility until forge-verified evidence is available.
 #
 # Usage:
 #   fm-merge-policy.sh classify-risk <file> [<file>...]
-#   fm-merge-policy.sh merge-eligible
 set -u
 
 # Protected / high-risk path patterns (firstmate core control, credentials, deploy).
@@ -32,7 +31,5 @@ classify_risk() {
 
 case "${1:-}" in
   classify-risk) shift; classify_risk "$@";;
-  merge-eligible) echo "MERGE_HOLD reason=verified-evidence-required";;
-  independent-ok) echo "REVIEW_INDEPENDENCE_HOLD reason=verified-review-provenance-required";;
-  *) echo "usage: fm-merge-policy.sh classify-risk|merge-eligible|independent-ok ..." >&2; exit 2;;
+  *) echo "usage: fm-merge-policy.sh classify-risk ..." >&2; exit 2;;
 esac

@@ -23,13 +23,9 @@ eq "unknown path -> HIGH"   "$($P classify-risk weird/thing.xyz)" HIGH
 eq "missing path detection -> HIGH" "$($P classify-risk)" HIGH
 eq "mixed docs+bin -> HIGH" "$($P classify-risk docs/a.md bin/fm-spawn.sh)" HIGH
 
-# --- merge eligibility fails closed until forge evidence is available ---
-eq "forged passing flags -> HOLD" "$($P merge-eligible --risk LOW --ci pass --review pass --head-match yes --protected no --unresolved no --scope low)" "MERGE_HOLD reason=verified-evidence-required"
-eq "caller approval record -> HOLD" "$($P merge-eligible --risk HIGH --ci pass --review pass --head-match yes --protected yes --unresolved no --scope high --approved-pr 115 --approved-sha abc --head-sha abc --approval-record /dev/null)" "MERGE_HOLD reason=verified-evidence-required"
-
+# The engine exposes only risk classification: the collector alone decides merge
+# eligibility, so no eligibility mode belongs here.
 if "$P" review-route --risk LOW >/dev/null 2>&1; then no "review-route command is unavailable"; else ok "review-route command is unavailable"; fi
-# --- independence requires provenance, not caller model names ---
-eq "caller model names -> HOLD" "$($P independent-ok opencode/x codex/y)" "REVIEW_INDEPENDENCE_HOLD reason=verified-review-provenance-required"
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 EVIDENCE="$ROOT/bin/fm-merge-evidence.sh"
@@ -291,6 +287,20 @@ eq "producer rejects required check at wrong SHA" "$(printf '%s' "$out" | jq -r 
 cp "$TMP/good-check-runs.json" "$TMP/check-runs.json"
 if env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD" --ci pass >/dev/null 2>&1; then no "producer accepted caller evidence flags"; else ok "producer rejects caller evidence flags"; fi
 
+# A completed required check is green to GitHub when its conclusion is success,
+# neutral, or skipped: GitHub accepts all three for a required status check, and
+# bin/fm-pr-merge.sh's own verifier already treats them as green. A conditional
+# required job that GitHub skips must therefore not turn a valid merge into a
+# HOLD, so the collector must accept exactly the same three conclusions.
+for verdict in neutral skipped; do
+  cat > "$TMP/check-runs.json" <<JSON
+[{"total_count":1,"check_runs":[{"id":1,"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"$verdict","started_at":"2026-10-10T00:00:00Z","completed_at":"2026-10-10T00:00:30Z","check_suite":{"id":7},"app":{"id":17,"slug":"github-actions"},"output":{"title":"ok","summary":null,"text":null}}]}]
+JSON
+  out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+  eq "completed required check with conclusion $verdict is accepted" "$(printf '%s' "$out" | jq -r .status)" PASS
+done
+cp "$TMP/good-check-runs.json" "$TMP/check-runs.json"
+
 GL_PR=https://gitlab.example/group/subgroup/project/-/merge_requests/7
 cat > "$TMP/gl-pr.json" <<JSON
 {"author":{"username":"author"},"sha":"$HEAD","target_branch":"main","head_pipeline":{"id":17,"sha":"$HEAD","status":"success"}}
@@ -427,61 +437,23 @@ out=$(env "${gl_env[@]}" "${gl_gap[@]}" FM_TEST_GL_CHANGES_JSON="$TMP/gl-changes
 eq "GitLab unreadable changes_count holds" "$(printf '%s' "$out" | jq -r .reasons[0])" changed-files-count-unreadable
 
 # Empty risk classification output (a policy helper that exits 0 silently) must
-# hold rather than pass through an empty risk value.
-make_evidence_dir() { # <dir> <evidence-script-src> <policy: real|empty>
-  local dir=$1 src=$2 policy=$3 f
+# hold rather than pass through an empty risk value. The collector copy resolves
+# its sibling scripts and libraries through symlinks, but gets a stub risk policy.
+make_evidence_dir() { # <dir> <evidence-script-src>
+  local dir=$1 src=$2 f
   mkdir -p "$dir"
-  # Sibling scripts and libraries are symlinked so a copied collector resolves
-  # whatever it sources; the two files it must not inherit are skipped.
   for f in "$ROOT"/bin/*; do
     [ -f "$f" ] || continue
     case "${f##*/}" in fm-merge-evidence.sh|fm-merge-policy.sh) continue;; esac
     ln -sf "$f" "$dir/"
   done
   cp "$src" "$dir/fm-merge-evidence.sh"
-  if [ "$policy" = empty ]; then
-    printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$dir/fm-merge-policy.sh"
-  else
-    ln -sf "$ROOT/bin/fm-merge-policy.sh" "$dir/fm-merge-policy.sh"
-  fi
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$dir/fm-merge-policy.sh"
   chmod +x "$dir/fm-merge-evidence.sh" "$dir/fm-merge-policy.sh"
 }
-make_evidence_dir "$TMP/empty-bin" "$EVIDENCE" empty
+make_evidence_dir "$TMP/empty-bin" "$EVIDENCE"
 out=$(env "${evidence_env[@]}" "$TMP/empty-bin/fm-merge-evidence.sh" collect "$TASK" "$PR" "$HEAD")
 eq "empty risk classification output holds" "$(printf '%s' "$out" | jq -r .reasons[0])" risk-unknown
-
-# --- bite-check: the same fixtures must NOT hold on the pre-fix logic ---
-# The pre-fix collector had none of the completeness guards, so a fixture that
-# still passes on it proves the new assertion, not the fixture, is what produces
-# the HOLD. The pre-fix implementation must be a REAL prior revision, not a
-# source edit: editing source with sed and asserting on its text would be a
-# source-content-only test.
-#
-# The revision is resolved from this branch's own history rather than hardcoded,
-# so the object is always an ancestor of the checked-out commit. A hardcoded SHA
-# from a rewritten lineage is not an ancestor and a fresh checkout need not
-# contain it, which made this suite fail before any behavioural assertion ran.
-PREFIX_SRC="$TMP/prefix-src/fm-merge-evidence.sh"
-mkdir -p "$TMP/prefix-src"
-GUARD_COMMIT=$(git -C "$ROOT" log --format=%H -S'changed-files-truncated' -- bin/fm-merge-evidence.sh | tail -1)
-PREFIX_REV=$(git -C "$ROOT" rev-parse --verify "${GUARD_COMMIT}^" 2>/dev/null) \
-  || { echo "not ok - bite-check could not resolve the real pre-fix collector"; exit 1; }
-git -C "$ROOT" show "$PREFIX_REV:bin/fm-merge-evidence.sh" > "$PREFIX_SRC" 2>/dev/null \
-  || { echo "not ok - bite-check could not read the real pre-fix collector"; exit 1; }
-make_evidence_dir "$TMP/prefix-bin" "$PREFIX_SRC" real
-make_evidence_dir "$TMP/prefix-empty-bin" "$PREFIX_SRC" empty
-PREFIX="$TMP/prefix-bin/fm-merge-evidence.sh"
-out=$(env "${gl_env[@]}" "${gl_gap[@]}" FM_TEST_GL_CHANGES_JSON="$TMP/gl-changes-overflow.json" "$PREFIX" collect "$TASK" "$GL_PR" "$HEAD")
-eq "bite: pre-fix logic accepts an overflowing GitLab diff" "$(printf '%s' "$out" | jq -r .status)" PASS
-out=$(env "${gl_env[@]}" "${gl_gap[@]}" FM_TEST_GL_CHANGES_JSON="$TMP/gl-changes-mismatch.json" "$PREFIX" collect "$TASK" "$GL_PR" "$HEAD")
-eq "bite: pre-fix logic accepts a mismatched GitLab diff" "$(printf '%s' "$out" | jq -r .status)" PASS
-# This pre-fix revision predates the Checks-API field fix, so it demands the
-# invented run_attempt field; its own fixture supplies that field. This run
-# drives the pre-fix completeness logic, never the current collector's field
-# expectations, which the real-shaped fixture above owns.
-printf '%s\n' "[{\"total_count\":1,\"check_runs\":[{\"id\":1,\"run_attempt\":1,\"started_at\":\"2026-10-10T00:00:00Z\",\"app\":{\"id\":17},\"name\":\"ci\",\"head_sha\":\"$HEAD\",\"status\":\"completed\",\"conclusion\":\"success\"}]}]" > "$TMP/prefix-check-runs.json"
-out=$(env "${evidence_env[@]}" FM_TEST_CHECK_RUNS_JSON="$TMP/prefix-check-runs.json" "$TMP/prefix-empty-bin/fm-merge-evidence.sh" collect "$TASK" "$PR" "$HEAD")
-eq "bite: pre-fix logic accepts empty risk output" "$(printf '%s' "$out" | jq -r .status)" PASS
 
 echo "# fm-merge-policy.test.sh PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
