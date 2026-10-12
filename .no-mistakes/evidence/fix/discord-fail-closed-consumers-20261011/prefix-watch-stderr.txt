@@ -1,0 +1,2 @@
+fm-discord-notify: Unexpected token 'o', "not-json{{{" is not valid JSON
+fm-discord-notify-status: no Discord channel configured; completion not sent

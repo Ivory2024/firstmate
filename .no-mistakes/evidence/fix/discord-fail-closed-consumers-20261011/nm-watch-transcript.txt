@@ -1,0 +1,64 @@
+Live validation: bin/fm-watch.sh stderr-leak fix (91a06877 vs base 6141982b)
+
+Change under test: both best-effort Discord sweeps in the watcher now discard
+stdout AND stderr (>/dev/null 2>&1) like the sibling sweeps in
+bin/fm-watcher-liveness-alert.sh, while each failure still reaches the triage
+log on the next line via triage_log.
+
+Setup (identical for every run below): a disposable FM_HOME minted per run with
+bin/fm-lab-home.sh semantics (fresh temp home; never the operator's home), a
+fake fm-crew-state.sh reporting "state: done", a done: status line for task-a,
+and a corrupt durable outbox record (state/x-context/discord-notify-*.json
+containing "not-json{{{") so fm-discord-notify.sh --retry-pending fails closed
+deterministically in node with a stderr diagnostic and no network. The real
+bin/fm-watch.sh subprocess is driven with the suite's standard knobs
+(FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999
+FM_SECONDMATE_LIVENESS_SECS=99999999), stdout and stderr captured separately,
+with env -u of all fleet-path overrides so nothing resolves outside the lab.
+
+Run 1 - PRE-FIX tree (base 6141982b, extracted via git archive):
+  watcher stderr (150 bytes) contains BOTH leaked notifier diagnostics:
+    fm-discord-notify: Unexpected token 'o', "not-json{{{" is not valid JSON
+    fm-discord-notify-status: no Discord channel configured; completion not sent
+  triage log:
+    [2026-10-12T22:24:32+0900] Discord decision notification retry failed
+    [2026-10-12T22:24:35+0900] Discord status notification failed for task-a
+  wake surfaced (queue entry + .seen-task-a_status marker). Exit 0.
+
+Run 2 - POST-FIX tree (target 91a06877, the change under test):
+  watcher stderr: 0 bytes (identical scenario, no diagnostics leaked)
+  triage log (identical failure lines, proving failures still triaged):
+    [2026-10-12T22:24:15+0900] Discord decision notification retry failed
+    [2026-10-12T22:24:17+0900] Discord status notification failed for task-a
+  wake surfaced (queue entry + .seen-task-a_status marker). Exit 0.
+  => Same control flow, same exit status, same triage outcome; the only delta
+     is the removed stderr leakage.
+
+Run 3 - POST-FIX tree, adversarial supported-state case (NO Discord credential,
+  no token in home .env - Discord never opted in):
+  watcher stderr: 0 bytes; triage log contains no Discord lines at all
+  (the unconfigured sweeps are silent no-ops, so no failure is invented);
+  wake still delivered (queue entry + .seen marker). Exit 0.
+
+Direct notifier precondition check (same disposable home):
+  fm-discord-notify-status.sh task-a 'done: ...' with token but no channel
+    -> exit 1, stderr: "fm-discord-notify-status: no Discord channel
+       configured; completion not sent"
+  fm-discord-notify.sh --retry-pending with token + corrupt outbox record
+    -> exit 1, stderr: "fm-discord-notify: Unexpected token 'o',
+       \"not-json{{{\" is not valid JSON"
+  Both fail closed with a real diagnostic and exit 1, so the watcher-level
+  assertions above exercise genuine notifier failures, not vacuous paths.
+
+Baseline suite: tests/fm-public-surface-hermeticity.test.sh (main's version
+adopted by the rebase decision) passes: 5 ok, exit 0 - including "the shared
+library replaces a hostile ambient home before notification code runs" (the
+ambient-home-replacement assertion the intent asked for).
+
+Evidence files in this directory:
+  prefix-watch-stderr.txt   - pre-fix leak (150 bytes, both diagnostics)
+  prefix-triage.log         - pre-fix triage lines
+  postfix-watch-stderr.txt  - post-fix watcher stderr (0 bytes)
+  postfix-triage.log        - post-fix triage lines
+  unconfigured-watch-stderr.txt - unconfigured home watcher stderr (0 bytes)
+  nm-watch-transcript.txt   - this file
