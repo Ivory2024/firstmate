@@ -83,8 +83,10 @@ run_rec "$home" attempt --fingerprint "$fp" --cause run-failed --result fail >/d
 assert_equals RETRYABLE "$(rec_state "$home" "$fp")" "second same-cause retry stays RETRYABLE"
 run_rec "$home" attempt --fingerprint "$fp" --cause run-failed --result fail >/dev/null
 assert_equals DIAGNOSING "$(rec_state "$home" "$fp")" "the third same-cause retry is refused and forces DIAGNOSING"
-run_rec "$home" attempt --fingerprint "$fp" --cause run-failed --result fail >/dev/null
+run_rec "$home" attempt --fingerprint "$fp" --cause run-failed --result fail > "$home/attempt4.out" 2>&1
+expect_code 0 "$?" "a retry past the same-cause budget is recorded instead of dying at the gate"
 assert_equals DIAGNOSING "$(rec_state "$home" "$fp")" "repeated identical failures never re-enter RETRYABLE"
+assert_grep "retry-refused" "$home/state/recovery/$fp.ledger" "the budget-exhausted attempt is recorded in the append-only ledger"
 assert_grep "retries: 2/2" <(run_rec "$home" status --fingerprint "$fp") "the retry counter is capped at the pilot bound"
 pass "bounded retry: no infinite retry on an identical error"
 
@@ -272,7 +274,7 @@ expect_code 0 "$?" "an escalated recovery asks for the supervisor"
 home=$(make_home illegal)
 out=$(run_rec "$home" begin t16 --class run-failed --signature "run failed" --target fm/t16)
 fp=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
-run_rec "$home" advance --fingerprint "$fp" RECOVERABLE >/dev/null 2>&1
+run_rec "$home" advance --fingerprint "$fp" VALIDATING >/dev/null 2>&1
 expect_code 1 "$?" "an illegal transition is refused"
 run_rec "$home" advance --fingerprint "$fp" NOT_A_STATE >/dev/null 2>&1
 expect_code 1 "$?" "an unknown state is refused"
@@ -282,16 +284,48 @@ pass "budgets: the recovery converges on an escalation and refuses illegal trans
 home=$(make_home attempt-gate)
 out=$(run_rec "$home" begin t52 --class run-failed --signature "sig" --target fm/t52)
 fp=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
-assert_equals RETRYABLE "$(rec_state "$home" "$fp")" "the fixture recovery starts RETRYABLE"
+run_rec "$home" advance --fingerprint "$fp" ALTERNATIVE_SEARCH >/dev/null
 before=$(wc -l < "$home/state/recovery/$fp.ledger" | tr -d ' ')
 run_rec "$home" attempt --fingerprint "$fp" --cause run-failed --result ok > "$home/attempt.out" 2>&1
-expect_code 1 "$?" "a retry success cannot jump straight to RECOVERABLE off the transition table"
+expect_code 1 "$?" "an attempt whose state change is not in the transition table is refused"
 assert_contains "$(cat "$home/attempt.out")" "illegal transition" "the refusal names the illegal transition"
-assert_equals RETRYABLE "$(rec_state "$home" "$fp")" "the refused attempt left the recovery in RETRYABLE"
+assert_equals ALTERNATIVE_SEARCH "$(rec_state "$home" "$fp")" "the refused attempt left the recovery unchanged"
 assert_equals "$before" "$(wc -l < "$home/state/recovery/$fp.ledger" | tr -d ' ')" "a refused attempt records no ledger event"
-run_rec "$home" attempt --fingerprint "$fp" --cause run-failed --result fail >/dev/null
-assert_equals "$((before + 1))" "$(wc -l < "$home/state/recovery/$fp.ledger" | tr -d ' ')" "a legal attempt still records its ledger event"
 pass "attempt gate: an attempt state change is refused unless the transition table allows it"
+
+# --- 9c. attempt's documented ok/fail outcomes are legal transitions ------
+home=$(make_home attempt-golden)
+out=$(run_rec "$home" begin t53 --class run-failed --signature "sig" --target fm/t53)
+fp=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
+out=$(run_rec "$home" attempt --fingerprint "$fp" --cause run-failed --result ok)
+expect_code 0 "$?" "a successful retry from RETRYABLE reaches RECOVERABLE"
+assert_contains "$out" "state=RECOVERABLE" "the retry success lands on RECOVERABLE"
+assert_equals RECOVERABLE "$(rec_state "$home" "$fp")" "RECOVERABLE after a successful retry"
+assert_grep "result=ok" "$home/state/recovery/$fp.ledger" "the retry success is recorded in the ledger"
+assert_contains "$(run_rec "$home" resume --fingerprint "$fp")" "state=RESUMED" "the successful retry resumes the original work"
+
+home=$(make_home attempt-golden-diag)
+out=$(run_rec "$home" begin t54 --class run-failed --signature "sig" --target fm/t54)
+fp=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
+run_rec "$home" attempt --fingerprint "$fp" --cause daemon-down --result fail >/dev/null
+assert_equals DIAGNOSING "$(rec_state "$home" "$fp")" "a new cause starts diagnosis"
+out=$(run_rec "$home" attempt --fingerprint "$fp" --cause daemon-down --result ok)
+expect_code 0 "$?" "a successful retry from DIAGNOSING reaches RECOVERABLE"
+assert_contains "$out" "state=RECOVERABLE" "the diagnosis-path retry success lands on RECOVERABLE"
+assert_equals RECOVERABLE "$(rec_state "$home" "$fp")" "RECOVERABLE after the diagnosis-path retry succeeds"
+
+home=$(make_home attempt-golden-loop)
+out=$(run_rec "$home" begin t55 --class run-failed --signature "sig" --target fm/t55)
+fp=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
+for i in 1 2 3; do
+  run_rec "$home" attempt --fingerprint "$fp" --cause run-failed --result fail >/dev/null
+done
+assert_equals DIAGNOSING "$(rec_state "$home" "$fp")" "the third identical retry forces DIAGNOSING"
+out=$(run_rec "$home" attempt --fingerprint "$fp" --cause run-failed --result fail)
+expect_code 0 "$?" "a repeated identical attempt past the budget is recorded, staying DIAGNOSING"
+assert_equals DIAGNOSING "$(rec_state "$home" "$fp")" "repeated identical failures stay DIAGNOSING"
+assert_grep "retry-refused" "$home/state/recovery/$fp.ledger" "the budget-exhausted attempt is recorded in the ledger"
+pass "attempt golden paths: ok/fail outcomes reach their table states"
 
 # --- 10. deterministic classification from real evidence ------------------
 home=$(make_home classify)
