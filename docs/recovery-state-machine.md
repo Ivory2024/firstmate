@@ -64,7 +64,9 @@ WAITING_DEPENDENCY -> DIAGNOSING | BLOCKED_EXHAUSTED
 WAITING_APPROVAL   -> RECOVERABLE | BLOCKED_EXHAUSTED
 ```
 
-Two transitions are forced rather than requested, so a recovery always converges on an escalation instead of looping: exhausting the alternative budget, the same-cause retry budget, or the whole-recovery budget moves the record to `BLOCKED_EXHAUSTED`.
+Transitions are requested by commands, and each command has its own state space: `attempt` runs only from `RETRYABLE` or `DIAGNOSING` and refuses every other source state without mutation, so a legal row whose source is another state (for example `WAITING_APPROVAL -> RECOVERABLE`, which `advance` may request) is never reached through `attempt`.
+
+Transitions can also be forced rather than requested, so a recovery converges instead of looping: exhausting the alternative budget or the whole-recovery budget moves the record to `BLOCKED_EXHAUSTED`, while exhausting the same-cause retry budget forces `DIAGNOSING`, where the diagnosis window bounds further work.
 The whole-recovery budget is a bound on the recovery, not on one command: it is enforced on every path that would otherwise keep a recovery working, so no caller has to remember to call a particular command for the bound to bite.
 A failed verification with an alternative still available returns to `ALTERNATIVE_SEARCH` so a different alternative is tried.
 

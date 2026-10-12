@@ -62,8 +62,9 @@
 # Bounds, all owned by fm_recovery_bound in the library: alternatives 3,
 # same-cause retries 2, diagnosis 900s, whole recovery 1800s, concurrent
 # recoveries 4 (the existing execution slot cap is retained, never raised).
-# Exceeding the alternative or retry budget converges on BLOCKED_EXHAUSTED and
-# the captain hold; exceeding the total budget does the same, and that bound is
+# Exceeding the alternative budget escalates to BLOCKED_EXHAUSTED, while
+# exceeding the same-cause retry budget forces DIAGNOSING; exceeding the total
+# budget escalates to BLOCKED_EXHAUSTED too, and that bound is
 # enforced on every path that would keep a recovery working, not only on
 # `advance`, so no caller has to remember to call it for the bound to bite. A
 # record past that window with no live lease is abandoned and is converged by
