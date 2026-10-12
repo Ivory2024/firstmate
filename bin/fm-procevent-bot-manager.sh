@@ -68,6 +68,10 @@ case "${1:-}" in
     ;;
   ensure)
     [ "$(cd "$FM_HOME" && pwd -P)" = "$(cd "$FM_ROOT" && pwd -P)" ] || exit 0
+    # Like the Discord mention source, a home without the approved runtime
+    # credential file has no ledger to watch: register nothing rather than a
+    # runner whose launch can only fail.
+    [ -r "${HOME:?}/.claude/prompts/discord-bot.env" ] || exit 0
     register_if_missing
     ;;
   poll) run_poll ;;
