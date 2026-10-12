@@ -1,0 +1,9 @@
+ok - CI matrices cover every executable serial lane and canonical lint root exactly once
+ok - every Pi install site uses the shared 0.87.1 pin
+ok - a newer push to one PR supersedes that PR's in-flight CI
+ok - distinct PRs get distinct concurrency groups
+ok - every main push keeps its own group and is never cancelled
+ok - every ci.yml job carries a finite timeout
+ok - every ci.yml job belongs to one of the three timeout tiers
+ok - fast tier jobs share one 5 minute tripwire
+not ok - normal tier jobs must share one timeout, got 30 and 75 (tests-portable-serial)
