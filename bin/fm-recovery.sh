@@ -632,6 +632,10 @@ cmd_attempt() {
   read_record_or_die "$fp"
   load_fields
   fm_recovery_state_terminal "$REC_STATE" && die "recovery $fp is already terminal: $REC_STATE"
+  case "$REC_STATE" in
+    RETRYABLE|DIAGNOSING) ;;
+    *) die "attempt only runs from RETRYABLE or DIAGNOSING (recovery $fp is $REC_STATE)" ;;
+  esac
   fm_recovery_class_valid "$cause" || die "unknown failure class: $cause"
   enforce_total_budget "$fp" && return 0
   local max target
