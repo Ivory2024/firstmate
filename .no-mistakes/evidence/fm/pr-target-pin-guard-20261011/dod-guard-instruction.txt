@@ -1,0 +1,6 @@
+===== direct-PR =====
+10:Before publishing, run `"/Users/irene/.no-mistakes/worktrees/e10922160f77/01M4R3DBVV15KQKWHSBTNNKF92/bin/fm-pr-target-guard.sh"` from this worktree and continue only on `PR_TARGET_GUARD: PASS`.
+12:Pass that printed repository explicitly as `--repo <owner>/<repo>` on every pull request command you run instead of relying on gh's resolved default.
+===== no-mistakes =====
+8:Before publishing, run `"/Users/irene/.no-mistakes/worktrees/e10922160f77/01M4R3DBVV15KQKWHSBTNNKF92/bin/fm-pr-target-guard.sh" --repair` from this worktree and continue only on `PR_TARGET_GUARD: PASS`.
+10:Pass that printed repository explicitly as `--repo <owner>/<repo>` on every pull request command you run instead of relying on gh's resolved default.

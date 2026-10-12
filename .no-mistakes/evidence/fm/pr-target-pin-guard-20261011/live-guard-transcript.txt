@@ -1,0 +1,123 @@
+### LIVE GUARD LAB: /tmp/fm-guard-live.JJ2YTl
+### gh authenticated as: Ivory2024
+
+==================================================================
+SCENARIO 1: check mode against REAL GitHub - owned target passes
+==================================================================
+PR_TARGET_GUARD: PASS target=Ivory2024/firstmate owner=Ivory2024
+--repo Ivory2024/firstmate
+PR_TARGET_GUARD: no gh default resolved for this directory; pass --repo Ivory2024/firstmate explicitly
+guard exit=0
+
+==================================================================
+SCENARIO 2: check mode against REAL GitHub - unowned target refused
+==================================================================
+error: PR target guard refused: target 'cli/cli' is owned by 'cli', not the authenticated user 'Ivory2024'
+guard exit=1
+
+==================================================================
+SCENARIO 2b: check mode - target whose ownership cannot be verified
+==================================================================
+error: PR target guard refused: the owner of 'Ivory2024/definitely-not-a-real-repo-xyz-999' could not be read from the forge
+guard exit=3
+
+==================================================================
+SCENARIO 3: install the gate boundary (REAL ownership verification)
+==================================================================
+FM_NM_GATE_GUARD: installed gate=/tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git target=Ivory2024/firstmate hook=/tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git/hooks/pre-receive.no-mistakes-user
+installer exit=0
+FM_NM_GATE_GUARD: installed gate=/tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git target=Ivory2024/firstmate
+status exit=0
+
+==================================================================
+SCENARIO 4: task branch pushed into an unborn-HEAD owned gate is accepted
+==================================================================
+$ git -C push push <gate> fm/lab-task:refs/heads/fm/lab-task
+remote: PR_TARGET_GUARD: PASS gate=/private/tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git ref=refs/heads/fm/lab-task push=ivory2024/firstmate base=ivory2024/firstmate permission=true        
+To /tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git
+ * [new branch]      fm/lab-task -> fm/lab-task
+push exit=0
+
+gate ref: 31dc92883f9c5759fb47d7183efa6665d6b578c3
+clone HEAD: 31dc92883f9c5759fb47d7183efa6665d6b578c3
+
+==================================================================
+SCENARIO 5: row names an UNOWNED push destination - git push rejected
+==================================================================
+$ git -C push push <gate> fm/lab-task:refs/heads/fm/lab-task-unowned
+remote: error: PR target guard refused: the row's push destination 'cli/cli' is not the approved repository 'ivory2024/firstmate'        
+To /tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git
+ ! [remote rejected] fm/lab-task -> fm/lab-task-unowned (pre-receive hook declined)
+error: failed to push some refs to '/tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git'
+push exit=1
+
+
+==================================================================
+SCENARIO 5b: row names an unowned PR base - git push rejected
+==================================================================
+$ git -C push push <gate> fm/lab-task:refs/heads/fm/lab-task-unowned-base
+remote: error: PR target guard refused: the row's pull-request base 'cli/cli' is not the approved repository 'ivory2024/firstmate'        
+To /tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git
+ ! [remote rejected] fm/lab-task -> fm/lab-task-unowned-base (pre-receive hook declined)
+error: failed to push some refs to '/tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git'
+push exit=1
+
+
+==================================================================
+SCENARIO 6 (adversarial): gate remotes owned, row unowned -> rejected
+==================================================================
+$ git -C push push <gate> fm/lab-task:refs/heads/fm/lab-task-remotes-only
+remote: error: PR target guard refused: the row's push destination 'cli/cli' is not the approved repository 'ivory2024/firstmate'        
+To /tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git
+ ! [remote rejected] fm/lab-task -> fm/lab-task-remotes-only (pre-receive hook declined)
+error: failed to push some refs to '/tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git'
+push exit=1
+
+
+==================================================================
+SCENARIO 7 (adversarial): ext:: remote-helper URL refused, not executed
+==================================================================
+$ git -C push push <gate> fm/lab-task:refs/heads/fm/lab-task-ext
+remote: error: PR target guard refused: the gate remote 'evil' has an unaccepted URL 'ext::sh -c "echo PWNED > /tmp/fm-guard-pwned; exit 0"'        
+To /tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git
+ ! [remote rejected] fm/lab-task -> fm/lab-task-ext (pre-receive hook declined)
+error: failed to push some refs to '/tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git'
+push exit=1
+
+pwned file present? NO
+
+==================================================================
+SCENARIO 8: push to the default branch is refused
+==================================================================
+$ git -C push push <gate> fm/lab-task:refs/heads/main
+remote: error: PR target guard refused: refusing to accept 'refs/heads/main'; a pull-request branch must be a refs/heads/fm/* task branch        
+To /tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git
+ ! [remote rejected] fm/lab-task -> main (pre-receive hook declined)
+error: failed to push some refs to '/tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git'
+push exit=1
+
+
+==================================================================
+SCENARIO 9: unverifiable forge makes the boundary reject the push
+==================================================================
+$ git -C push push <gate> fm/lab-task:refs/heads/fm/lab-task-unverifiable
+remote: error: PR target guard refused: the row's push destination 'ivory2024/definitely-not-a-real-repo-xyz-999' is not the approved repository 'ivory2024/firstmate'        
+To /tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git
+ ! [remote rejected] fm/lab-task -> fm/lab-task-unverifiable (pre-receive hook declined)
+error: failed to push some refs to '/tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git'
+push exit=1
+
+
+==================================================================
+SCENARIO 10: remove the boundary - the same unowned push is accepted
+==================================================================
+FM_NM_GATE_GUARD: removed gate=/tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git hook=/tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git/hooks/pre-receive.no-mistakes-user
+remove exit=0
+$ git -C push push <gate> fm/lab-task:refs/heads/fm/lab-task-removed
+To /tmp/fm-guard-live.JJ2YTl/repos/0123456789ab.git
+ * [new branch]      fm/lab-task -> fm/lab-task-removed
+push exit=0
+
+
+### cleaning up /tmp/fm-guard-live.JJ2YTl
+### done

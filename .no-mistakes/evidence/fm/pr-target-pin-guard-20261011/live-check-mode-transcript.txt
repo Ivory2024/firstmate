@@ -1,0 +1,40 @@
+# fm-pr-target-guard.sh check/repair mode vs REAL GitHub (gh logged in as Ivory2024)
+# authenticated user: Ivory2024; reads are read-only GitHub API calls
+
+## 1. owned target passes and prints the exact --repo value
+PR_TARGET_GUARD: PASS target=Ivory2024/firstmate owner=Ivory2024
+--repo Ivory2024/firstmate
+PR_TARGET_GUARD: no gh default resolved for this directory; pass --repo Ivory2024/firstmate explicitly
+exit=0
+
+## 2. unowned target fails closed (real github.com/cli/cli, owner cli)
+error: PR target guard refused: target 'cli/cli' is owned by 'cli', not the authenticated user 'Ivory2024'
+exit=1
+
+## 3. unverifiable target (nonexistent repo) fails closed, no PASS
+error: PR target guard refused: the owner of 'Ivory2024/definitely-not-a-real-repo-xyz-999' could not be read from the forge
+exit=3
+
+## 4. motivation replay: gh default resolves to an UNOWNED repo (cli/cli), no explicit target
+gh default in disposable lab: cli/cli
+error: PR target guard refused: target 'cli/cli' is owned by 'cli', not the authenticated user 'Ivory2024'
+guard exit=1
+
+## 4b. explicit OWNED target with that unowned gh default -> PASS + explicit --repo warning
+PR_TARGET_GUARD: PASS target=Ivory2024/firstmate owner=Ivory2024
+--repo Ivory2024/firstmate
+PR_TARGET_GUARD: default=cli/cli disagrees with the verified target Ivory2024/firstmate; pass --repo Ivory2024/firstmate explicitly
+guard exit=0
+
+## 5. DoD-emitted --repair command (no-mistakes mode) pins the verified gh default in a disposable repo
+PR_TARGET_GUARD: PASS target=Ivory2024/firstmate owner=Ivory2024
+--repo Ivory2024/firstmate
+PR_TARGET_GUARD: no gh default resolved for this directory; pass --repo Ivory2024/firstmate explicitly
+PR_TARGET_GUARD: repair set the gh default to Ivory2024/firstmate
+guard exit=0
+gh default after: Ivory2024/firstmate
+written git config: remote.origin.gh-resolved=base
+
+## 6. removed --pin mode is an unknown option (request error)
+error: PR target guard refused: unknown option '--pin'
+guard exit=2
