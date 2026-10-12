@@ -108,6 +108,7 @@ SH
   fm_git_add_origin "$case_dir/project" "$case_dir/project.origin.git"
   fm_git_init_commit "$case_dir/other-project"
   fm_git_add_origin "$case_dir/other-project" "$case_dir/other-project.origin.git"
+  declare_local_base "$case_dir/project" "$case_dir/other-project"
   make_home "$case_dir/home" "$@"
   printf '%s\n' "$case_dir"
 }
@@ -115,6 +116,18 @@ SH
 add_item() {  # <home> <id>
   [ "$HAVE_TASKS_AXI" = 1 ] || return 0
   tasks-axi add "$2" "item for $2" --kind ship --file "$1/data/backlog.md" >/dev/null
+}
+
+# A fresh spawn must prove its source identity. These fixtures clone through
+# file:// origins that can never resolve to a repository identity, so every
+# project a case launches from declares the fork's explicit local-base
+# contract. Capacity admission, not base verification, is what these cases
+# test; a clone made later still needs its own declaration.
+declare_local_base() {  # <project-dir>...
+  local dir
+  for dir in "$@"; do
+    git -C "$dir" config firstmate.baseMode local
+  done
 }
 
 row_state() {  # <home> <id>
@@ -275,6 +288,7 @@ test_hash_prefixed_project_name_is_declared() {
   spaced="$case_dir/# serves"
   git clone -q "$(git -C "$case_dir/project" remote get-url origin)" "$hashed"
   git clone -q "$(git -C "$case_dir/other-project" remote get-url origin)" "$spaced"
+  declare_local_base "$hashed" "$spaced"
   declare_capacity "$home" "# serves 2" "#not-a-capacity" "#hash-project 1"
   write_live "$home" live-a "$hashed"
   out=$(run_spawn "$case_dir" "$home" "$case_dir/unused" task-c "$hashed" --mode no-mistakes --yolo off) || rc=$?
@@ -403,6 +417,7 @@ test_capacity_is_shared_by_every_local_home() {
   make_home "$mate" task-m
   mate_project="$mate/projects/project"
   git clone -q "$(git -C "$case_dir/project" remote get-url origin)" "$mate_project"
+  declare_local_base "$mate_project"
   printf '%s\n' schema=fm-secondmate-parent.v1 route=local "parent_home=$root" > "$mate/.fm-secondmate-parent"
   printf -- '- mate - a local mate (home: %s; scope: project work; projects: project; added 2026-09-01)\n' "$mate" \
     > "$root/data/secondmates.md"

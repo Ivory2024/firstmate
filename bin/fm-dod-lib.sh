@@ -423,6 +423,11 @@ EOF
 fm_dod_block() {  # <mode> <task-id> [branch] [<forge>] [<base>]
   local mode=$1 id=$2 forge=${4:-none} base=${5:-}
   local branch=${3:-fm/$id} pr_base='' nm_base='' base_q
+  # The publish-guard instruction names the checkout that owns
+  # bin/fm-publish-guard.sh. Callers normally set FM_ROOT; a caller that sources
+  # this library directly (a test, a bare shell) resolves it here instead, so the
+  # block never depends on ambient state.
+  local root=${FM_ROOT:-${FM_ROOT_OVERRIDE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}}
   fm_forge_valid_for_mode "$forge" "$mode" fm_dod_block || return 1
   fm_base_branch_valid "$base" "$mode" "$forge" fm_dod_block || return 1
   if [ -n "$base" ]; then
@@ -442,7 +447,7 @@ Gerrit has no pull requests, so there is nothing to open; publishing creates the
 The task is complete only when committed on your branch.
 When it is implemented and committed, publish it.
 EOF
-      fm_publish_guard_instruction "$FM_ROOT"
+      fm_publish_guard_instruction "$root"
       fm_gerrit_publish_block
       cat <<EOF
 Do NOT run /no-mistakes.
@@ -460,7 +465,7 @@ The task is complete only when committed on your branch.
 After committing and after the publish guard passes, immediately invoke \`/no-mistakes\` yourself and continue through its gates; do not append \`done\` or stop merely because you committed.
 
 EOF
-      fm_publish_guard_instruction "$FM_ROOT"
+      fm_publish_guard_instruction "$root"
       fm_nm_driving_block "$forge"
       cat <<EOF
 
@@ -487,7 +492,7 @@ Ship branch: $branch
 This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
 The task is complete only when committed on your branch.
 EOF
-      fm_publish_guard_instruction "$FM_ROOT"
+      fm_publish_guard_instruction "$root"
       cat <<EOF
 After the guard passes, push your branch and open a PR with \`gh-axi\` that is ready for review, not a draft$pr_base.
 Immediately after opening it, use the returned PR URL to get its number, then read that PR's own \`createdAt\` year with \`gh-axi pr view <number> --json createdAt\` and run \`gh-axi pr edit <number> --title "<createdAt year>-<number>: <original title>"\`, replacing the placeholders with the PR number, the year the PR was opened, and the title you opened it with. Take the year from the PR itself, never from the current date, so a PR opened in December and edited in January keeps its opening year. Apply this only to the new PR; do not rename existing PRs.
@@ -518,7 +523,7 @@ EOF
 Delivery contract: mode=no-mistakes
 Ship branch: $branch
 EOF
-      fm_publish_guard_instruction "$FM_ROOT"
+      fm_publish_guard_instruction "$root"
       cat <<EOF
 After committing and after the publish guard passes, immediately invoke \`/no-mistakes\` yourself and continue through its gates; do not append \`done\` or stop merely because you committed.
 The task is complete only at the CI-green return point below, after \`/no-mistakes\` reports CI green.

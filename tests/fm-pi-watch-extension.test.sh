@@ -485,7 +485,17 @@ writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 mod.default(pi);
 await tool.execute("initial-arm", {}, undefined, undefined, {});
-await new Promise((resolve) => setTimeout(resolve, 1200));
+// The successor arm starts through a login shell, which costs about a second
+// on a loaded workstation, so wait for the successor and its delivery with a
+// bounded poll instead of a fixed sleep. Every assertion below still requires
+// the successor to follow the predecessor close, never to race it.
+for (let i = 0; i < 600; i += 1) {
+  const seen = existsSync(process.env.FM_ARM_LOG)
+    ? readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split("\n")
+    : [];
+  if (seen.filter((row) => row.startsWith("arm=")).length >= 2 && seen.includes("delivery")) break;
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
 const rows = existsSync(process.env.FM_ARM_LOG)
   ? readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split("\n")
   : [];

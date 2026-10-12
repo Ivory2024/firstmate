@@ -3315,9 +3315,14 @@ test_secondmate_liveness_tick_relaunches_dead_endpoint_once() {
 
   # A restarted watcher sees the relaunched endpoint alive and stays quiet -
   # the durable row remains for the drain and no second notification fires.
+  # Fork form: the relaunch seeds the mate's initial `working: spawned` status,
+  # so the idle leg reports the freshly launched mate provably working (its
+  # live pane is the harness); the routine seeded line is then absorbed rather
+  # than surfaced as a signal wake, and no relaunch row is re-queued.
   drain_liveness_wakes "$dir"
   rm -f "$state/.secondmate-liveness-tick"
-  run_liveness_leg "$dir" dead-idle FM_FAKE_TMUX_CURRENT_COMMAND=zsh; pid=$LIVENESS_PID
+  run_liveness_leg "$dir" dead-idle FM_FAKE_TMUX_CURRENT_COMMAND=zsh \
+    FM_FAKE_CREW_STATE_sm1='state: working · source: pane · harness busy'; pid=$LIVENESS_PID
   sleep 4
   is_live_non_zombie "$pid" \
     || fail "the watcher exited against an alive relaunched secondmate: $(cat "$dir/watch-dead-idle.out" "$dir/watch-dead-idle.err")"

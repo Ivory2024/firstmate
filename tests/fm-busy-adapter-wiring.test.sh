@@ -542,7 +542,9 @@ test_secondmate_claude_spawn_arms_busy_for_the_stall_gate() {
   secondmate_stall_watch "$primary" "$id" "$case_dir/watch-busy.out"
   grep -F 'secondmate wake-loop stalled' "$case_dir/watch-busy.out" >/dev/null \
     && fail "a secondmate inside an armed turn was escalated as a stalled wake loop: $(cat "$case_dir/watch-busy.out")"
-  [ ! -s "$state/.wake-queue" ] \
+  # The fork seeds the spawned task's status after launch (#52), so the watcher
+  # may queue that status signal; only a stall row would be the regression.
+  ! grep -F 'secondmate wake-loop stalled' "$state/.wake-queue" >/dev/null 2>&1 \
     || fail "a secondmate inside an armed turn published a durable stall notification"
 
   rm -f "$state/$id.turn-ended"
@@ -566,7 +568,7 @@ test_secondmate_claude_spawn_arms_busy_for_the_stall_gate() {
 
 run_secondmate_stop_guard() { # <sm-home>
   printf '{"stop_hook_active":false,"session_id":"sm-guard"}' \
-    | CLAUDECODE=1 FM_ROOT_OVERRIDE="$1" FM_CLAUDE_AUTOARM_SYNC_WAIT_MS=100 \
+    | CLAUDECODE=1 FM_HOME="$1" FM_ROOT_OVERRIDE="$1" FM_CLAUDE_AUTOARM_SYNC_WAIT_MS=100 \
       bash "$ROOT/bin/fm-turnend-guard.sh" --claude >/dev/null 2>&1
 }
 
@@ -773,9 +775,9 @@ test_secondmate_opencode_plugin_closes_without_a_parent_turnend() {
   out=$(classify opencode "$id" "$state")
   [ "$out" = "busy fm-spawn" ] || fail "opencode secondmate seed must be busy fm-spawn, got '$out'"
   rm -f "$state/$id.turn-ended"
-  out=$(drive_oc_plugin "$plugin" "$(oc_status ses_main busy)" "$(oc_idle ses_main)") \
+  out=$(drive_oc_plugin "$plugin" "$(oc_started ses_main)" "$(oc_ended ses_main succeeded)") \
     || fail "opencode secondmate idle drive failed: $out"
-  [ ! -e "$state/$id.turn-ended" ] || fail "opencode secondmate session.idle touched the parent's turn-ended marker"
+  [ ! -e "$state/$id.turn-ended" ] || fail "opencode secondmate execution end touched the parent's turn-ended marker"
   out=$(classify opencode "$id" "$state")
   [ "$out" = "idle opencode-plugin" ] || fail "opencode secondmate idle must classify idle, got '$out'"
   pass "an opencode secondmate plugin closes the parent busy record without a parent turn-end"

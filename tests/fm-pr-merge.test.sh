@@ -712,6 +712,10 @@ SH
     FM_TEST_GH_RULES="$case_dir/github-rules" \
     FM_TEST_GH_VIEW_JSON="$case_dir/github-view.json" \
     FM_TEST_GH_HEAD="$case_dir/github-head" \
+    FM_TEST_GH_BRANCH="$case_dir/github-branch.json" \
+    FM_TEST_GH_BRANCH_FAIL="$case_dir/github-branch-fail" \
+    FM_TEST_GH_REQUIRED_RULES="$case_dir/github-required-rules.json" \
+    FM_TEST_GH_REQUIRED_RULES_FAIL="$case_dir/github-required-rules-fail" \
     FM_TEST_GLAB_LOG="$case_dir/glab.log" \
     FM_TEST_GLAB_JSON="$case_dir/mr.json" \
     FM_TEST_EVIDENCE_DIR="$case_dir/$EVIDENCE_DIRNAME" \
@@ -3394,111 +3398,6 @@ test_away_branch_refuses_when_record_archived_during_preflight() {
   mkdir -p "$case_dir/wt" "$case_dir/home"
   add_gh_mocks "$case_dir" "$head"
   write_away_record "$case_dir" --words 'merge task-x1 when green'
-  : > "$case_dir/away-record-after-view"
-  set +e
-  FM_SUPERVISION_ACTOR=branch FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
-    > "$case_dir/stdout" 2> "$case_dir/stderr"
-  rc=$?
-  set -e
-  expect_code 6 "$rc" "away-branch-archived-during-preflight: an archived record must refuse the branch under the lock"
-  assert_grep 'main is parked' "$case_dir/stderr" \
-    "away-branch-archived-during-preflight: the opening partition never saw the live record"
-  assert_grep 'the supervision branch never performs this action' "$case_dir/stderr" \
-    "away-branch-archived-during-preflight: refusal lost the partition wording"
-  assert_grep 'pr view' "$case_dir/gh.log" \
-    "away-branch-archived-during-preflight: the forge preflight never ran"
-  assert_no_grep 'pr merge' "$case_dir/gh.log" \
-    "away-branch-archived-during-preflight: gh pr merge ran after the record was archived"
-  pass "a branch merge refuses under the lock when the away record is archived during preflight"
-}
-
-# While the away-posture record exists main is parked, so the supervision
-# branch actor may reach the merge gate - and meets exactly the gate main
-# would: a granted task merges green at its live head under away-grant
-# authority, an ungranted one is held for the return, and without the record
-# the branch is refused at the role partition before any forge call
-# (docs/pi-supervision-branch.md "Postures").
-test_away_branch_actor_merges_only_with_a_grant() {
-  local case_dir rc url head
-  head=dadadadadadadadadadadadadadadadadadadada
-  url=https://github.com/example/repo/pull/93
-
-  case_dir=$(make_case away-branch-attended)
-  mkdir -p "$case_dir/wt"
-  add_gh_mocks "$case_dir" "$head"
-  set +e
-  FM_SUPERVISION_ACTOR=branch run_pr_merge "$case_dir" task-x1 "$url" \
-    > "$case_dir/stdout" 2> "$case_dir/stderr"
-  rc=$?
-  set -e
-  expect_code 6 "$rc" "away-branch-attended: an attended branch must be refused at the partition"
-  assert_grep 'the supervision branch never performs this action' "$case_dir/stderr" \
-    "away-branch-attended: refusal lost the partition wording"
-  [ ! -e "$case_dir/gh.log" ] || assert_no_grep 'pr ' "$case_dir/gh.log" \
-    "away-branch-attended: gh ran for an attended branch merge"
-
-  case_dir=$(make_case away-branch-held)
-  mkdir -p "$case_dir/wt"
-  add_gh_mocks "$case_dir" "$head"
-  write_away_record "$case_dir"
-  set +e
-  FM_SUPERVISION_ACTOR=branch run_pr_merge "$case_dir" task-x1 "$url" \
-    > "$case_dir/stdout" 2> "$case_dir/stderr"
-  rc=$?
-  set -e
-  expect_code 1 "$rc" "away-branch-held: an ungranted task must be held for the return"
-  assert_grep 'main is parked' "$case_dir/stderr" \
-    "away-branch-held: the relocation note was not printed"
-  assert_grep 'task task-x1 is held for the captain return' "$case_dir/stderr" \
-    "away-branch-held: refusal did not name hold-for-return"
-  assert_no_grep 'pr merge' "$case_dir/gh.log" \
-    "away-branch-held: gh pr merge ran for an ungranted branch merge"
-
-  case_dir=$(make_case away-branch-grant)
-  mkdir -p "$case_dir/wt" "$case_dir/home"
-  add_gh_mocks "$case_dir" "$head"
-  write_away_record "$case_dir" --grant task-x1
-  FM_SUPERVISION_ACTOR=branch FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
-    > "$case_dir/stdout" 2> "$case_dir/stderr" \
-    || fail "away-branch-grant: a granted green merge must succeed for the branch: $(cat "$case_dir/stderr")"
-  assert_logged_gh_merge "$case_dir" 93 example/repo --squash
-  assert_grep "merge landed: task-x1 $url away-grant" "$case_dir/state/.wake-queue" \
-    "away-branch-grant: the durable outcome did not tag away-grant"
-
-  # The green gate is absolute in this posture for the branch as for main.
-  case_dir=$(make_case away-branch-red)
-  mkdir -p "$case_dir/wt" "$case_dir/home"
-  add_gh_mocks "$case_dir" "$head"
-  write_github_rollup_json "$case_dir" "$head" \
-    '{"__typename":"CheckRun","name":"lint","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-09-01T00:00:00Z"}'
-  write_away_record "$case_dir" --grant task-x1
-  set +e
-  FM_SUPERVISION_ACTOR=branch FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" --allow-red lint \
-    > "$case_dir/stdout" 2> "$case_dir/stderr"
-  rc=$?
-  set -e
-  expect_code 2 "$rc" "away-branch-red: --allow-red must stay attended-only for the branch"
-  assert_grep 'allow-red is attended-only' "$case_dir/stderr" \
-    "away-branch-red: refusal did not name the attended-only waiver"
-  assert_no_grep 'pr merge' "$case_dir/gh.log" \
-    "away-branch-red: gh pr merge ran for a red branch merge while away"
-  pass "under the away-posture record the branch merges a granted green task, is held without a grant, cannot waive a red check, and is refused at the partition while attended"
-}
-
-# The race this closes: a granted branch merge passes the opening partition
-# because the live record exists, then the captain returns and archives that
-# record during the slow forge preflight. The locked authority recheck must
-# treat that archive as absence and refuse the branch before gh pr merge.
-# An empty away-record-after-view file is the mock's archive-during-view hook.
-test_away_branch_refuses_when_record_archived_during_preflight() {
-  local case_dir rc url head
-  head=a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7
-  url=https://github.com/example/repo/pull/127
-
-  case_dir=$(make_case away-branch-archived-during-preflight)
-  mkdir -p "$case_dir/wt" "$case_dir/home"
-  add_gh_mocks "$case_dir" "$head"
-  write_away_record "$case_dir" --grant task-x1
   : > "$case_dir/away-record-after-view"
   set +e
   FM_SUPERVISION_ACTOR=branch FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \

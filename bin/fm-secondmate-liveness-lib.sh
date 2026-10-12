@@ -287,7 +287,28 @@ fm_secondmate_liveness_relaunch() {  # <meta> <id> [timeout-secs]
       window=$(fm_meta_get "$meta" window)
       target=$window
     fi
-    [ -z "$target" ] || fm_backend_kill "$backend" "$target" 2>/dev/null || true
+    if [ -n "$target" ]; then
+      # Home-scoped cleanup with a label-guarded zellij/cmux target: an
+      # unconfirmed cleanup refuses the respawn instead of spawning over a live
+      # husk. This runs only after the ledger gates above, so an unreadable or
+      # unwritable ledger still kills nothing and spawns nothing.
+      case "$backend" in
+        zellij)
+          fm_backend_kill "$backend" "$target" "$(fm_meta_get "$meta" zellij_tab_id)" "fm-$id" 2>/dev/null
+          ;;
+        cmux)
+          fm_backend_kill "$backend" "$target" '' "fm-$id" 2>/dev/null
+          ;;
+        *)
+          fm_backend_kill "$backend" "$target" 2>/dev/null
+          ;;
+      esac || {
+        FM_SM_LIVE_STATUS=skipped
+        FM_SM_LIVE_REASON="endpoint cleanup could not be confirmed (backend=$backend)"
+        FM_SM_LIVE_RC=1
+        return 1
+      }
+    fi
   fi
   local rc=0
   if [ -n "$timeout" ]; then

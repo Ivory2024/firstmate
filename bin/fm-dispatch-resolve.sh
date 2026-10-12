@@ -433,9 +433,7 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
           .effectivePercentRemaining < $c.floor.min_percent
         )] | first) as $floor_row |
         {profile: $c, provider: $p, bounds: $bounds, scope: ($floor_row.scope // $c.floor.scope), pct: ($floor_row.effectivePercentRemaining // null), runway: ($floor_row.runway.status // null), eligible: false, reason: "profile floor \($c.floor.scope) below \($c.floor.min_percent)%"}
-      # Feasibility is read from exhaustion[]; a snapshot that publishes none
-      # keeps the upstream ranking of the projected rows themselves.
-      elif ($q | has("exhaustion")) and ($runways | length) > 0 and
+      elif ($runways | length) > 0 and
            (($horizon | test("^[1-9][0-9]*$")) | not or
             any($runways[]; (.evidence.usableRunwaySeconds | type) != "number" or .evidence.usableRunwaySeconds < ($horizon | tonumber))) then
         ($runways | map(select(($horizon | test("^[1-9][0-9]*$")) and (.evidence.usableRunwaySeconds | type) == "number" and .evidence.usableRunwaySeconds < ($horizon | tonumber))) | first) as $short |

@@ -1008,6 +1008,17 @@ brief_with_base() { # <id> <base> [<intent>]
   printf '\n# Setup\nYou are in a disposable git worktree of project, at a detached HEAD on a clean copy of its base branch.\nBase branch: %s\n' "$2" >> "$HOME_DIR/data/$1/brief.md"
 }
 
+# A named base is fetched from the pool's `origin` by remote NAME, so the
+# literal-URL fetch adapter above cannot intercept it: left as the fixture's
+# fork identity URL, the launch would reach the real GitHub and fail offline.
+# Cases that spawn with a named base point the pooled worktree's origin at the
+# case's own bare repository for that launch. Cases that spawn without one keep
+# the fork identity URL, so the verified-base contract they exercise is
+# unchanged.
+point_origin_at_case_repository() {
+  git -C "$POOL_DIR" remote set-url origin "file://$CASE_DIR/origin.git"
+}
+
 test_named_base_branch_starts_from_that_branch() {
   local rec id out status kind
   for kind in ship scout; do
@@ -1016,6 +1027,7 @@ test_named_base_branch_starts_from_that_branch() {
     read_case_record "$rec"
     publish_feature_branch feature/hub
     brief_with_base "$id" feature/hub
+    point_origin_at_case_repository
     if [ "$kind" = ship ]; then
       out=$(run_spawn "$id" --mode direct-PR --yolo off --base-branch feature/hub)
     else
@@ -1035,6 +1047,7 @@ test_named_base_branch_starts_from_that_branch() {
   rec=$(make_case named-base-missing "$id")
   read_case_record "$rec"
   brief_with_base "$id" feature/missing
+  point_origin_at_case_repository
   out=$(run_spawn "$id" --scout --base-branch feature/missing)
   status=$?
   [ "$status" -ne 0 ] || fail "a base branch origin lacks should refuse the spawn"
@@ -1099,6 +1112,7 @@ test_prose_base_branch_line_is_ignored() {
   read_case_record "$rec"
   publish_feature_branch feature/hub
   brief_with_base "$id" feature/hub $'Fix the release.\nBase branch: release/1.2'
+  point_origin_at_case_repository
   out=$(run_spawn "$id" --scout --base-branch feature/hub)
   status=$?
   expect_code 0 "$status" "a flagged spawn whose intent names another branch should launch"$'\n'"$out"

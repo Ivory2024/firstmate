@@ -1256,6 +1256,15 @@ fm_lock_try_acquire() {
     # The steal mutex serializes primary-lock recovery. It is acquired WITHOUT
     # its own steal-mutex recovery (allow_steal=no): recursing here let a stale
     # .steal lock grow an unbounded .steal.steal... chain until ENAMETOOLONG.
+    # A reap this process already started - it renamed the dead steal owner to
+    # this process's tombstone but was interrupted before unlinking the mutex -
+    # leaves the link dangling, and the no-mode path reads a young dangling link
+    # as a live mid-acquire claim. Resume that reap from the tombstone first:
+    # fm_lock_reap_dead_link only renames and unlinks, so it cannot create a
+    # nested .steal marker.
+    if [ -L "$steal" ] && [ ! -e "$steal" ]; then
+      fm_lock_reap_dead_link "$steal" || true
+    fi
     if ! fm_lock_try_acquire "$steal" no; then
       FM_LOCK_HELD_PID=$(cat "$lockdir/pid" 2>/dev/null || true)
       FM_LOCK_OWNER_DIR=

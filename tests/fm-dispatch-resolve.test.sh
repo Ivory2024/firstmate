@@ -876,6 +876,10 @@ cat > "$SCHEMA6" <<'JSON'
       { "scope": "all_models", "status": "known", "effectivePercentRemaining": 11, "runway": { "status": "projected_exhaustion" }, "selection": { "spendPriority": -5.6819 } } ] } },
     { "provider": "cursor", "accountKey": "default", "quotaSemantics": { "status": "known", "effectiveAvailability": [
       { "scope": "all_models", "status": "known", "effectivePercentRemaining": 24, "runway": { "status": "projected_exhaustion" }, "selection": { "spendPriority": 0.3917 } } ] } }
+  ],
+  "exhaustion": [
+    { "provider": "codex", "scope": "all_models", "usableRunwaySeconds": 86400 },
+    { "provider": "cursor", "scope": "all_models", "usableRunwaySeconds": 86400 }
   ]
 }
 JSON

@@ -2407,14 +2407,18 @@ collect_local_firstmate_states() {
 
 require_exclusive_worktree_slot_record() {
   local record_meta=$1 record_id=$2 record_state=$3 worktree=$4
-  local slot state_dir other other_id field other_path other_slot
+  local slot state_dir other other_id field other_path other_slot claimed_owner
   slot=$(canonical_existing_dir "$worktree") || return 0
   # A slot whose owner claim names another task was reassigned, so this record's
-  # teardown is records-only and touches nothing under it; another record naming
-  # the slot is then no hazard, and refusing would strand this stale record and
-  # block the claimant's own teardown behind it.
+  # teardown is records-only and touches nothing under it. That claimant's own
+  # record is then no hazard, and refusing on it would strand this stale record
+  # and block the claimant's own teardown behind it, so the scan below skips the
+  # claimant's record and refuses every other record that still names the slot.
+  claimed_owner=
   fm_treehouse_slot_owner_state "$slot" "$record_id"
-  [ "$FM_TREEHOUSE_SLOT_OWNER" != other ] || return 0
+  case "$FM_TREEHOUSE_SLOT_OWNER" in
+    mine|other) claimed_owner=$FM_TREEHOUSE_SLOT_OWNER_ID ;;
+  esac
   collect_local_firstmate_states "$record_state" || return 1
   for state_dir in "${TREEHOUSE_OWNER_STATES[@]}"; do
     for other in "$state_dir"/*.meta; do
@@ -2425,6 +2429,7 @@ require_exclusive_worktree_slot_record() {
       # match too.
       [ "${other##*/}" = "${record_meta##*/}" ] && [ "$other" -ef "$record_meta" ] && continue
       other_id=$(basename "$other" .meta)
+      [ -n "$claimed_owner" ] && [ "$other_id" = "$claimed_owner" ] && continue
       for field in worktree home; do
         other_path=$(fm_meta_get "$other" "$field")
         [ -n "$other_path" ] || continue

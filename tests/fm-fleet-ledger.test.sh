@@ -42,6 +42,14 @@ make_case() {  # <name> <on|off>
   touch "$HOME_DIR/state/.last-watcher-beat"
   [ "$2" = off ] || : > "$HOME_DIR/config/fleet-ledger"
   fm_git_worktree "$PROJ_DIR" "$WT_DIR" "fm/$TASK"
+  # The fleet ledger, not base verification, is what these cases test. The
+  # fixture's file:// origin can never resolve to a repository identity, so the
+  # sample declares the fork's explicit local-base contract.
+  git -C "$PROJ_DIR" config firstmate.baseMode local
+  # A real home's clone already carries its origin's tracking refs, and the
+  # definition-of-done gate reads the named head from them; this fixture only
+  # ever added the origin, so fetch it once here.
+  git -C "$PROJ_DIR" fetch --quiet origin
   cat > "$HOME_DIR/data/$TASK/brief.md" <<EOF
 # Task
 ## Captain's intent
@@ -101,6 +109,7 @@ test_flag_on_records_the_task_lifecycle() {
   rows=$(ledger_rows '[.event, .task] + (del(.v, .ts, .event, .task) | to_entries | map(.value))')
   assert_equals "$(cat <<EOF
 ["task.dispatched","$TASK","ship","sample","claude",null]
+["task.status","$TASK","working",null," spawned"]
 ["task.status","$TASK","working",null," setup done"]
 ["task.status","$TASK","needs-decision","pick-one"," choose \"a\"\\\\b or c"]
 ["task.status","$TASK","resolved","pick-one"," [key=pick-one]  chose a"]
@@ -153,6 +162,7 @@ test_flag_on_records_a_pr_registration() {
   rows=$(ledger_rows '[.event, .state, .pr]')
   assert_equals "$(cat <<EOF
 ["task.dispatched",null,null]
+["task.status","working",null]
 ["task.status","done",null]
 ["task.pr_ready",null,"$pr_url"]
 EOF

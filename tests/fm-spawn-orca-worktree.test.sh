@@ -90,6 +90,12 @@ test_orca_fresh_spawn_enters_the_worktree_it_created() {
   printf 'codex\n' > "$home/config/crew-harness"
   printf 'manual\n' > "$home/config/backlog-backend"
   fm_git_init_commit "$case_dir/project"
+  # The fork's verified-base gate (#107) replaced upstream's "no origin means
+  # nothing to freshen" with a strict identity contract, so a throwaway test
+  # project opts into the explicit local-base contract like every other fork
+  # spawn test; the Orca-created worktree shares this repo's git dir, which is
+  # exactly the shared-common-dir proof local mode requires.
+  git -C "$case_dir/project" config firstmate.baseMode local
   mkdir -p "$home/data/$id"
   cat > "$home/data/$id/brief.md" <<EOF
 # Task

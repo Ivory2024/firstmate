@@ -2478,7 +2478,10 @@ test_answer_one_occurrence_guard_refuses_a_superseded_question() {
   fi
   assert_contains "$(cat "$home/stale.err")" "occurrence 2" \
     "the refusal must name the current occurrence"
-  show=$(tasks_in "$home" show sample-occurrence --full)
+  # hold stores the reason encoded (fm-hold-reason-lib) and the public reader
+  # decodes it, so the open question is asserted through the same decode path
+  # the round-trip test uses, matching the merged storage form.
+  show=$(FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" show sample-occurrence --full)
   assert_contains "$show" "second question" \
     "the re-held question must still be the open one"
   assert_not_contains "$show" "Answer: stale reply to the first question" \

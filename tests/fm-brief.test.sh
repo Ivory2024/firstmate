@@ -1290,7 +1290,7 @@ test_ship_branch_prefix_defaults_to_legacy_fm() {
     FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1
     brief="$home/data/$id/brief.md"
     # shellcheck disable=SC2016  # literal backticks around the branch name must stay unexpanded
-    assert_grep "\`git checkout -b fm/$id --\`" "$brief" \
+    assert_grep "fm-publish-guard.sh\" branch fm/$id\`" "$brief" \
       "$mode: omitting --branch-prefix must still create the legacy fm/<task-id> branch"
   done
   pass "fm-brief.sh: --branch-prefix omitted defaults every ship mode to fm/<task-id>"
@@ -1308,7 +1308,7 @@ test_ship_branch_prefix_override_is_consistent_across_modes() {
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes --branch-prefix 'contrib/' >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   # shellcheck disable=SC2016
-  assert_grep "\`git checkout -b contrib/$id --\`" "$brief" \
+  assert_grep "fm-publish-guard.sh\" branch contrib/$id\`" "$brief" \
     "no-mistakes: branch-creation command did not use the configured override"
   assert_no_grep "fm/$id" "$brief" \
     "no-mistakes: brief mixed the legacy fm/ prefix in with the configured override"
@@ -1317,7 +1317,7 @@ test_ship_branch_prefix_override_is_consistent_across_modes() {
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode direct-PR --branch-prefix 'contrib/' >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   # shellcheck disable=SC2016
-  assert_grep "\`git checkout -b contrib/$id --\`" "$brief" \
+  assert_grep "fm-publish-guard.sh\" branch contrib/$id\`" "$brief" \
     "direct-PR: branch-creation command did not use the configured override"
   # shellcheck disable=SC2016
   assert_grep "push only your \`contrib/$id\` branch" "$brief" \
@@ -1329,7 +1329,7 @@ test_ship_branch_prefix_override_is_consistent_across_modes() {
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only --branch-prefix 'contrib/' >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   # shellcheck disable=SC2016
-  assert_grep "\`git checkout -b contrib/$id --\`" "$brief" \
+  assert_grep "fm-publish-guard.sh\" branch contrib/$id\`" "$brief" \
     "local-only: branch-creation command did not use the configured override"
   # shellcheck disable=SC2016
   assert_grep "Work only on your \`contrib/$id\` branch" "$brief" \
@@ -1355,9 +1355,9 @@ test_ship_branch_prefix_empty_override_yields_bare_task_id() {
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only --branch-prefix '' >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   # shellcheck disable=SC2016
-  assert_grep "\`git checkout -b $id --\`" "$brief" \
+  assert_grep "fm-publish-guard.sh\" branch $id\`" "$brief" \
     "an empty --branch-prefix must yield a bare <task-id> branch"
-  assert_no_grep "checkout -b /$id" "$brief" \
+  assert_no_grep "branch /$id" "$brief" \
     "an empty --branch-prefix produced a leading-slash branch name"
   assert_no_grep "fm/$id" "$brief" \
     "an empty --branch-prefix left the legacy fm/ prefix in place"
@@ -1417,8 +1417,16 @@ test_branch_prefix_command_is_shell_safe() {
     || fail "a ref-format-valid metacharacter prefix should scaffold safely"
   brief="$home/data/$id/brief.md"
   # shellcheck disable=SC2016 # The sed expression intentionally contains literal backticks.
-  command=$(sed -n 's/^1\. First action: create your branch: `\(.*\)`$/\1/p' "$brief")
+  command=$(sed -n 's/^1\. First action: create your branch from the spawn-pinned verified base: `\(.*\)`$/\1/p' "$brief")
   [ -n "$command" ] || fail "generated brief exposed no branch-creation command"
+  # The fork routes branch creation through fm-publish-guard.sh, which needs a
+  # spawn-pinned verified base. Swap in a stub that only creates the branch it is
+  # given, so this still proves the generated command line keeps the prefix literal.
+  local stub="$TMP_ROOT/branch-prefix-shell-safe-guard.sh"
+  # shellcheck disable=SC2016 # literal stub script body, expands when the stub runs
+  printf '#!/usr/bin/env bash\n[ "$1" = branch ] && git checkout -q -b "$2"\n' > "$stub"
+  chmod +x "$stub"
+  command=${command//"$ROOT/bin/fm-publish-guard.sh"/$stub}
   repo="$TMP_ROOT/branch-prefix-shell-safe-repo"
   git init -q "$repo" || fail "could not initialize shell-safety fixture repository"
   ( cd "$repo" && eval "$command" ) || fail "generated branch-creation command did not run"

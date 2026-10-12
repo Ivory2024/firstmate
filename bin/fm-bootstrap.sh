@@ -748,7 +748,7 @@ secondmate_liveness_one_timed() {  # <meta> <id> <label>
 # Probe classification, kill, and spawn live in fm-secondmate-liveness-lib.sh;
 # this function keeps this sweep's exact reporting.
 secondmate_liveness_one() {  # <meta> <id>
-  local meta=$1 id=$2 backend target
+  local meta=$1 id=$2
   if ! fm_secondmate_liveness_lock "$id"; then
     echo "SECONDMATE_LIVENESS: secondmate $id: skipped: another liveness check is already in progress"
     return 0
@@ -761,31 +761,9 @@ secondmate_liveness_one() {  # <meta> <id>
       [ "${FM_BOOTSTRAP_VERBOSE_FACTS:-0}" != 1 ] || echo "BOOTSTRAP_INFO: $FM_SM_LIVE_LINE"
       ;;
     relaunchable)
-      # Fork-only hardening: before respawning a confirmed-dead local endpoint,
-      # kill it with the backend's home-scoped cleanup and require confirmation;
-      # an unconfirmed cleanup skips the guarded respawn instead of spawning
-      # over a live husk. The shared library's own sweep-tick kill stays a
-      # no-op here because the endpoint is already gone by then.
-      if [ "$FM_SM_LIVE_KILL" = 1 ]; then
-        backend=$(fm_backend_of_meta "$meta")
-        target=$(fm_backend_target_of_meta "$meta")
-        [ -n "$target" ] || target=$(fm_meta_get "$meta" window)
-        case "$backend" in
-          zellij)
-            fm_backend_kill "$backend" "$target" "$(fm_meta_get "$meta" zellij_tab_id)" "fm-$id" 2>/dev/null
-            ;;
-          cmux)
-            fm_backend_kill "$backend" "$target" '' "fm-$id" 2>/dev/null
-            ;;
-          *)
-            fm_backend_kill "$backend" "$target" 2>/dev/null
-            ;;
-        esac || {
-          echo "SECONDMATE_LIVENESS: secondmate $id: skipped: endpoint cleanup could not be confirmed (backend=$backend)"
-          fm_secondmate_liveness_unlock "$id"
-          return 0
-        }
-      fi
+      # The kill-and-confirm cleanup for a confirmed-dead local endpoint lives
+      # in the shared library, ordered after its ledger gates so an unusable
+      # ledger never kills or spawns.
       if fm_secondmate_liveness_relaunch "$meta" "$id"; then
         secondmate_note_respawned "$id"
         report_relaunch "$id" "$FM_SM_LIVE_CAUSE" "$FM_SM_LIVE_WHERE"
