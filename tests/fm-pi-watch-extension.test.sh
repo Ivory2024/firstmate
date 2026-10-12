@@ -4126,6 +4126,13 @@ EOF
   pass "Pi process-exit cleanup stops the attached arm child"
 }
 
+# The OpenCode arm gate reads bin/fm-supervision-lib.sh from the repo root,
+# so every fixture that drives an arm stages it exactly as the re-arm
+# suite's fake home does.
+stage_arm_gate() {
+  cp "$ROOT/bin/fm-supervision-lib.sh" "$1/bin/fm-supervision-lib.sh"
+}
+
 test_opencode_plugin_package_boundary_is_explicit_esm() {
   local fixture plugin out status
   fixture="$TMP_ROOT/opencode-esm-boundary/.opencode"
@@ -4154,6 +4161,7 @@ test_opencode_primary_watch_plugin_uses_effective_state_home() {
   home="$TMP_ROOT/opencode-effective-state-home"
   log="$TMP_ROOT/opencode-effective-state.log"
   mkdir -p "$repo/bin" "$home/state" "$home/config"
+  stage_arm_gate "$repo"
   git init -q "$repo"
   : > "$repo/AGENTS.md"
   cp "$ROOT/bin/fm-supervision-lib.sh" "$repo/bin/fm-supervision-lib.sh"
@@ -4205,9 +4213,13 @@ test_opencode_primary_watch_plugin_sources_effective_config() {
   home="$TMP_ROOT/opencode-effective-config-home"
   log="$TMP_ROOT/opencode-effective-config.log"
   mkdir -p "$repo/bin" "$home/state" "$home/config"
+  stage_arm_gate "$repo"
   git init -q "$repo"
   : > "$repo/AGENTS.md"
   printf 'export FM_POLL=7\n' > "$home/config/x-mode.env"
+  # The arm gate reads the shared supervision predicate, so the home needs a
+  # signal that predicate counts: an X-mode relay shim.
+  : > "$home/state/x-watch.check.sh"
   cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'poll=%s\n' "${FM_POLL:-missing}" >> "${FM_ARM_LOG:?}"
@@ -4254,6 +4266,7 @@ test_opencode_primary_watch_plugin_requires_session_lock() {
   home="$TMP_ROOT/opencode-lock-home"
   log="$TMP_ROOT/opencode-lock.log"
   mkdir -p "$repo/bin" "$home/state" "$home/config"
+  stage_arm_gate "$repo"
   git init -q "$repo"
   : > "$repo/AGENTS.md"
   cp "$ROOT/bin/fm-supervision-lib.sh" "$repo/bin/fm-supervision-lib.sh"
@@ -4318,6 +4331,7 @@ test_opencode_watch_arm_coordinator_respects_primary_scope() {
   log="$TMP_ROOT/opencode-coordinator.log"
   fm_git_worktree "$base" "$repo" fm/opencode-coordinator
   mkdir -p "$repo/bin" "$home/state" "$home/config"
+  stage_arm_gate "$repo"
   : > "$repo/AGENTS.md"
   : > "$home/state/task.meta"
   cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
@@ -4364,6 +4378,7 @@ test_opencode_primary_watch_plugin_rearms_after_wake() {
   log="$TMP_ROOT/opencode-rearm.log"
   stop="$TMP_ROOT/opencode-rearm.stop"
   mkdir -p "$repo/bin" "$home/state" "$home/config"
+  stage_arm_gate "$repo"
   git init -q "$repo"
   : > "$repo/AGENTS.md"
   cp "$ROOT/bin/fm-supervision-lib.sh" "$repo/bin/fm-supervision-lib.sh"
@@ -4553,6 +4568,7 @@ test_opencode_pre_ready_actionable_close_preserves_its_successor() {
   retired="$TMP_ROOT/opencode-pre-ready-actionable.retired"
   stop="$TMP_ROOT/opencode-pre-ready-actionable.stop"
   mkdir -p "$repo/bin" "$home/state" "$home/config"
+  stage_arm_gate "$repo"
   git init -q "$repo"
   : > "$repo/AGENTS.md"
   cp "$ROOT/bin/fm-supervision-lib.sh" "$repo/bin/fm-supervision-lib.sh"
@@ -4634,6 +4650,7 @@ test_opencode_hung_successor_falls_back_to_typed_wake() {
   home="$TMP_ROOT/opencode-hung-successor-home"
   log="$TMP_ROOT/opencode-hung-successor.log"
   mkdir -p "$repo/bin" "$home/state" "$home/config"
+  stage_arm_gate "$repo"
   git init -q "$repo"
   : > "$repo/AGENTS.md"
   cp "$ROOT/bin/fm-supervision-lib.sh" "$repo/bin/fm-supervision-lib.sh"
@@ -4706,6 +4723,7 @@ test_opencode_unretired_successor_falls_back_without_retry() {
   log="$TMP_ROOT/opencode-unretired-successor.log"
   release="$TMP_ROOT/opencode-unretired-successor.release"
   mkdir -p "$repo/bin" "$home/state" "$home/config"
+  stage_arm_gate "$repo"
   git init -q "$repo"
   : > "$repo/AGENTS.md"
   cp "$ROOT/bin/fm-supervision-lib.sh" "$repo/bin/fm-supervision-lib.sh"
@@ -4784,6 +4802,7 @@ test_opencode_late_unretired_close_resumes_supervision() {
     release="$TMP_ROOT/opencode-late-$kind.release"
     stop="$TMP_ROOT/opencode-late-$kind.stop"
     mkdir -p "$repo/bin" "$home/state" "$home/config"
+    stage_arm_gate "$repo"
     git init -q "$repo"
     : > "$repo/AGENTS.md"
   cp "$ROOT/bin/fm-supervision-lib.sh" "$repo/bin/fm-supervision-lib.sh"
@@ -4880,6 +4899,7 @@ test_opencode_empty_close_retries_instead_of_disappearing() {
   log="$TMP_ROOT/opencode-empty-close.log"
   stop="$TMP_ROOT/opencode-empty-close.stop"
   mkdir -p "$repo/bin" "$home/state" "$home/config"
+  stage_arm_gate "$repo"
   git init -q "$repo"
   : > "$repo/AGENTS.md"
   cp "$ROOT/bin/fm-supervision-lib.sh" "$repo/bin/fm-supervision-lib.sh"
@@ -4940,6 +4960,7 @@ test_opencode_established_empty_close_honors_retry_limit() {
   home="$TMP_ROOT/opencode-established-empty-close-home"
   log="$TMP_ROOT/opencode-established-empty-close.log"
   mkdir -p "$repo/bin" "$home/state" "$home/config"
+  stage_arm_gate "$repo"
   git init -q "$repo"
   : > "$repo/AGENTS.md"
   cp "$ROOT/bin/fm-supervision-lib.sh" "$repo/bin/fm-supervision-lib.sh"
@@ -4995,6 +5016,7 @@ test_opencode_actionable_close_rechecks_session_lock() {
   log="$TMP_ROOT/opencode-close-lock.log"
   release="$TMP_ROOT/opencode-close-lock.release"
   mkdir -p "$repo/bin" "$home/state" "$home/config"
+  stage_arm_gate "$repo"
   git init -q "$repo"
   : > "$repo/AGENTS.md"
   cp "$ROOT/bin/fm-supervision-lib.sh" "$repo/bin/fm-supervision-lib.sh"
@@ -5062,6 +5084,7 @@ test_opencode_watch_arm_coordinates_with_turnend_guard() {
   log="$TMP_ROOT/opencode-coordinate-arm.log"
   guard_log="$TMP_ROOT/opencode-coordinate-guard.log"
   mkdir -p "$repo/bin" "$home/state" "$home/config"
+  stage_arm_gate "$repo"
   git init -q "$repo"
   : > "$repo/AGENTS.md"
   cp "$ROOT/bin/fm-supervision-lib.sh" "$repo/bin/fm-supervision-lib.sh"
@@ -5136,6 +5159,7 @@ test_opencode_healthy_arm_output_does_not_suppress_guard() {
   log="$TMP_ROOT/opencode-external-healthy-arm.log"
   guard_log="$TMP_ROOT/opencode-external-healthy-guard.log"
   mkdir -p "$repo/bin" "$home/state" "$home/config"
+  stage_arm_gate "$repo"
   git init -q "$repo"
   : > "$repo/AGENTS.md"
   cp "$ROOT/bin/fm-supervision-lib.sh" "$repo/bin/fm-supervision-lib.sh"
