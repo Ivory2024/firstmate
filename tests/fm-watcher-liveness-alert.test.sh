@@ -74,7 +74,7 @@ FM_HOME="$HOME_CASE" FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$STATE" FM_GUAR
 run_agent() {
   local plist=${1:-$DIR/agent.plist} expected_grace=${2:-30} fail_post=${3:-0}
   FM_HOME="$HOME_CASE" FM_ROOT_OVERRIDE="$ROOT" HOME="$HOME_CASE" \
-    FM_WATCHER_ALERT_COOLDOWN=2 FM_TEST_EXPECT_STATE="$STATE" FM_TEST_EXPECT_GRACE="$expected_grace" \
+    FM_WATCHER_ALERT_COOLDOWN="${cooldown:-2}" FM_TEST_EXPECT_STATE="$STATE" FM_TEST_EXPECT_GRACE="$expected_grace" \
     FM_TEST_DISCORD_POSTS="$DIR/posts.jsonl" FM_TEST_DISCORD_FAIL="$fail_post" \
     NODE_OPTIONS="--import=$DIR/fake-discord.mjs" \
     python3 - "$plist" <<'PY'
@@ -121,11 +121,11 @@ run_agent || fail "LaunchAgent failed to send HIGH alert after delivery recovere
 [ "$(cat "$STATE/.wake-queue")" = "$queue_before" ] || fail "alert check changed the pending wake"
 posts=$(wc -l < "$DIR/posts.jsonl" | tr -d '[:space:]')
 [ "$posts" = 1 ] || fail "no-consumer HIGH alert did not reach Discord"
-run_agent || fail "LaunchAgent cooldown invocation failed"
+cooldown=3600 run_agent || fail "LaunchAgent cooldown invocation failed"
 posts_after=$(wc -l < "$DIR/posts.jsonl" | tr -d '[:space:]')
 [ "$posts_after" = "$posts" ] || fail "cooldown allowed duplicate HIGH alert"
 sleep 2.1
-run_agent || fail "LaunchAgent cooldown expiry invocation failed"
+cooldown=2 run_agent || fail "LaunchAgent cooldown expiry invocation failed"
 [ "$(wc -l < "$DIR/posts.jsonl" | tr -d '[:space:]')" = 2 ] || fail "HIGH alert did not repeat after cooldown"
 [ "$(cat "$STATE/.wake-queue")" = "$queue_before" ] || fail "cooldown check changed the pending wake"
 

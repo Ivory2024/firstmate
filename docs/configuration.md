@@ -2426,6 +2426,14 @@ The two read files use different parsing rules:
 
 `FM_VOICE_RELAY` and `FM_VOICE_PYTHON` belong to the laptop rather than to a home, so they have no config file: `bin/fm-voice-client.py` requires the relay path as a flag or that variable and carries no default path.
 
+## Watcher liveness alert and automatic re-arm
+
+`bin/fm-watcher-liveness-alert.sh check` is the launchd entry point (see `bin/fm-watcher-liveness-alert.sh render` for the exact agent contract).
+It alerts on an unhealthy watcher consumer exactly as before, and then re-arms the one-shot watcher from the tick alone, so continuity no longer depends on a harness event such as an idle session.
+Automatic re-arm only runs when the chain provably ended with no successor, no healthy watcher and no live lock owner is present, supervision is needed, and neither away posture nor a maintenance HOLD applies.
+Place `state/.watch-hold` (its first line is your reason) to suppress automatic re-arm deliberately, for example during a maintenance window; remove it to allow recovery again.
+A deliberate stop recorded as `arm-interrupted` is never re-armed either.
+
 ## Environment variables
 
 Runtime tuning via environment variables (defaults shown):
@@ -2537,6 +2545,11 @@ FM_WATCH_CYCLE_LOG_KEEP_LINES=1000   # newest complete lifecycle rows considered
 FM_WATCH_EXTENSION_LOG_KEEP_LINES=0   # opt-in Pi extension diagnostic log (state/.watch-extension.log); unset, empty, non-numeric, zero, or negative disables logging, a positive value keeps that many newest rows; logging never changes supervision behavior
 FM_WATCHER_STALE_GRACE=300   # defaults to FM_GUARD_GRACE if set, else the poll-derived grace (docs/turnend-guard.md "Guard grace and the poll cadence"); seconds before a fresh arm refuses a live holder's stale beacon (attached arms: FM_WATCHER_STALL_BOUND)
 FM_WATCHER_STALL_BOUND=       # live-holder stall bound; default and arm/re-arm behavior: docs/turnend-guard.md "Guard grace and the poll cadence"
+FM_WATCH_REARM_CONFIRM_TIMEOUT=30   # seconds bin/fm-watcher-liveness-alert.sh check waits for a re-armed watcher to publish a live lock with a fresh beacon, or for the arm's own started/attached line; keep it below the launchd StartInterval so the tick stays bounded
+FM_WATCH_REARM_BACKOFF_BASE=60   # base seconds of the bounded exponential backoff after a failed automatic watcher re-arm
+FM_WATCH_REARM_BACKOFF_MAX=1800   # cap in seconds on that re-arm backoff, so a persistent failure never becomes a restart loop
+FM_WATCH_REARM_ALERT_AFTER=3   # consecutive failed automatic re-arms before one Discord alert is emitted for the failure episode
+FM_WATCH_ARM_BIN=   # optional override of the arm binary the liveness-alert job invokes; defaults to <code-root>/bin/fm-watch-arm.sh, and is only set by tests
 FM_SIGNAL_GRACE=30      # seconds to coalesce nearby status and turn-end signals into one wake
 FM_WATCHER_CLEANUP_LOCK_BOUND=   # optional watcher EXIT marker-lock wait; default and validation: docs/watcher-continuity.md
 FM_TURNEND_CHURN_ABSORB_SECS=900   # longest one endpoint's bare turn-ends may be deferred on pane-churn evidence alone; only consulted when config/turnend-churn-absorb is present

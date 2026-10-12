@@ -34,8 +34,11 @@ On a non-Pi primary, a home that runs the supervision host also changes what the
 
 ### Watcher liveness alert
 
-On macOS, bootstrap installs an alert-only 60-second LaunchAgent when Discord reporting is configured; it classifies the consumer as healthy, stale-heartbeat, or no-consumer, and raises a HIGH alert when a durable wake is pending without a healthy consumer.
+On macOS, bootstrap installs a 60-second LaunchAgent when Discord reporting is configured; it classifies the consumer as healthy, stale-heartbeat, or no-consumer, and raises a HIGH alert when a durable wake is pending without a healthy consumer.
+The same tick can re-arm a one-shot watcher when its newest cycle record proves the chain ended without a successor, supervision is still needed, and neither an identity-matched healthy watcher nor any live lock owner exists.
+Re-arm stays inert during away or quiet posture, maintenance HOLD (`state/.watch-hold`), intentional stops, and cycles whose recorded arm or watcher is still alive; it starts only the approved plain arm path and records success once a fresh watcher or the arm's own started/attached line is observed, so a watcher cycle that surfaced a durable wake and exited is never mistaken for a failed re-arm.
 The alert uses the durable Discord report outbox, suppresses repeats during its cooldown, and reports recovery after a delivered HIGH alert when an identity-matched consumer returns.
+The detailed LaunchAgent and re-arm configuration is owned by [`configuration.md`](configuration.md#watcher-liveness-alert-and-automatic-re-arm).
 
 ### Pi, omp, and OpenCode adapters
 
@@ -466,6 +469,7 @@ They also prove that a legacy or handoff-phase watcher marker from an absent rep
 - The test reaper that stops a watcher armed for a temporary home.
 
 `tests/fm-watcher-liveness-alert.test.sh` covers LaunchAgent installation, consumer classifications, durable HIGH alert delivery, cooldown, recovery, and preserving pending wakes without re-arming on delivery failure.
+`tests/fm-watcher-liveness-rearm.test.sh` covers safe re-arm gates, healthy and live-owner protection, active-session and no-idle recovery, atomic single-flight, bounded failure backoff and alerting, and pending-instruction preservation.
 
 `tests/fm-watch-recovery-loop.test.sh` covers:
 
@@ -486,7 +490,6 @@ It checks that a newly appended keyed decision is classified without rereading e
 - A SIGSTOP counterfactual that distinguishes a live PID from a stale beacon before classifying termination.
 
 ### Claude auto-arm and turn-end guard
-
 `tests/fm-subagent-pretool-check.test.sh` proves Claude retains only the non-status Bash seatbelts.
 
 `tests/fm-claude-stop-autoarm.test.sh` covers:
