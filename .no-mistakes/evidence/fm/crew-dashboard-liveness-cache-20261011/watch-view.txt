@@ -1,0 +1,60 @@
+FirstCrew monitor · http://127.0.0.1:8770/ · 00:04:15 · Ctrl-C to exit
+snapshot fresh · age 0.0s
+
+crewa-1                                                     crewb-4                                                     deadtask-2                                                  unknowntask-3
+CODEX · codex-flagship                                      CODEX · codex-flagship                                      CODEX · codex-flagship                                      CODEX · codex-flagship
+[live] state: unknown · source: pane · harness state unava  [dead] state: unknown · source: pane · harness state unava  [dead] state: unknown · source: pane · harness state unava  [unknown] state: unknown · source: pane · harness state un
+age 376s · crewa:0                                          age ? · crewb:0                                             age 377s · ghost-session:0                                  age 377s · badtarget:0:extra
+Live crew door                                              -                                                           Gone crew door                                              Idle record door
+
+── 레일별 업무 ──
+[In flight] (2)
+  ● crewa-1                                        Live crew door
+    deadtask-2                                     Gone crew door
+[Queued] (1)
+    unknowntask-3                                  Idle record door
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

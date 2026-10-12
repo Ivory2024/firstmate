@@ -1,0 +1,28 @@
+== /data call 1 (cold after TTL) ==
+HTTP/1.0 200 OK
+X-Snap-Status: fresh
+X-Snap-Age: 0.000
+X-Snap-Computed-At: 1791817474.508
+X-Snap-Refreshing: false
+X-Snap-Ttl: 5.000
+== /data call 2 one second later: same computed_at, age ~1s, both served from one snapshot ==
+HTTP/1.0 200 OK
+X-Snap-Status: fresh
+X-Snap-Age: 1.053
+X-Snap-Computed-At: 1791817474.508
+X-Snap-Refreshing: false
+X-Snap-Ttl: 5.000
+== 6 concurrent mixed-route requests: all share one refresh (computed_at) ==
+== 6 concurrent mixed-route requests (data+data+data / tasks+tasks+tasks) all share one computed_at ==
+   X-Snap-Status: fresh
+   X-Snap-Computed-At: 1791817486.247
+   X-Snap-Status: fresh
+   X-Snap-Computed-At: 1791817486.247
+   X-Snap-Status: fresh
+   X-Snap-Computed-At: 1791817486.247
+   X-Snap-Status: fresh
+   X-Snap-Computed-At: 1791817486.247
+   X-Snap-Status: fresh
+   X-Snap-Computed-At: 1791817486.247
+   X-Snap-Status: fresh
+   X-Snap-Computed-At: 1791817486.247

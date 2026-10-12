@@ -1,0 +1,97 @@
+<!doctype html><html><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>FirstCrew monitor</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--bd:#30363d;--fg:#c9d1d9;--mut:#8b949e;--ok:#3fb950;--warn:#d29922;--bad:#f85149;--acc:#58a6ff}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 ui-monospace,Menlo,monospace;display:flex;flex-direction:column}
+header{padding:8px 16px;border-bottom:1px solid var(--bd);display:flex;gap:14px;align-items:center;flex:0 0 auto;flex-wrap:wrap}
+header b{color:var(--acc)}.mut{color:var(--mut)}
+.legend{display:flex;gap:8px;flex-wrap:wrap}
+.main{flex:1 1 auto;display:flex;gap:10px;padding:10px;min-height:0}
+.grid{flex:1 1 auto;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(340px,1fr);grid-template-rows:1fr;gap:10px;overflow:auto;min-height:0}
+.tasks{flex:0 0 300px;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:8px;overflow:auto;min-height:0}
+.tasks .th{font-weight:700;color:var(--acc);border-bottom:1px solid var(--bd);padding-bottom:6px;margin-bottom:6px;position:sticky;top:0;background:var(--card)}
+.tk{padding:5px 6px;border-left:3px solid var(--bd);margin-bottom:5px;border-radius:4px;background:#0f141b}
+.tk.live{border-left-color:var(--ok)}
+.tk .tkline{display:flex;gap:6px;align-items:baseline}
+.tk .tktitle{flex:1 1 auto;min-width:0;font-size:12px;color:#e6edf3;overflow-wrap:anywhere;word-break:break-word}
+.tk .dot{color:var(--ok);font-size:10px}
+.tk .tkmeta{color:var(--mut);font-size:10px;overflow-wrap:anywhere;word-break:break-word}
+@media(max-width:900px){.main{flex-direction:column}.tasks{flex:0 0 auto;max-height:32vh}
+.ttl,.meta,.last,.tk .tktitle,.tk .tkmeta,.hd .id{white-space:normal;overflow:visible;text-overflow:clip;word-break:break-word;overflow-wrap:anywhere}
+.hd{flex-wrap:wrap}.tk .tkline{flex-wrap:wrap}}
+.panel{background:var(--card);border:1px solid var(--bd);border-left:4px solid var(--lane);border-radius:8px;padding:10px;display:flex;flex-direction:column;min-height:0}
+.panel.gone{opacity:.55;border-left-color:var(--bad)}
+.hd{display:flex;justify-content:space-between;gap:8px;align-items:center;border-bottom:1px solid var(--bd);padding-bottom:6px;margin-bottom:6px;flex-wrap:wrap}
+.hd .id{font-weight:600;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ttl{flex:1 1 auto;min-width:0;font-weight:700;color:var(--lane);overflow-wrap:anywhere;word-break:break-word}
+.ttl .sep{color:var(--bd);font-weight:400;margin:0 6px}
+.ttl .sid{color:var(--mut);font-weight:600}
+.badge{font-size:11px;font-weight:700;letter-spacing:.04em;padding:2px 8px;border-radius:10px;color:#0d1117;background:var(--hcolor);white-space:nowrap}
+.chip{font-size:11px;padding:1px 7px;border-radius:10px;border:1px solid var(--bd);color:var(--mut);white-space:nowrap}
+.chip.ok{color:var(--ok);border-color:var(--ok)}.chip.warn{color:var(--warn);border-color:var(--warn)}.chip.bad{color:var(--bad);border-color:var(--bad)}
+.meta{color:var(--mut);font-size:11px;margin-bottom:4px;overflow-wrap:anywhere;word-break:break-word}
+.meta .mod{color:var(--lane)}
+.st{font-size:12px;margin-bottom:4px}.last{color:var(--mut);font-size:11px;margin-bottom:6px;overflow-wrap:anywhere;word-break:break-word}
+.st.ok{color:var(--ok)}.st.warn{color:var(--warn)}.st.bad{color:var(--bad)}
+.age.ok{color:var(--ok)}.age.warn{color:var(--warn)}.age.bad{color:var(--bad)}
+.out{flex:1;min-height:0;overflow:auto;background:#0b0f14;border:1px solid var(--bd);border-radius:6px;padding:6px;white-space:pre-wrap;word-break:break-word;font-size:11px;color:#adbac7}
+</style></head><body>
+<header>
+  <b>FirstCrew monitor</b>
+  <span class=mut id=ts></span>
+  <span class=mut>read-only · 5s</span>
+  <span class=mut id=lcount></span>
+  <span class=mut id=fresh></span>
+  <span class=legend id=legend></span>
+</header>
+<div class=main>
+  <div class=grid id=grid></div>
+  <aside class=tasks><div class=th>할당된 업무 <span class=mut id=tcount></span></div><div id=tlist></div></aside>
+</div>
+<script>
+function esc(s){return (s||"").replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+function chip(s){let c="chip";if(/working|done/.test(s))c+=" ok";if(/parked|paused|needs-decision/.test(s))c+=" warn";if(/blocked|failed|unknown|stall/.test(s))c+=" bad";return c}
+function ageClass(a){if(a<0)return"";if(a>=1200)return"bad";if(a>=300)return"warn";return"ok"}
+function lvClass(l){return l==='live'?'ok':(l==='dead'?'bad':'warn')}
+function lvLabel(l){return l==='live'?'LIVE':(l==='dead'?'GONE':'UNKNOWN')}
+let lastLegend="";
+function freshness(r){const s=r.headers.get('X-Snap-Status')||'?';const a=r.headers.get('X-Snap-Age');
+ const e=r.headers.get('X-Snap-Error');let t='snapshot '+s;
+ if(a!==null&&a!==undefined&&Number(a)>=0)t+=' · age '+Number(a).toFixed(1)+'s';
+ if(r.headers.get('X-Snap-Refreshing')==='true')t+=' · refreshing';
+ if(e)t+=' · '+e;return t}
+async function tick(){try{const r=await fetch('/data',{cache:'no-store'});const d=await r.json();
+document.getElementById('ts').textContent=new Date().toLocaleTimeString();
+document.getElementById('fresh').textContent=freshness(r);
+const n={live:0,dead:0,unknown:0};d.forEach(c=>{n[c.liveness]=(n[c.liveness]||0)+1});
+document.getElementById('lcount').textContent='live '+n.live+' · gone '+n.dead+' · unknown '+n.unknown;
+const g=document.getElementById('grid');
+g.innerHTML=d.map(c=>`<div class="panel ${c.liveness==='dead'?'gone':''}" style="--lane:${esc(c.color)};--hcolor:${esc(c.hcolor||'#8b949e')}">
+ <div class=hd>
+   <span class=ttl>${esc(c.title||c.id)}<span class=sep> - </span><span class=sid>${esc(c.id)}</span></span>
+   <span class=badge>${esc(c.hlabel||c.harness||'?')}</span>
+   <span class="chip ${lvClass(c.liveness)}" title="${esc(c.liveness_reason||'')}">${lvLabel(c.liveness)}</span>
+   <span class="${c.stalled?'chip bad':chip(c.state)}">${c.stalled?'STALLED':esc((c.state.split('·')[0]||'').replace('state:','').trim()||'?')}</span>
+ </div>
+ <div class=meta><span class=mod>${esc(c.model||'?')}</span> · ${esc(c.harness||'?')} · ${esc(c.window||'')} · status <span class="age ${ageClass(c.age)}">${c.age<0?'?':c.age+'s'}</span> · 진척 commit ${esc(c.commit_short||'?')} <span class="age ${ageClass(c.commit_age)}">${c.commit_age<0?'?':c.commit_age+'s'}</span>${(c.commit_age>=1200&&!/done/.test(c.state))?' <span class="chip bad">진척없음</span>':''}</div>
+ <div class="st ${chip(c.state).replace('chip','').trim()}">${esc(c.state)}</div>
+ <div class=last>${esc(c.last)}</div>
+ <div class=out>${esc(c.output)}</div>
+</div>`).join('') || '<div class=panel><div class=hd><span class=id>no crews</span></div></div>';
+const lg=[...new Map(d.map(c=>[c.hlabel||c.harness,[c.hlabel||c.harness,c.hcolor||'#8b949e']])).values()]
+  .map(([l,co])=>`<span class=badge style="--hcolor:${esc(co)}">${esc(l)}</span>`).join('');
+if(lg!==lastLegend){document.getElementById('legend').innerHTML=lg;lastLegend=lg;}
+}catch(e){document.getElementById('ts').textContent='fetch error';}}
+async function tickTasks(){try{const r=await fetch('/tasks',{cache:'no-store'});const d=await r.json();
+document.getElementById('tcount').textContent='('+d.length+')';
+const l=document.getElementById('tlist');
+l.innerHTML=d.map(t=>`<div class="tk ${t.live?'live':''}">
+ <div class=tkline><span class=tktitle>${esc(t.title||t.id)}</span>${t.live?'<span class=dot title="session alive">●</span>':''}</div>
+ <div class=tkmeta>${esc(t.section)} · ${esc(t.repo||'-')}${t.kind?' · '+esc(t.kind):''} · <span class=sid>${esc(t.id)}</span></div>
+</div>`).join('')||'<div class=mut>없음</div>';}catch(e){}}
+tick();setInterval(tick,5000);
+tickTasks();setInterval(tickTasks,5000);
+</script></body></html>

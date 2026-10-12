@@ -1,0 +1,17 @@
+== CI invariant: personal fleet paths must not be tracked ==
+tracked=0 (expect 0)
+== dashboard file tracked on bin/ surface ==
+bin/fm-crew-dashboard.py
+tests/fm-crew-dashboard.test.py
+tests/fm-crew-dashboard.test.sh
+== docs/scripts.md row ==
+25:| `fm-crew-dashboard.py`   | Serve the read-only localhost crew monitor: lanes with liveness (live / dead / unknown), open backlog tasks, and an explicitly labelled snapshot freshness per response |
+== .gitignore excludes state/ ==
+1:projects/
+2:state/
+3:data/
+14:config/
+== personal absolute paths in new files (expect none) ==
+(none)
+== executable bit ==
+100755 8f83b7fed2566e1072226d6a489fd713f6194f92 0	bin/fm-crew-dashboard.py

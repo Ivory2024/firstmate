@@ -1,0 +1,7 @@
+crewa-1                                        CODEX     codex-flagship                           state: unknown · source: pane · harness state unavailable (unknown codex-unverified)
+    task: Live crew door   age=373s   window=crewa:0
+(2 dead-or-gone, 1 unknown - recorded tasks with no live session)
+    dead    crewb-4                                        endpoint missing
+    dead    deadtask-2                                     endpoint missing
+    unknown unknowntask-3                                  harness state unavailable (unknown codex-unverified)
+snapshot fresh · age 0.0s

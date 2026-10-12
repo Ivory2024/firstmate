@@ -1,0 +1,10 @@
+== In flight (2) ==
+  [live] crewa-1                                        Live crew door
+            lab
+         deadtask-2                                     Gone crew door
+            lab · ship
+
+== Queued (1) ==
+         unknowntask-3                                  Idle record door
+            lab
+
