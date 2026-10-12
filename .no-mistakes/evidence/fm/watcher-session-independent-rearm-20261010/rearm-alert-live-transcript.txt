@@ -1,0 +1,12 @@
+$ check (cooldown=3600)
+S11: posts=1 high='1' rearm-failures='0' queue_unchanged=yes
+S11 newest real cycle record: arm_pid=23786	watcher_pid=23810	origin=started	started_at=1791816236	ended_at=1791816237	exit_code=0	signal=none	reason=actionable-check	beacon_age=0	lock_before=pid:23810|identity:Mon Oct 12 23:43:56 2026     bash /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4R8BY7YT4NV2NG4696DPYZK/bin/fm-watch.sh	lock_after=pid:none|identity:none	successor=none
+PASS: S11 HIGH alert ran first, real watcher delivered the wake, re-arm counted success, queue preserved
+$ check (cooldown=3600)
+S13 tick1 posts=1 (1 HIGH)
+$ check (cooldown=3600)
+S13 tick2 posts=1 watcher=28970 alive=yes
+$ check (cooldown=3600)
+S13 tick3 posts=2 recovered='1'
+PASS: S13 Recovered alert emitted after a live watcher returned
+DRIVER C PASSED

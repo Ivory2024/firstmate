@@ -1,0 +1,76 @@
+------------------------------------------------------------
+SCENARIO 1: observed outage reproduced (no session, no lock, stale beat)
+------------------------------------------------------------
+before: cycles=1 lock=no beat_age=2607s lab_watchers=0
+$ env FM_HOME=<lab> FM_WATCH_REARM_CONFIRM_TIMEOUT=25 /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4R8BY7YT4NV2NG4696DPYZK/bin/fm-watcher-liveness-alert.sh check
+  exit=0
+PASS: S1 outage re-arm - live real watcher pid=21167, fresh beacon (0s), lock present
+rearm-state=0	1791816130	0	0	0
+------------------------------------------------------------
+SCENARIO 2: continuously active session with no idle event still re-arms
+------------------------------------------------------------
+session pid=23364 alive=yes; idle/turn-end markers: 0
+$ env FM_HOME=<lab> FM_WATCH_REARM_CONFIRM_TIMEOUT=25 /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4R8BY7YT4NV2NG4696DPYZK/bin/fm-watcher-liveness-alert.sh check
+  exit=0
+PASS: S2 active-session re-arm - live real watcher pid=23726, fresh beacon (1s), lock present
+------------------------------------------------------------
+SCENARIO 3: away posture suppresses re-arm
+------------------------------------------------------------
+$ env FM_HOME=<lab> FM_WATCH_REARM_CONFIRM_TIMEOUT=8 /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4R8BY7YT4NV2NG4696DPYZK/bin/fm-watcher-liveness-alert.sh check
+  exit=0
+PASS: S3 .afk - no watcher was started
+------------------------------------------------------------
+SCENARIO 3b: away contract suppresses re-arm
+------------------------------------------------------------
+$ env FM_HOME=<lab> FM_WATCH_REARM_CONFIRM_TIMEOUT=8 /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4R8BY7YT4NV2NG4696DPYZK/bin/fm-watcher-liveness-alert.sh check
+  exit=0
+PASS: S3b .afk-contract - no watcher was started
+------------------------------------------------------------
+SCENARIO 4: maintenance HOLD suppresses re-arm
+------------------------------------------------------------
+$ env FM_HOME=<lab> FM_WATCH_REARM_CONFIRM_TIMEOUT=8 /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4R8BY7YT4NV2NG4696DPYZK/bin/fm-watcher-liveness-alert.sh check
+  exit=0
+PASS: S4 .watch-hold - no watcher was started
+------------------------------------------------------------
+SCENARIO 5: no supervision needed suppresses re-arm
+------------------------------------------------------------
+state has in-flight tasks: 0, wake-queue: empty
+$ env FM_HOME=<lab> FM_WATCH_REARM_CONFIRM_TIMEOUT=8 /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4R8BY7YT4NV2NG4696DPYZK/bin/fm-watcher-liveness-alert.sh check
+  exit=0
+PASS: S5 no supervision needed - no watcher was started
+------------------------------------------------------------
+SCENARIO 6: healthy watcher is never re-armed or disturbed
+------------------------------------------------------------
+$ env FM_HOME=<lab> FM_WATCH_REARM_CONFIRM_TIMEOUT=25 /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4R8BY7YT4NV2NG4696DPYZK/bin/fm-watcher-liveness-alert.sh check
+  exit=0
+PASS: S6 initial real watcher - live real watcher pid=28790, fresh beacon (1s), lock present
+$ env FM_HOME=<lab> FM_WATCH_REARM_CONFIRM_TIMEOUT=8 /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4R8BY7YT4NV2NG4696DPYZK/bin/fm-watcher-liveness-alert.sh check
+  exit=0
+PASS: S6 healthy watcher preserved (pid=28790 unchanged)
+------------------------------------------------------------
+SCENARIO 7: live non-identity-matched lock owner is never stolen
+------------------------------------------------------------
+$ env FM_HOME=<lab> FM_WATCH_REARM_CONFIRM_TIMEOUT=8 /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4R8BY7YT4NV2NG4696DPYZK/bin/fm-watcher-liveness-alert.sh check
+  exit=0
+PASS: S7 live lock owner 31363 preserved and never stolen
+------------------------------------------------------------
+SCENARIO 8: deliberate stop (arm-interrupted) is never re-armed
+------------------------------------------------------------
+$ env FM_HOME=<lab> FM_WATCH_REARM_CONFIRM_TIMEOUT=8 /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4R8BY7YT4NV2NG4696DPYZK/bin/fm-watcher-liveness-alert.sh check
+  exit=0
+PASS: S8 arm-interrupted - no watcher was started
+------------------------------------------------------------
+SCENARIO 9: two concurrent ticks start exactly one watcher
+------------------------------------------------------------
+PASS: S9 single-flight - live real watcher pid=32952, fresh beacon (0s), lock present
+------------------------------------------------------------
+SCENARIO 10: broken watcher lock makes the real arm fail; bounded backoff + one alert
+------------------------------------------------------------
+$ env FM_HOME=<lab> FM_WATCH_REARM_CONFIRM_TIMEOUT=3 FM_WATCH_REARM_BACKOFF_BASE=30 FM_WATCH_REARM_BACKOFF_MAX=30 FM_WATCH_REARM_ALERT_AFTER=1 FM_WATCHER_ALERT_COOLDOWN=3600 FM_TEST_DISCORD_POSTS=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.wpWMzY/posts.jsonl NODE_OPTIONS=--import=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.wpWMzY/fake-discord.mjs /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4R8BY7YT4NV2NG4696DPYZK/bin/fm-watcher-liveness-alert.sh check
+  exit=0
+$ env FM_HOME=<lab> FM_WATCH_REARM_CONFIRM_TIMEOUT=3 FM_WATCH_REARM_BACKOFF_BASE=30 FM_WATCH_REARM_BACKOFF_MAX=30 FM_WATCH_REARM_ALERT_AFTER=1 FM_WATCHER_ALERT_COOLDOWN=3600 FM_TEST_DISCORD_POSTS=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.wpWMzY/posts.jsonl NODE_OPTIONS=--import=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.wpWMzY/fake-discord.mjs /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4R8BY7YT4NV2NG4696DPYZK/bin/fm-watcher-liveness-alert.sh check
+  exit=0
+rearm-state=failures=1 next=1791816170 now=1791816145 posts=1
+PASS: S10 real arm failure recorded once, backoff scheduled, one alert posted
+------------------------------------------------------------
+ALL LIVE SCENARIOS PASSED

@@ -1,0 +1,12 @@
+Live supervision-needed channel proof — each channel alone drives a real re-arm
+via bin/fm-watcher-liveness-alert.sh check (real bin/fm-watch-arm.sh + bin/fm-watch.sh,
+throwaway marked lab homes, stale 2607s beacon, no lock, ended cycle record successor=none).
+
+PASS: registered procevent source - real watcher re-armed and live (pid=44783)
+registered: state/health.check.sh
+PASS: registered custom check (real fm-check-register.sh binding) - real watcher re-armed and live (pid=46800)
+PASS: in-flight task (task-b.meta) - real watcher re-armed and live (pid=54771)
+
+(A first hand-made health.check-trust fixture was rejected by the real watcher as
+"unauthenticated state checks" - fixture error, not a product failure; re-registering
+through the real bin/fm-check-register.sh fixed the binding and the channel re-armed.)
