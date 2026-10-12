@@ -42,6 +42,11 @@ NAMED_CLAUDE="$FAKEBIN/claude"
 # case reach it: FM_TEST_SESSION_ID and FM_TEST_CLAUDE_PID for Claude's pair,
 # FM_TEST_CODEX_ID for Codex's thread id, FM_TEST_TMUX_PANE and
 # FM_TEST_HERDR_PANE for the pane identities a shared server passes down.
+# FM_PROC_ROOT_OVERRIDE defaults to a path that does not exist so a hardcoded
+# fixture pid cannot collide with a real process: on Linux, reading the real
+# /proc/<pid>/stat would otherwise override the fake ps table and the process
+# identity would be judged against an unrelated live process. A case that wants
+# to exercise procfs sets the override to its own root explicitly.
 lib_eval() {  # <fakebin> <expression>
   local fakebin=$1 expr=$2
   local -a session_env=()
@@ -53,6 +58,7 @@ lib_eval() {  # <fakebin> <expression>
   env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_PID \
     -u CODEX_THREAD_ID -u CODEX_SESSION_ID \
     -u TMUX_PANE -u HERDR_ENV -u HERDR_PANE_ID \
+    FM_PROC_ROOT_OVERRIDE="${FM_PROC_ROOT_OVERRIDE:-$fakebin/no-proc}" \
     ${session_env[@]+"${session_env[@]}"} \
     PATH="$fakebin:$PATH" bash -c "
     . \"\$0\"
