@@ -1,0 +1,6 @@
+ok - a status fixture posts nothing unless its own home carries a credential
+ok - the shared test library scrubs every public-surface credential
+ok - the shared library replaces a hostile ambient home before notification code runs
+ok - routine blocked, failed, working, paused, and note lines never post
+ok - a captain-only decision and a verified completion still reach Discord
+hermeticity test EXIT=0

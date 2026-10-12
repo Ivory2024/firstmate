@@ -1,0 +1,17 @@
+=====================================================================
+Watcher case A: token + unusable channel -> failure IS logged (proves path)
+=====================================================================
+  PASS: the watcher logged the completion-bridge failure for a misconfigured home
+  triage log A: [2026-10-12T19:06:05+0900] Discord status notification failed for task|
+
+=====================================================================
+Watcher case B: no token -> silent opt-out, NO failure logged
+=====================================================================
+  PASS: the watcher logged no Discord failure for an unconfigured home
+  PASS: the watcher still surfaced the done: wake it always did
+  watcher out B: signal: /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-optin-watch.GRj380/disc-b/state/task.status|
+  triage log B: <absent, as expected for a silent opt-out>
+
+=====================================================================
+RESULT: 3 passed, 0 failed
+=====================================================================

@@ -1,0 +1,45 @@
+=====================================================================
+Scenario 1: unconfigured done: status is a silent success
+=====================================================================
+  PASS: completion bridge exits 0 with no token
+  PASS: completion bridge writes nothing to stderr
+  PASS: completion bridge records no delivery
+  rc=0 stderr=[]
+
+=====================================================================
+Scenario 2: token set but channel missing/malformed still fails closed
+=====================================================================
+  PASS: token without any channel exits 1
+  PASS: token-without-channel diagnostic
+  PASS: token without channel records no delivery
+  PASS: token with a malformed channel id exits 1
+  PASS: malformed-channel diagnostic
+  PASS: malformed channel records no delivery
+
+=====================================================================
+Scenario 3: decision-push behavior in fm-discord-notify.sh is unchanged
+=====================================================================
+  PASS: decision push without a token still exits 1
+  PASS: decision push missing-token diagnostic
+  PASS: --retry-pending unconfigured still exits 0
+  PASS: --retry-pending unconfigured is silent
+
+=====================================================================
+Scenario 4: a configured completion still posts exactly once
+=====================================================================
+  PASS: a configured completion exits 0
+  PASS: a configured completion posts exactly once
+  PASS: the posted completion body reaches the transport
+  PASS: re-reading the same completion exits 0
+  PASS: the same completion is not double-posted
+
+=====================================================================
+Scenario 5: the pre-fix bridge really did fail closed (regression proof)
+=====================================================================
+  PASS: the pre-fix bridge exits 1 with no token
+  PASS: the pre-fix bridge's stderr diagnostic
+  base stderr=[fm-discord-notify-status: missing Discord bot token; completion not sent]
+
+=====================================================================
+RESULT: 20 passed, 0 failed
+=====================================================================
