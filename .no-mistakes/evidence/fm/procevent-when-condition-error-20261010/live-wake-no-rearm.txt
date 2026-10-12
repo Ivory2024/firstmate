@@ -1,0 +1,17 @@
+=== first reconcile ===
+reconciled: published=0 started=1 stopped=0 uncertain=0 failed=0
+
+=== durable wake queue ===
+  (no .wake-queue)
+
+=== pe list after terminal ===
+  SOURCE                       ADAPTER      OWNER      PENDING
+  when-permwake                when         live       1
+
+=== second reconcile (must not re-arm/re-run) ===
+reconciled: published=1 started=0 stopped=0 uncertain=0 failed=0
+=== third reconcile ===
+reconciled: published=1 started=0 stopped=0 uncertain=0 failed=0
+action log: never ran
+result count: 1
+=== end ===

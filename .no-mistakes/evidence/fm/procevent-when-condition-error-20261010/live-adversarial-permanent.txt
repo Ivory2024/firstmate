@@ -1,0 +1,8 @@
+classify: condition-error
+status: condition-error
+detail: the condition reported a permanent failure (exit 2) on poll 1; the action was not run
+condition_polls: 1
+condition was polled 1 time(s) (a retry would exceed 1)
+action: never ran
+fired marker: absent
+=== end ===

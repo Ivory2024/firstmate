@@ -1,0 +1,8 @@
+home: /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//when-live-wake.SHtrOi
+=== pe list after terminal condition-error (no re-arm) ===
+  (see live-wake-no-rearm.txt: reconcile #2/#3 -> started=0, published=1)
+
+=== durable wake queue rows (kind | seq | payload) ===
+1791815502 | check | check: procevent when when-permwake 1
+1791815502 | check | check: procevent when when-permwake 1
+1791815502 | check | check: procevent when when-permwake 1

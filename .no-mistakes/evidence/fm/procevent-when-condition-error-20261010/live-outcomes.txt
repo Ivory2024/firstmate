@@ -1,0 +1,49 @@
+=== arm + reconcile ===
+reconciled: published=0 started=4 stopped=0 uncertain=0 failed=0
+
+=== waiting for terminal outcomes ===
+----- when-cleanfalse -----
+classify: never-true
+when: when-cleanfalse
+status: never-true
+detail: the condition never held for 1 consecutive polls within 3s of arming
+condition_polls: 3
+output:
+output-tail:
+
+----- when-permanent -----
+classify: condition-error
+when: when-permanent
+status: condition-error
+detail: the condition reported a permanent failure (exit 2) on poll 1; the action was not run
+condition_polls: 1
+output:
+output-tail:
+    worktree missing at /nonexistent
+
+----- when-transient -----
+classify: condition-error
+when: when-transient
+status: condition-error
+detail: the condition errored (exit 3) on 3 consecutive polls; the action was not run
+condition_polls: 3
+output:
+output-tail:
+    service unreachable
+
+----- when-recover -----
+classify: fired
+when: when-recover
+status: fired
+detail: the condition held and the action exited 0
+condition_polls: 3
+action_exit: 0
+output:
+output-tail:
+
+=== action side effects (exactly-once proof) ===
+cleanfalse: no invocation (action never ran)
+permanent: no invocation (action never ran)
+transient: no invocation (action never ran)
+recover: 1 invocation(s)
+=== end ===
