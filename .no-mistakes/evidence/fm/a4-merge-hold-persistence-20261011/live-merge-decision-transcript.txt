@@ -1,0 +1,274 @@
+=== G1 github hold run 1 ===
+--- state/task-x1.merge-decision ---
+fm-merge-decision-v1
+github
+github.com
+example/repo
+73
+4040404040404040404040404040404040404040
+HOLD
+
+
+1791799031
+--- stderr ---
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-turnend-guard.ts -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+verified: https://github.com/example/repo/pull/73 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 4040404040404040404040404040404040404040
+error: merge refused - evidence verification failed: {"status":"HOLD","head_sha":"4040404040404040404040404040404040404040","reasons":["independent-review-missing-or-stale"]}
+--- gh.log ---
+pr view https://github.com/example/repo/pull/73 --json headRefOid -q .headRefOid
+pr view https://github.com/example/repo/pull/73 --json state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName,statusCheckRollup
+api repos/example/repo/branches/main
+api --paginate repos/example/repo/rules/branches/main
+pr view https://github.com/example/repo/pull/73 --json author,headRefOid,baseRefName,changedFiles
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main
+api --paginate --slurp repos/example/repo/commits/4040404040404040404040404040404040404040/check-runs?per_page=100
+api --paginate --slurp repos/example/repo/commits/4040404040404040404040404040404040404040/statuses?per_page=100
+api --paginate --slurp repos/example/repo/pulls/73/reviews
+api user --jq .login
+--- glab.log ---
+
+=== G1 github hold run 2 (restart) ===
+--- state/task-x1.merge-decision ---
+fm-merge-decision-v1
+github
+github.com
+example/repo
+73
+4040404040404040404040404040404040404040
+HOLD
+
+
+1791799033
+--- stderr ---
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+verified: https://github.com/example/repo/pull/73 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 4040404040404040404040404040404040404040
+error: merge refused - evidence verification failed: {"status":"HOLD","head_sha":"4040404040404040404040404040404040404040","reasons":["independent-review-missing-or-stale"]}
+--- gh.log ---
+pr view https://github.com/example/repo/pull/73 --json headRefOid -q .headRefOid
+pr view https://github.com/example/repo/pull/73 --json state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName,statusCheckRollup
+api repos/example/repo/branches/main
+api --paginate repos/example/repo/rules/branches/main
+pr view https://github.com/example/repo/pull/73 --json author,headRefOid,baseRefName,changedFiles
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main
+api --paginate --slurp repos/example/repo/commits/4040404040404040404040404040404040404040/check-runs?per_page=100
+api --paginate --slurp repos/example/repo/commits/4040404040404040404040404040404040404040/statuses?per_page=100
+api --paginate --slurp repos/example/repo/pulls/73/reviews
+api user --jq .login
+pr view https://github.com/example/repo/pull/73 --json headRefOid -q .headRefOid
+pr view https://github.com/example/repo/pull/73 --json state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName,statusCheckRollup
+api repos/example/repo/branches/main
+api --paginate repos/example/repo/rules/branches/main
+pr view https://github.com/example/repo/pull/73 --json author,headRefOid,baseRefName,changedFiles
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main
+api --paginate --slurp repos/example/repo/commits/4040404040404040404040404040404040404040/check-runs?per_page=100
+api --paginate --slurp repos/example/repo/commits/4040404040404040404040404040404040404040/statuses?per_page=100
+api --paginate --slurp repos/example/repo/pulls/73/reviews
+api user --jq .login
+--- glab.log ---
+
+=== G2 gitlab hold run 1 ===
+--- state/task-x1.merge-decision ---
+fm-merge-decision-v1
+gitlab
+gitlab.example
+group/subgroup/project
+7
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+HOLD
+
+
+1791799035
+--- stderr ---
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-turnend-guard.ts -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+verified: https://gitlab.example/group/subgroup/project/-/merge_requests/7 is open and mergeable, with a successful pipeline at head aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+error: merge refused - evidence verification failed: {"status":"HOLD","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","reasons":["independent-review-missing-or-stale"]}
+--- gh.log ---
+--- glab.log ---
+GITLAB_HOST=gitlab.example mr view 7 -R https://gitlab.example/group/subgroup/project -F json
+GITLAB_HOST=gitlab.example mr view 7 -R https://gitlab.example/group/subgroup/project -F json
+api projects/group%2Fsubgroup%2Fproject/protected_branches
+api --paginate projects/group%2Fsubgroup%2Fproject/pipelines/5/jobs?per_page=100
+api projects/group%2Fsubgroup%2Fproject/merge_requests/7/approvals
+api projects/group%2Fsubgroup%2Fproject
+
+=== G2 gitlab hold run 2 (restart) ===
+--- state/task-x1.merge-decision ---
+fm-merge-decision-v1
+gitlab
+gitlab.example
+group/subgroup/project
+7
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+HOLD
+
+
+1791799037
+--- stderr ---
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+verified: https://gitlab.example/group/subgroup/project/-/merge_requests/7 is open and mergeable, with a successful pipeline at head aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+error: merge refused - evidence verification failed: {"status":"HOLD","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","reasons":["independent-review-missing-or-stale"]}
+--- gh.log ---
+--- glab.log ---
+GITLAB_HOST=gitlab.example mr view 7 -R https://gitlab.example/group/subgroup/project -F json
+GITLAB_HOST=gitlab.example mr view 7 -R https://gitlab.example/group/subgroup/project -F json
+api projects/group%2Fsubgroup%2Fproject/protected_branches
+api --paginate projects/group%2Fsubgroup%2Fproject/pipelines/5/jobs?per_page=100
+api projects/group%2Fsubgroup%2Fproject/merge_requests/7/approvals
+api projects/group%2Fsubgroup%2Fproject
+GITLAB_HOST=gitlab.example mr view 7 -R https://gitlab.example/group/subgroup/project -F json
+GITLAB_HOST=gitlab.example mr view 7 -R https://gitlab.example/group/subgroup/project -F json
+api projects/group%2Fsubgroup%2Fproject/protected_branches
+api --paginate projects/group%2Fsubgroup%2Fproject/pipelines/5/jobs?per_page=100
+api projects/group%2Fsubgroup%2Fproject/merge_requests/7/approvals
+api projects/group%2Fsubgroup%2Fproject
+
+=== G3 ttl hostile (FM_MERGE_DECISION_TTL=1) ===
+--- state/task-x1.merge-decision ---
+fm-merge-decision-v1
+github
+github.com
+example/repo
+73
+4545454545454545454545454545454545454545
+HOLD
+
+
+1791799042
+--- stderr ---
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-turnend-guard.ts -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+verified: https://github.com/example/repo/pull/73 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 4545454545454545454545454545454545454545
+error: merge refused - evidence verification failed: {"status":"HOLD","head_sha":"4545454545454545454545454545454545454545","reasons":["independent-review-missing-or-stale"]}
+--- gh.log ---
+pr view https://github.com/example/repo/pull/73 --json headRefOid -q .headRefOid
+pr view https://github.com/example/repo/pull/73 --json state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName,statusCheckRollup
+api repos/example/repo/branches/main
+api --paginate repos/example/repo/rules/branches/main
+pr view https://github.com/example/repo/pull/73 --json author,headRefOid,baseRefName,changedFiles
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main
+api --paginate --slurp repos/example/repo/commits/4545454545454545454545454545454545454545/check-runs?per_page=100
+api --paginate --slurp repos/example/repo/commits/4545454545454545454545454545454545454545/statuses?per_page=100
+api --paginate --slurp repos/example/repo/pulls/73/reviews
+api user --jq .login
+--- glab.log ---
+
+=== G4 unrecordable destination ===
+--- state/task-x1.merge-decision ---
+(absent)
+--- stderr ---
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-turnend-guard.ts -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+verified: https://github.com/example/repo/pull/73 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 4141414141414141414141414141414141414141
+error: merge refused - the PASS decision for https://github.com/example/repo/pull/73 could not be recorded durably
+--- gh.log ---
+pr view https://github.com/example/repo/pull/73 --json headRefOid -q .headRefOid
+pr view https://github.com/example/repo/pull/73 --json state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName,statusCheckRollup
+api repos/example/repo/branches/main
+api --paginate repos/example/repo/rules/branches/main
+pr view https://github.com/example/repo/pull/73 --json author,headRefOid,baseRefName,changedFiles
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main
+api --paginate --slurp repos/example/repo/commits/4141414141414141414141414141414141414141/check-runs?per_page=100
+api --paginate --slurp repos/example/repo/commits/4141414141414141414141414141414141414141/statuses?per_page=100
+api --paginate --slurp repos/example/repo/pulls/73/reviews
+api user --jq .login
+api --paginate --slurp repos/example/repo/pulls/73/files?per_page=100
+--- glab.log ---
+
+=== G5 github PASS (risk=LOW scope=ba98a4f5a61e7c913ef1fb182e4179baf4e15294f676fa8b1500fd03e8aca759) ===
+--- state/task-x1.merge-decision ---
+fm-merge-decision-v1
+github
+github.com
+example/repo
+73
+4646464646464646464646464646464646464646
+PASS
+LOW
+ba98a4f5a61e7c913ef1fb182e4179baf4e15294f676fa8b1500fd03e8aca759
+1791799047
+--- stderr ---
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-turnend-guard.ts -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+verified: https://github.com/example/repo/pull/73 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 4646464646464646464646464646464646464646
+--- gh.log ---
+pr view https://github.com/example/repo/pull/73 --json headRefOid -q .headRefOid
+pr view https://github.com/example/repo/pull/73 --json state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName,statusCheckRollup
+api repos/example/repo/branches/main
+api --paginate repos/example/repo/rules/branches/main
+pr view https://github.com/example/repo/pull/73 --json author,headRefOid,baseRefName,changedFiles
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main
+api --paginate --slurp repos/example/repo/commits/4646464646464646464646464646464646464646/check-runs?per_page=100
+api --paginate --slurp repos/example/repo/commits/4646464646464646464646464646464646464646/statuses?per_page=100
+api --paginate --slurp repos/example/repo/pulls/73/reviews
+api user --jq .login
+api --paginate --slurp repos/example/repo/pulls/73/files?per_page=100
+pr merge 73 --repo example/repo --match-head-commit 4646464646464646464646464646464646464646 --squash
+api graphql -f query=query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){state merged isInMergeQueue baseRefName}}} -F owner=example -F repo=repo -F number=73 --jq .data.repository.pullRequest | "state=" + (.state // ""), "merged=" + (.merged | tostring), "queued=" + (.isInMergeQueue | tostring), "base=" + (.baseRefName // "")
+--- glab.log ---
+
+=== G6 gitlab PASS ===
+--- state/task-x1.merge-decision ---
+fm-merge-decision-v1
+gitlab
+gitlab.example
+group/subgroup/project
+7
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+PASS
+LOW
+ba98a4f5a61e7c913ef1fb182e4179baf4e15294f676fa8b1500fd03e8aca759
+1791799050
+--- stderr ---
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-turnend-guard.ts -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+verified: https://gitlab.example/group/subgroup/project/-/merge_requests/7 is open and mergeable, with a successful pipeline at head aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+--- gh.log ---
+--- glab.log ---
+GITLAB_HOST=gitlab.example mr view 7 -R https://gitlab.example/group/subgroup/project -F json
+GITLAB_HOST=gitlab.example mr view 7 -R https://gitlab.example/group/subgroup/project -F json
+api projects/group%2Fsubgroup%2Fproject/protected_branches
+api --paginate projects/group%2Fsubgroup%2Fproject/pipelines/5/jobs?per_page=100
+api projects/group%2Fsubgroup%2Fproject/merge_requests/7/approvals
+api projects/group%2Fsubgroup%2Fproject
+api projects/group%2Fsubgroup%2Fproject/merge_requests/7/changes
+GITLAB_HOST=gitlab.example mr merge 7 -R https://gitlab.example/group/subgroup/project --sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --yes
+GITLAB_HOST=gitlab.example mr view 7 -R https://gitlab.example/group/subgroup/project -F json
+

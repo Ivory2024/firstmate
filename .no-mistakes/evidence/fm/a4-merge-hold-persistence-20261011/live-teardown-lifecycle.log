@@ -1,0 +1,5 @@
+LIVE-PASS: teardown-removes: a successful teardown removes the durable merge-decision record with the task state
+LIVE-PASS: teardown-unsafe-mode: a 0644 merge-decision record makes teardown refuse and preserve task state
+LIVE-PASS: teardown-symlink: a symlinked merge-decision path makes teardown refuse and preserve task state
+
+LIVE SUMMARY: pass=3 fail=0

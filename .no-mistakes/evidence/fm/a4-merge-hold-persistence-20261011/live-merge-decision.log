@@ -1,0 +1,10 @@
+LIVE-PASS: github-hold: real fm-pr-merge recorded HOLD (mode 0600, bound to head/PR) and refused without calling gh pr merge
+LIVE-PASS: github-hold: a HOLD recorded before a restart still refuses after it, with no forge merge
+LIVE-PASS: gitlab-hold: real fm-pr-merge recorded a GitLab HOLD durably and refused without calling glab mr merge
+LIVE-PASS: gitlab-hold: a GitLab HOLD recorded before a restart still refuses after it, with no forge merge
+LIVE-PASS: ttl-hostile: a caller-exported FM_MERGE_DECISION_TTL never changes the record's 3600s lifetime
+LIVE-PASS: unrecordable: a merge whose decision cannot be published refuses fail-closed and never calls the forge
+LIVE-PASS: github-pass: a PASS is recorded with its risk and change-set digest and the forge merge runs on it
+LIVE-PASS: gitlab-pass: a genuine GitLab PASS is recorded and reaches the glab merge
+
+LIVE SUMMARY: pass=8 fail=0

@@ -1,0 +1,27 @@
+== tests/fm-merge-decision.test.sh (real bin/fm-merge-decision-lib.sh) ==
+ok - a decision is recorded durably and read back bound to its identity
+ok - a HOLD recorded before a restart is still enforced after it
+ok - a decision recorded at one head SHA is refused at another
+ok - a decision recorded for one pull request is refused for another
+ok - a lapsed decision is refused and a current one is not
+ok - a missing record is reported as absent
+ok - a tampered record is refused
+ok - a record with unsafe permissions is refused
+ok - persistence refuses an identity that disagrees with the task metadata
+ok - persistence refuses a head that contradicts the recorded pr_head
+ok - persistence accepts a head that agrees with the recorded pr_head
+ok - persistence refuses an unknown decision word
+
+== tests/fm-pr-merge.test.sh: durable-decision cases ==
+ok - a recorded HOLD is persisted and still refuses after a restart
+ok - a merge refuses when its decision cannot be recorded durably
+ok - a recorded GitLab HOLD is persisted and still refuses after a restart
+totals: ok=114 not-ok=0
+
+== tests/fm-merge-policy.test.sh: fork-only #133 findings read ==
+ok - verified producer accepts matching forge evidence
+ok - verified producer holds missing test evidence
+ok - producer holds a status that never states its findings
+ok - producer rejects caller evidence flags
+ok - GitLab producer accepts matching forge evidence
+totals: ok=60 not-ok=0

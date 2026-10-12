@@ -1,0 +1,10 @@
+Durable merge-decision reader refusal causes (real bin/fm-merge-decision-lib.sh)
+valid identity + head          -> ACCEPT decision=PASS
+mismatched head SHA            -> REFUSE reason=head-mismatch
+mismatched PR number           -> REFUSE reason=identity-mismatch
+lapsed (at expiry)             -> REFUSE reason=expired
+current (1s before expiry)     -> ACCEPT decision=PASS
+absent record                  -> REFUSE reason=absent
+malformed (extra field)        -> REFUSE reason=malformed
+unreadable (mode 0644)         -> REFUSE reason=unreadable
+recorded HOLD read back        -> ACCEPT decision=HOLD

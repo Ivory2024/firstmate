@@ -1,0 +1,42 @@
+=== T1 teardown removes decision record (rc=0) ===
+--- state listing ---
+total 8
+--- stderr ---
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 0s ago).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-turnend-guard.ts -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+=== T2 teardown refuses unsafe mode (rc=1) ===
+--- state listing ---
+total 24
+-rw-r--r--@  1 irene  staff  124 Oct 12 17:57 task-x1.merge-decision
+-rw-r--r--@  1 irene  staff  356 Oct 12 17:57 task-x1.meta
+--- stderr ---
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 1s ago).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-turnend-guard.ts -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REFUSED: unsafe task PR-check artifact; preserving task state.
+
+=== T3 teardown refuses symlinked record (rc=1) ===
+--- state listing ---
+total 16
+lrwxr-xr-x@  1 irene  staff  113 Oct 12 17:57 task-x1.merge-decision -> /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-teardown-tests.hm9yyC/live-teardown-symlink/elsewhere
+-rw-r--r--@  1 irene  staff  348 Oct 12 17:57 task-x1.meta
+--- stderr ---
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 1s ago).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-turnend-guard.ts -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QKQEA9B3EY6SCRBE31PEB4/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REFUSED: unsafe task PR-check artifact; preserving task state.
+
