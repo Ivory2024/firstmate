@@ -1,0 +1,9 @@
+### base (49e018b): completion bridge, NO token
+stderr/stdout: ''
+exit: 0
+completion record created? -> 0
+
+### base (49e018b): completion bridge, UNUSABLE channel
+stderr/stdout: ''
+exit: 0
+completion record created? -> 0

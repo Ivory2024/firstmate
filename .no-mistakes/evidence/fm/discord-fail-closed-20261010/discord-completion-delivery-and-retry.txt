@@ -1,0 +1,44 @@
+================ TARGET (worktree 6958b3d) completion delivery ================
+--- F1: done status, channel configured, but the Discord POST fails ---
+### target: completion delivery fails
+$ env FM_CREW_STATE_BIN=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/fake-crew-state.sh /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QHTEQENXMB6BB5GCWQQ0EJ/bin/fm-discord-notify-status.sh task-a done: wired up the new endpoint
+stderr: fm-discord-notify: Discord API returned HTTP 500
+exit: 1
+
+completion record state: failed   POSTs: 1
+--- F2: re-read the SAME done status while delivery is still failed ---
+### target: re-read failed completion
+$ env FM_CREW_STATE_BIN=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/fake-crew-state.sh /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QHTEQENXMB6BB5GCWQQ0EJ/bin/fm-discord-notify-status.sh task-a done: wired up the new endpoint
+stderr: fm-discord-notify: existing completion notification is not sent (state=failed)
+exit: 1
+
+completion record state: failed   POSTs: 1
+
+================ BEFORE (base 49e018b) same re-read ================
+### base: first completion delivery fails
+$ env FM_CREW_STATE_BIN=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/fake-crew-state.sh /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/base/bin/fm-discord-notify-status.sh task-a done: wired up the new endpoint
+stderr: fm-discord-notify: Discord API returned HTTP 500
+exit: 1
+
+base completion record state: failed   POSTs: 1
+### base: re-read failed completion
+$ env FM_CREW_STATE_BIN=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/fake-crew-state.sh /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/base/bin/fm-discord-notify-status.sh task-a done: wired up the new endpoint
+stdout: 7795680af39be64d34bea1c96
+exit: 0
+
+base completion record state: failed   POSTs: 1
+
+================ TARGET redelivery and dedup ================
+--- F3: configured --retry-pending sweep redelivers the failed completion ---
+### target: retry sweep redelivers
+$ env FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QHTEQENXMB6BB5GCWQQ0EJ/bin/fm-discord-notify.sh --retry-pending
+exit: 0
+
+completion record state: sent   POSTs: 2
+--- F4: re-read the SENT completion (dedup must still hold) ---
+### target: re-read sent completion
+$ env FM_CREW_STATE_BIN=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/fake-crew-state.sh /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QHTEQENXMB6BB5GCWQQ0EJ/bin/fm-discord-notify-status.sh task-a done: wired up the new endpoint
+stdout: 1352000000000000999
+exit: 0
+
+completion record state: sent   POSTs: 2

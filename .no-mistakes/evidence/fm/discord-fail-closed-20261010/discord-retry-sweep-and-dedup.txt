@@ -1,0 +1,13 @@
+--- G1: real decision push succeeds once ---
+stdout: captain-hold-task-d-1  exit: 0  POSTs: 1
+--- G2: same decision re-pushed (delivery now failing) must not double-post and must not report a new send ---
+stdout: captain-hold-task-d-1  exit: 0  POSTs: 1
+
+--- I1: watcher poll line with unconfigured Discord must not log a triage failure ---
+watcher would log: '<nothing>'
+
+--- I2: mid-commit watcher poll line (pre review-1 fix) for contrast ---
+watcher would log: 'TRIAGE_LOG: Discord decision notification retry failed'
+
+--- J: on-demand --report without a token still fails closed with the report-specific gap ---
+stderr: fm-discord-notify: missing Discord bot token for report  exit: 1

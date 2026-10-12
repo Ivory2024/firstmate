@@ -1,0 +1,47 @@
+================ TARGET (worktree 6958b3d) ================
+
+--- Scenario A: real decision push with NO bot token ---
+### target: decision push, no token
+$ env FM_HOME=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/home/a FM_DISCORD_BOT_TOKEN= /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QHTEQENXMB6BB5GCWQQ0EJ/bin/fm-discord-notify.sh captain-hold task-a captain-hold-task-a-1 Needs a decision Continue|Pause Pause
+stderr: fm-discord-notify: missing Discord bot token
+exit: 1
+
+notification record created? -> 0
+--- Scenario B: real decision push with token but NO channel ---
+### target: decision push, no channel
+$ env FM_HOME=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/home/b FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID= /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QHTEQENXMB6BB5GCWQQ0EJ/bin/fm-discord-notify.sh captain-hold task-b captain-hold-task-b-1 Needs a decision Continue|Pause Pause
+stderr: fm-discord-notify: no Discord channel configured
+exit: 1
+
+--- Scenario C: completion bridge with NO bot token ---
+### target: completion bridge, no token
+$ env FM_HOME=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/home/c FM_STATE_OVERRIDE=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/home/c/state FM_CREW_STATE_BIN=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/fake-crew-state.sh FM_DISCORD_BOT_TOKEN= FM_DISCORD_CHANNEL_ID= /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QHTEQENXMB6BB5GCWQQ0EJ/bin/fm-discord-notify-status.sh task-a done: wired up the new endpoint
+stderr: fm-discord-notify-status: missing Discord bot token; completion not sent
+exit: 1
+
+completion record created? -> 0
+--- Scenario D: completion bridge with token but UNUSABLE channel ---
+### target: completion bridge, unusable channel
+$ env FM_HOME=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/home/d FM_STATE_OVERRIDE=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/home/d/state FM_CREW_STATE_BIN=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/fake-crew-state.sh FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=not-a-channel /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QHTEQENXMB6BB5GCWQQ0EJ/bin/fm-discord-notify-status.sh task-a done: wired up the new endpoint
+stderr: fm-discord-notify-status: invalid Discord channel id; completion not sent
+exit: 1
+
+completion record created? -> 0
+--- Scenario E: unconfigured --retry-pending sweep must be a silent no-op ---
+### target: --retry-pending, no token
+$ env FM_HOME=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/home/a FM_DISCORD_BOT_TOKEN= /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QHTEQENXMB6BB5GCWQQ0EJ/bin/fm-discord-notify.sh --retry-pending
+exit: 0
+
+================ BEFORE (base 49e018b) ================
+
+### base: decision push, no token
+$ env FM_HOME=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/home/base FM_DISCORD_BOT_TOKEN= /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/base/bin/fm-discord-notify.sh captain-hold task-a captain-hold-task-a-1 Needs a decision Continue|Pause Pause
+exit: 0
+
+================ INTERMEDIATE (cb09894, pre review-1 fix) ================
+
+### mid: --retry-pending, no token
+$ env FM_HOME=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/home/mid FM_DISCORD_BOT_TOKEN= /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-discord-lab.hodMbA/mid/bin/fm-discord-notify.sh --retry-pending
+stderr: fm-discord-notify: missing Discord bot token
+exit: 1
+
