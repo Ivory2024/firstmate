@@ -21,8 +21,8 @@
 # and an expiry, so the same decision cannot be replayed against a different
 # PR, a different head SHA, or after it has lapsed. Identity comes from the
 # merge run's immutable canonical URL parse and the record revalidates the
-# task's own pr= (and, when present, pr_head=) metadata under its lock before
-# publishing; a mismatch refuses rather than recording a decision for a PR the
+# task's own pr= (and, when present, pr_head=) metadata before publishing under
+# its lock; a mismatch refuses rather than recording a decision for a PR the
 # task is not bound to.
 #
 # The file is atomically published, mode 0600, single-link, and on the state
