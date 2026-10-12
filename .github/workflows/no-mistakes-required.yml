@@ -31,3 +31,8 @@ jobs:
         uses: kunchenguid/no-mistakes/.github/actions/require-no-mistakes@f6441c96c352a18b9cadcaef6b6c7017e9ac3970 # v1.80.1
         with:
           exempt-authors: kunchenguid
+          # Upstream sync merges carry commits already reviewed and CI-tested
+          # in kunchenguid/firstmate. Their conflict resolutions are reviewed
+          # separately (data/upstream-sync-*/plan.md), so the pipeline would
+          # only re-review ~80k lines of upstream code.
+          exempt-head-branches: 'sync/upstream-*'
