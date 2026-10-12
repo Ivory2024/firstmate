@@ -23,6 +23,7 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `fm-bearings-board.sh`   | Build and arm the stable interactive `/bearings lavish` fleet board                  |
 | `fm-bearings-metrics.mjs` | Collect read-only local telemetry (Claude quota, cache/tool-error transcript stats) for the bearings board |
 | `fm-crew-dashboard.py`   | Serve the read-only localhost crew monitor: lanes with liveness (live / dead / unknown), open backlog tasks, and an explicitly labelled snapshot freshness per response |
+| `fm-originals-index.py`  | Read-only index of every retro and stow original on this host: explicit allowlist plus bounded worktree discovery, realpath de-dup, provenance, duplicates, and the candidate-marker record contract (schema `fm-originals-index/v1`) |
 | `fm-secondmate-reconcile.sh` | Queue Bearings reconcile requests for later supervision delivery and ask each mismatched home through its durable inbox with a per-home cooldown |
 | `fm-update.sh`           | Guarded self-update of firstmate and local or remote secondmate homes, reconciling redundant divergence and classifying every live mate left on the target commit for restart or fallback nudge |
 | `fm-secondmate-restart.sh` | Persist open conversational work, then restart eligible second mates or report the fallback outcome |
