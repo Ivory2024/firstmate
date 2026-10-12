@@ -19,14 +19,15 @@ FM_CREW_STATE_BIN=${FM_CREW_STATE_BIN:-$SCRIPT_DIR/fm-crew-state.sh}
 # reusing fm-discord-notify.sh --report's send path. The event id binds the
 # message to the durable exactly-once outbox, so a replayed status line, a
 # concurrent sender, a failed POST, or a crash before the receipt still yields
-# exactly one Discord message. Silent no-op when Discord is not configured.
+# exactly one Discord message. Fails closed when Discord is not configured: the
+# caller propagates the failure and the durable outbox redelivers later.
 fm_discord_send_completion() {
   local task_id=$1 event_id=$2 message=$3 channel_id
   fm_discord_load_config
   # Fail closed: a missing token or channel, and an unusable channel id, must
-  # never report success. The caller propagates this status, and the durable
-  # outbox is what later redelivers, so a silent success would mark a completion
-  # delivered that Discord never received.
+  # never report success for this real send. The caller propagates this status,
+  # and the durable outbox is what later redelivers, so a silent success would
+  # mark a completion delivered that Discord never received.
   [ -n "${FM_DISCORD_TOKEN:-}" ] || {
     echo "fm-discord-notify-status: missing Discord bot token; completion not sent" >&2
     return 1

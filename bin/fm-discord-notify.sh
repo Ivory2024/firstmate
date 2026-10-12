@@ -49,10 +49,13 @@ if [ "$retry_pending" -eq 0 ] && [ "$report_mode" -eq 0 ]; then
   status_task_id=${7:-$task_id}
 fi
 fm_discord_load_config
-# Fail closed: a missing token or channel must never return success. The caller
-# records a delivery only on exit 0, so a silent success here would let an
-# unsent decision look delivered - and a real captain approval look obtained.
+# Fail closed: a missing token or channel must never return success for a real
+# send. The caller records a delivery only on exit 0, so a silent success here
+# would let an unsent decision look delivered - and a real captain approval look
+# obtained. --retry-pending is the one exception: it only redelivers what is
+# already queued, and no caller treats its exit 0 as proof of delivery.
 [ -n "${FM_DISCORD_TOKEN:-}" ] || {
+  [ "$retry_pending" -eq 1 ] && exit 0
   if [ "$report_mode" -eq 1 ]; then
     echo "fm-discord-notify: missing Discord bot token for report" >&2
   else

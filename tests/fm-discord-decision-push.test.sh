@@ -112,6 +112,16 @@ test_report_requires_token() {
   assert_equals "fm-discord-notify: missing Discord bot token for report" "$output" "missing report token diagnostic"
   pass "Discord report fails clearly without the self-hosted token"
 }
+test_retry_pending_without_configuration_is_a_silent_noop() {
+  local home out retry_out retry_rc
+  home="$TMP_ROOT/retry-unconfigured"
+  mkdir -p "$home"
+  out=$(FM_HOME="$home" FM_DISCORD_BOT_TOKEN='' \
+    "$ROOT/bin/fm-discord-notify.sh" --retry-pending 2>&1); retry_rc=$?
+  expect_code 0 "$retry_rc" "retry sweep without Discord configuration exits silently 0"
+  assert_equals "" "$out" "retry sweep without Discord configuration prints nothing"
+  pass "an unconfigured --retry-pending sweep is a silent no-op, not a failure"
+}
 test_report_helper_refuses_non_quiet_mode() {
   local home output rc
   home="$TMP_ROOT/report-mode-guard"
@@ -1048,6 +1058,7 @@ test_done_status_deduplicates_repeated_lines() {
 test_no_token_fails_closed
 test_quiet_report_posts_plain_snapshot
 test_report_requires_token
+test_retry_pending_without_configuration_is_a_silent_noop
 test_report_helper_refuses_non_quiet_mode
 test_report_helper_sends_bearings_snapshot
 test_notify_records_reply_binding
