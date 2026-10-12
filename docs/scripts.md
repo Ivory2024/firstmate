@@ -40,6 +40,8 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `fm-brief-heading-lib.sh` | Single owner of reading a brief's sections, shared by the `--intent` contract, spawn and promotion validation, and `fm-dispatch-resolve.sh` |
 | `fm-git-base-lib.sh` | Verify the expected repository and fork-main SHA, then pin the clean spawn worktree base |
 | `fm-publish-guard.sh` | Create task branches from a pinned base and refuse publication when ancestry, scope, size, or open-PR checks fail |
+| `fm-pr-target-guard.sh` | Refuse publication unless the pull-request target repository is owned by the authenticated forge user, and print the explicit `--repo` to use |
+| `fm-nm-gate-guard.sh` | Install, remove, inspect, or exercise the fail-closed pre-receive push boundary of one no-mistakes gate repository |
 | `fm-herdr-lab.sh`        | Provision and guardedly operate an isolated, never-default Herdr lab session         |
 | `fm-herdr-lab-viewer.py` | The pty engine behind `fm-herdr-lab.sh viewer`: one real foreground Herdr client on a non-zero window grid |
 | `fm-lab-home.sh`         | Mint disposable lab homes and manage their isolated tmux socket directories       |
