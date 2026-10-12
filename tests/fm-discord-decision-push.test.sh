@@ -780,10 +780,10 @@ test_pr_push_names_gitlab_project() {
   pass "PR-ready notifications name the project for an accepted GitLab merge-request URL too"
 }
 
-test_pr_ready_summary_names_the_task_title() {
-  # The captain reads which piece of work is waiting for him, so the review
-  # notification carries the backlog title beside the task id.
-  local home record backlog
+test_pr_ready_notification_names_the_task_title_once() {
+  # The captain reads which piece of work is waiting from the keyed
+  # notification header, so the summary must not repeat the title and id.
+  local home content backlog
   home="$TMP_ROOT/pr-trigger-title"
   mkdir -p "$home/state/x-context" "$home/data"
   chmod 700 "$home/state" "$home/state/x-context"
@@ -798,14 +798,16 @@ test_pr_ready_summary_names_the_task_title() {
     "$ROOT/bin/fm-discord-notify-status.sh" task-a \
     'needs-decision [key=pr-ready-task-a]: task=task-a yolo=off pull request ready: https://github.com/acme/app/pull/42 choose merge or leave open' >/dev/null \
     || fail "yolo-off PR status did not trigger a push"
-  record=$(find "$home/state/x-context" -name 'discord-notify-*.json' -print -quit)
-  assert_contains "$(jq -r '.summary' "$record")" "Ship the billing endpoint" \
-    "PR summary names the task title from the backlog"
-  assert_contains "$(jq -r '.summary' "$record")" "task-a" \
-    "PR summary names the task id beside its title"
-  assert_contains "$(jq -r '.summary' "$record")" "검토할 풀 리퀘스트가 준비되었습니다" \
-    "PR summary is written in Korean"
-  pass "a PR-ready notification names the task title and id in Korean"
+  content=$(jq -r '.payload.content' "$home/posts.jsonl")
+  assert_contains "$content" "Ship the billing endpoint" \
+    "PR notification names the task title from the backlog"
+  assert_contains "$content" "task-a" \
+    "PR notification names the task id beside its title"
+  assert_contains "$content" "검토할 풀 리퀘스트가 준비되었습니다" \
+    "PR notification body is written in Korean"
+  assert_equals "1" "$(printf '%s' "$content" | grep -o 'Ship the billing endpoint' | wc -l | tr -d ' ')" \
+    "PR notification names the task title exactly once"
+  pass "a PR-ready notification names the task title and id once in Korean"
 }
 
 test_done_status_sends_plain_report() {
@@ -882,6 +884,35 @@ test_done_report_names_the_task_title() {
   assert_contains "$body" "task-a" "done report names the task id"
   assert_contains "$body" "endpoint wired and tested" "done report states the outcome"
   pass "a done report is Korean and names the task title, the task id, and the outcome"
+}
+
+test_done_report_with_marker_in_title_delivers() {
+  # A backlog title that happens to contain the decision marker must not make a
+  # completion look like an unregistered decision ask: a completion always
+  # carries its durable event id, so it still delivers exactly once.
+  local home log body backlog
+  home="$TMP_ROOT/done-marker-title"
+  mkdir -p "$home/state" "$home/data"
+  chmod 700 "$home/state"
+  make_fake_node "$home"
+  [ -n "$TASKS_AXI_BIN" ] || fail "tasks-axi is required for the task-title regression"
+  backlog="$home/data/backlog.md"
+  "$TASKS_AXI_BIN" add task-a '결정 필요한 로그인 버그 수정' --file "$backlog" >/dev/null 2>&1 \
+    || fail "could not seed the backlog fixture"
+  log="$home/posts.jsonl"
+  FM_TEST_REAL_NODE=$(command -v node) FM_DISCORD_FAKE_POST_LOG="$log" \
+    PATH="$home/fake-bin:$BASE_PATH" FM_CREW_STATE_BIN="$home/fake-bin/fm-crew-state.sh" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
+    "$ROOT/bin/fm-discord-notify-status.sh" task-a \
+      'done: login bug fixed' >/dev/null \
+    || fail "a completed task whose title contains the decision marker was refused"
+  assert_equals "1" "$(wc -l < "$log" | tr -d '[:space:]')" \
+    "the completion whose title contains the decision marker delivers once"
+  body=$(jq -r '.payload.content' "$log")
+  assert_contains "$body" "결정 필요한 로그인 버그 수정" \
+    "the completion names the title that contains the marker"
+  assert_contains "$body" "login bug fixed" "the completion carries the outcome"
+  pass "a completed task whose title contains the decision marker still delivers once"
 }
 
 test_done_record_is_private_valid_json() {
@@ -1172,10 +1203,11 @@ test_ask_user_gate_alone_triggers_no_push
 test_ask_user_escalation_hold_carries_finding_text
 test_pr_push_requires_yolo_off
 test_pr_push_names_gitlab_project
-test_pr_ready_summary_names_the_task_title
+test_pr_ready_notification_names_the_task_title_once
 test_decision_notification_names_the_task_title
 test_done_status_sends_plain_report
 test_done_report_names_the_task_title
+test_done_report_with_marker_in_title_delivers
 test_done_record_is_private_valid_json
 test_done_status_lands_once_across_concurrent_senders
 test_done_status_recovers_from_a_crash_before_its_receipt

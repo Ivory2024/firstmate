@@ -233,7 +233,7 @@ async function main() {
     if (!token || !/^\d+$/.test(reportChannelId || "") || !reportMessage) {
       throw new Error("report requires a bot token, numeric channel id, and a non-empty message");
     }
-    if (refusesDecisionMarker(reportMessage)) {
+    if (!reportEventId && refusesDecisionMarker(reportMessage)) {
       throw new Error("a captain decision ask cannot be sent as a generic report; use the keyed decision notification path");
     }
     // An event id makes this a completion outcome, which gets the durable
