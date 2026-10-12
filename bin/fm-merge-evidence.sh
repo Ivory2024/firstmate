@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 # Read-only collector for the fixed Gate 0 forge and task-state evidence sources.
 # Usage: fm-merge-evidence.sh collect <task-id> <pr-url> <expected-head> [--waived-check <check-name>]
+#        fm-merge-evidence.sh branch-protection <pr-url> <expected-protection-scope>
+#
+# The base branch's protection and its applicable rulesets are read from the
+# forge, never taken from a caller flag, and a base branch with no protection at
+# all holds as its own named gap. The PASS verdict carries that evidence's
+# digest, so the merge boundary can re-read the same two sources immediately
+# before the forge command and refuse when protection was removed or weakened
+# after collection; `branch-protection` is that re-verification.
 #
 # --waived-check is the attended single-check waiver carried from
 # bin/fm-pr-merge.sh's own --allow-red as an argument bound to this one call, so
@@ -34,7 +42,18 @@ hold() {
     '{status:"HOLD",head_sha:$head,reasons:[$reason]}'
 }
 
+# The branch-protection re-verification's own verdict shape. It carries no head
+# SHA because it decides one question only - whether the protection evidence the
+# merge decision was made under is still the same evidence - so a caller cannot
+# read a head binding into it that it never proved.
+hold_protection() {
+  jq -cn --arg reason "$1" \
+    '{status:"HOLD",protection:false,protection_scope:"",reasons:[$reason]}'
+}
+
 valid_sha() { [[ ${1:-} =~ ^[0-9a-fA-F]{40}$ ]]; }
+
+valid_protection_scope() { [[ ${1:-} =~ ^[0-9a-f]{64}$ ]]; }
 
 # The task's own worktree, from its private metadata. The `axi status` read must
 # be bound to this directory, never to the caller's inherited cwd: a supervisor
@@ -137,8 +156,108 @@ gitlab_required_checks_ok() {
   return 0
 }
 
+# Read the base branch's protection and its applicable rulesets independently
+# from the forge. Sets GH_PROTECTION_JSON and GH_RULESETS_JSON and returns 0, or
+# returns 1 with GH_PROTECTION_HOLD naming the concrete cause.
+#
+# A branch protected only by a ruleset has no classic branch protection, so the
+# classic endpoint answers 404. That is an empty classic source rather than an
+# unreadable one: the applicable rulesets are what enforce its required checks.
+# Any other failure still holds, and a non-object payload is still incomplete.
+# stderr is captured to its own file rather than merged into the payload, so a
+# forge that writes anything to stderr cannot corrupt an otherwise valid read.
+read_github_branch_protection() {  # <owner> <repo> <base-encoded>
+  local owner=$1 repo=$2 base_encoded=$3 protection_err
+  GH_PROTECTION_JSON=
+  GH_RULESETS_JSON=
+  GH_PROTECTION_HOLD=
+  protection_err=$(mktemp "${TMPDIR:-/tmp}/fm-merge-evidence-protection.XXXXXX") || {
+    GH_PROTECTION_HOLD='branch-protection-unreadable'
+    return 1
+  }
+  if ! GH_PROTECTION_JSON=$(gh api "repos/$owner/$repo/branches/$base_encoded/protection" 2>"$protection_err"); then
+    if grep -q 'HTTP 404' "$protection_err"; then
+      GH_PROTECTION_JSON='{}'
+    else
+      rm -f "$protection_err"
+      GH_PROTECTION_HOLD='branch-protection-unreadable'
+      return 1
+    fi
+  fi
+  rm -f "$protection_err"
+  printf '%s' "$GH_PROTECTION_JSON" | jq -e 'type == "object"' >/dev/null 2>&1 || {
+    GH_PROTECTION_HOLD='branch-protection-incomplete'
+    return 1
+  }
+  local rulesets_json
+  rulesets_json=$(gh api --paginate --slurp "repos/$owner/$repo/rules/branches/$base_encoded" 2>/dev/null) || {
+    GH_PROTECTION_HOLD='rulesets-unreadable'
+    return 1
+  }
+  GH_RULESETS_JSON=$(printf '%s' "$rulesets_json" | jq -ce 'if type == "array" and all(.[]; type == "array" and all(.[]; type == "object")) then [.[][]] else error("invalid branch rules") end') || {
+    GH_PROTECTION_HOLD='rulesets-invalid'
+    return 1
+  }
+  printf '%s' "$GH_RULESETS_JSON" | jq -e 'all(.[]; .type != "required_status_checks" or (.parameters.required_status_checks | type == "array"))' >/dev/null 2>&1 || {
+    GH_PROTECTION_HOLD='rulesets-invalid'
+    return 1
+  }
+  return 0
+}
+
+# Whether the base branch carries any protection at all: a non-empty classic
+# protection object, or at least one applicable rule. Prints true or false.
+github_branch_protected() {  # <protection-json> <rulesets-json>
+  jq -rn --argjson protection "$1" --argjson rulesets "$2" \
+    '(($protection | type) == "object" and ($protection | length) > 0)
+     or (($rulesets | type) == "array" and ($rulesets | length) > 0)'
+}
+
+# A stable digest of the protection evidence a decision was made under. The
+# merge boundary re-reads the same two sources immediately before the forge
+# command and refuses when this digest has moved, so protection removed or
+# weakened after evidence collection cannot ride on the earlier verdict. The
+# rules array is sorted by its own serialization so a reordered response is not
+# mistaken for a changed requirement, while any content change is.
+github_protection_scope() {  # <protection-json> <rulesets-json>
+  jq -S -c -n --argjson protection "$1" --argjson rulesets "$2" \
+    '{protection:$protection, rulesets:($rulesets | sort_by(tojson))}' \
+    | shasum -a 256 | awk '{print $1}'
+}
+
+# Re-verify the base branch's protection immediately before a merge. The base
+# branch is read from the forge rather than taken from the caller, the protection
+# and ruleset sources are re-read, and the digest must still equal the one the
+# merge decision was recorded under. An unreadable source, a branch with no
+# protection left, and a changed digest each hold with their own reason.
+reverify_github_branch_protection() {  # <pr-url> <expected-protection-scope>
+  local pr_url=$1 expected=$2 pr_json base base_encoded protected scope
+  pr_json=$(gh pr view "$pr_url" --json baseRefName 2>/dev/null) || { hold_protection base-branch-unreadable; return 0; }
+  base=$(printf '%s' "$pr_json" | jq -er '.baseRefName | select(type == "string" and length > 0)' 2>/dev/null) || {
+    hold_protection base-branch-unreadable
+    return 0
+  }
+  base_encoded=$(jq -rn --arg value "$base" '$value | @uri') || { hold_protection base-encode-failed; return 0; }
+  read_github_branch_protection "$FM_PR_OWNER" "$FM_PR_REPO" "$base_encoded" || {
+    hold_protection "$GH_PROTECTION_HOLD"
+    return 0
+  }
+  protected=$(github_branch_protected "$GH_PROTECTION_JSON" "$GH_RULESETS_JSON") || {
+    hold_protection branch-protection-incomplete
+    return 0
+  }
+  [ "$protected" = true ] || { hold_protection branch-protection-missing; return 0; }
+  scope=$(github_protection_scope "$GH_PROTECTION_JSON" "$GH_RULESETS_JSON") || {
+    hold_protection branch-protection-incomplete
+    return 0
+  }
+  [ "$scope" = "$expected" ] || { hold_protection branch-protection-changed; return 0; }
+  jq -cn --arg scope "$scope" \
+    '{status:"PASS",protection:true,protection_scope:$scope,reasons:[]}'
+}
+
 collect_github() {
-  local task_id=$1 expected=$2 pr_json reviews protection rulesets rulesets_json check_runs statuses check_runs_json statuses_json captain
+  local task_id=$1 expected=$2 pr_json reviews protection rulesets check_runs statuses check_runs_json statuses_json captain
   local author base owner repo number review_ok=false findings run_status path
   local approval_ok=false scope paths risk changed_files files_json observed_files
   local -a changed_paths=()
@@ -155,33 +274,17 @@ collect_github() {
     || { hold forge-base-unreadable; return 0; }
   local base_encoded
   base_encoded=$(jq -rn --arg value "$base" '$value | @uri') || { hold base-encode-failed; return 0; }
-  # A branch protected only by a ruleset has no classic branch protection, so
-  # this endpoint answers 404. That is an empty classic source rather than an
-  # unreadable one: the applicable rulesets are what enforce its required checks.
-  # Any other failure still holds, and a non-object payload is still incomplete.
-  # stderr is captured to its own file rather than merged into the payload, so a
-  # forge that writes anything to stderr cannot corrupt an otherwise valid read.
-  local protection_err
-  protection_err=$(mktemp "${TMPDIR:-/tmp}/fm-merge-evidence-protection.XXXXXX") \
-    || { hold branch-protection-unreadable; return 0; }
-  if ! protection=$(gh api "repos/$owner/$repo/branches/$base_encoded/protection" 2>"$protection_err"); then
-    if grep -q 'HTTP 404' "$protection_err"; then
-      protection='{}'
-    else
-      rm -f "$protection_err"
-      hold branch-protection-unreadable
-      return 0
-    fi
-  fi
-  rm -f "$protection_err"
-  printf '%s' "$protection" | jq -e 'type == "object"' >/dev/null 2>&1 \
-    || { hold branch-protection-incomplete; return 0; }
-  rulesets_json=$(gh api --paginate --slurp "repos/$owner/$repo/rules/branches/$base_encoded" 2>/dev/null) \
-    || { hold rulesets-unreadable; return 0; }
-  rulesets=$(printf '%s' "$rulesets_json" | jq -ce 'if type == "array" and all(.[]; type == "array" and all(.[]; type == "object")) then [.[][]] else error("invalid branch rules") end') \
-    || { hold rulesets-invalid; return 0; }
-  printf '%s' "$rulesets" | jq -e 'all(.[]; .type != "required_status_checks" or (.parameters.required_status_checks | type == "array"))' >/dev/null 2>&1 \
-    || { hold rulesets-invalid; return 0; }
+  read_github_branch_protection "$owner" "$repo" "$base_encoded" || { hold "$GH_PROTECTION_HOLD"; return 0; }
+  protection=$GH_PROTECTION_JSON
+  rulesets=$GH_RULESETS_JSON
+  local protection_scope protected
+  protected=$(github_branch_protected "$protection" "$rulesets") || { hold branch-protection-incomplete; return 0; }
+  # A base branch with no protection at all is named as its own gap rather than
+  # folded into the unconfigured-required-check refusal, because the two mean
+  # different things to an operator: one has no gate, the other has a gate with
+  # nothing in it.
+  [ "$protected" = true ] || { hold branch-protection-missing; return 0; }
+  protection_scope=$(github_protection_scope "$protection" "$rulesets") || { hold branch-protection-incomplete; return 0; }
   check_runs_json=$(gh api --paginate --slurp "repos/$owner/$repo/commits/$LIVE_HEAD/check-runs?per_page=100" 2>/dev/null) \
     || { hold required-checks-unreadable; return 0; }
   check_runs=$(printf '%s' "$check_runs_json" | jq -ce '[.[] | .check_runs[]?]') \
@@ -252,7 +355,8 @@ collect_github() {
     [ "$approval_ok" = true ] || { hold high-risk-captain-approval-missing-or-stale; return 0; }
   fi
   jq -cn --arg head "$LIVE_HEAD" --arg risk "$risk" --arg scope "$scope" \
-    '{status:"PASS",head_sha:$head,risk:$risk,scope:$scope,reasons:[]}'
+    --arg protection_scope "$protection_scope" \
+    '{status:"PASS",head_sha:$head,risk:$risk,scope:$scope,protection:true,protection_scope:$protection_scope,reasons:[]}'
 }
 
 collect_gitlab() {
@@ -342,9 +446,30 @@ collect_gitlab() {
     '{status:"PASS",head_sha:$head,risk:$risk,scope:$scope,reasons:[]}'
 }
 
+FM_EVIDENCE_USAGE='usage: fm-merge-evidence.sh collect <task-id> <pr-url> <expected-head> [--waived-check <check-name>]
+usage: fm-merge-evidence.sh branch-protection <pr-url> <expected-protection-scope>'
+
+# Re-verify the base branch's protection immediately before a merge. This is a
+# distinct entry point from `collect` because it answers one question - has the
+# protection evidence moved since the decision was made - and reads only the two
+# sources that question needs, so a caller can re-check it cheaply at the merge
+# boundary itself rather than trusting the verdict it read earlier.
+if [ "${1:-}" = branch-protection ]; then
+  if [ "$#" -ne 3 ] || ! fm_pr_url_parse "$2" || ! valid_protection_scope "$3"; then
+    printf '%s\n' "$FM_EVIDENCE_USAGE" >&2
+    exit 2
+  fi
+  if [ "$FM_PR_PROVIDER" != github ]; then
+    echo 'error: branch-protection re-verification is implemented for GitHub only' >&2
+    exit 2
+  fi
+  reverify_github_branch_protection "$2" "$3"
+  exit 0
+fi
+
 if [ "$#" -ge 5 ]; then
   if [ "$#" -ne 6 ] || [ "$5" != "--waived-check" ] || [ -z "${6:-}" ]; then
-    echo 'usage: fm-merge-evidence.sh collect <task-id> <pr-url> <expected-head> [--waived-check <check-name>]' >&2
+    printf '%s\n' "$FM_EVIDENCE_USAGE" >&2
     exit 2
   fi
   WAIVED_CHECK=$6
@@ -352,7 +477,7 @@ else
   WAIVED_CHECK=''
 fi
 if [ "$#" -lt 4 ] || [ "$1" != collect ] || ! fm_pr_task_id_valid "$2" || ! fm_pr_url_parse "$3" || ! valid_sha "$4"; then
-  echo 'usage: fm-merge-evidence.sh collect <task-id> <pr-url> <expected-head> [--waived-check <check-name>]' >&2
+  printf '%s\n' "$FM_EVIDENCE_USAGE" >&2
   exit 2
 fi
 case "$FM_PR_PROVIDER" in

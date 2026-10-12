@@ -188,7 +188,50 @@ out=$(env "${evidence_env[@]}" FM_TEST_PROTECTION_MISSING=yes "$EVIDENCE" collec
 eq "ruleset-only branch holds a red ruleset check" "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
 printf '%s\n' '[[]]' > "$TMP/rulesets.json"
 
-# --- attended single-check waiver (--waived-check) ---
+# --- independent branch-protection verification ---
+# The base branch's protection and its applicable rulesets are read from the
+# forge, never taken from a caller flag, and the verdict carries that evidence's
+# digest so the merge boundary can re-read the same sources immediately before
+# the forge command and refuse when protection was removed or weakened after
+# collection.
+cat > "$TMP/check-runs.json" <<JSON
+[{"total_count":1,"check_runs":[{"id":1,"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"success","started_at":"2026-10-10T00:00:00Z","completed_at":"2026-10-10T00:00:30Z","check_suite":{"id":7},"app":{"id":17,"slug":"github-actions"},"output":{"title":"ok","summary":null,"text":null}}]}]
+JSON
+out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "collector marks the verified protection evidence" \
+  "$(printf '%s' "$out" | jq -r '.status + ":" + (.protection | tostring)')" "PASS:true"
+prot_scope=$(printf '%s' "$out" | jq -r .protection_scope)
+eq "collector records a protection evidence digest" \
+  "$(printf '%s' "$prot_scope" | grep -cE '^[0-9a-f]{64}$')" 1
+out=$(env "${evidence_env[@]}" "$EVIDENCE" branch-protection "$PR" "$prot_scope")
+eq "re-verification passes on unchanged protection" "$(printf '%s' "$out" | jq -r .status)" PASS
+eq "the protection digest is stable across reads" \
+  "$(printf '%s' "$out" | jq -r .protection_scope)" "$prot_scope"
+out=$(env "${evidence_env[@]}" "$EVIDENCE" branch-protection "$PR" "$(printf '%064d' 0)")
+eq "re-verification holds when protection changed after collection" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" branch-protection-changed
+out=$(env "${evidence_env[@]}" FM_TEST_FAIL_PROTECTION=yes "$EVIDENCE" branch-protection "$PR" "$prot_scope")
+eq "re-verification holds an unreadable protection read" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" branch-protection-unreadable
+out=$(env "${evidence_env[@]}" FM_TEST_FAIL_RULES=yes "$EVIDENCE" branch-protection "$PR" "$prot_scope")
+eq "re-verification holds an unreadable ruleset read" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" rulesets-unreadable
+# A base branch with no protection at all is named as its own gap rather than
+# folded into the unconfigured-required-check refusal, because one has no gate
+# and the other has a gate with nothing in it.
+printf '%s\n' '{}' > "$TMP/protection.json"
+out=$(env "${evidence_env[@]}" FM_TEST_PROTECTION_MISSING=yes "$EVIDENCE" branch-protection "$PR" "$prot_scope")
+eq "re-verification holds a branch with no protection" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" branch-protection-missing
+out=$(env "${evidence_env[@]}" FM_TEST_PROTECTION_MISSING=yes "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "collector names a branch with no protection" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" branch-protection-missing
+cat > "$TMP/protection.json" <<'JSON'
+{"required_status_checks":{"contexts":["ci"]},"required_pull_request_reviews":{}}
+JSON
+env "${evidence_env[@]}" "$EVIDENCE" branch-protection "$PR" nothex >/dev/null 2>&1
+eq "re-verification rejects a malformed scope" "$?" 2
+
 # The waiver arrives as an argument bound to one call, never from an environment
 # variable or a file. It removes exactly the named check from the enforced set:
 # every other configured check must still be green, and a repository that

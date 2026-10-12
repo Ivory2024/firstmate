@@ -99,6 +99,12 @@
 # recorded value stale. Reading that state needs glab and jq, and either one
 # absent stops the merge before any state is recorded.
 #
+# The merge-policy evidence gate reads the base branch's protection and its
+# applicable rulesets from the forge. Immediately before the GitHub merge those
+# same two sources are re-read and their evidence digest must still equal the
+# one the gate recorded, so a ruleset removed or weakened after evidence
+# collection refuses instead of riding on the earlier verdict.
+#
 # Before either forge merge, the task's existing per-task control lock
 # serializes the captain-hold check through the forge command. A still-held or
 # unreadable row refuses before that command, so a captain approval must be
@@ -1265,6 +1271,26 @@ require_recorded_pr_identity() {
   return 1
 }
 
+# Re-verify the base branch's protection immediately before the forge command.
+# The evidence gate read protection once, and a merge decision is only as good as
+# the protection it was made under: a ruleset weakened or removed between that
+# read and this call must refuse rather than ride on the earlier verdict. The
+# collector re-reads the forge itself and compares the protection evidence's
+# digest against the one the decision was recorded with, so a caller cannot
+# substitute either side.
+FM_PR_PROTECTION_SCOPE=
+reverify_branch_protection() {
+  local out
+  [ "$PROVIDER" = github ] || return 0
+  out=$("$EVIDENCE_SCRIPT" branch-protection "$URL" "$FM_PR_PROTECTION_SCOPE" 2>&1) || {
+    printf 'error: merge refused - branch protection could not be re-verified before merging: %s\n' "$out" >&2
+    return 1
+  }
+  printf '%s' "$out" | jq -e '.status == "PASS" and .protection == true' >/dev/null 2>&1 && return 0
+  printf 'error: merge refused - branch protection re-verification failed: %s\n' "$out" >&2
+  return 1
+}
+
 FM_PR_GITHUB_MERGE_ACCEPTED=false
 FM_PR_GITHUB_CALLER_METHOD=
 
@@ -1474,6 +1500,7 @@ case "$PROVIDER" in
       exit 1
     fi
     enforce_recorded_merge_decision || exit 1
+    FM_PR_PROTECTION_SCOPE=$(printf '%s' "$evidence_json" | jq -r '.protection_scope // ""' 2>/dev/null) || FM_PR_PROTECTION_SCOPE=''
     # The away record is locked first, so this last presence and authority read
     # and the forge command below share one live-owner critical section.
     hold_away_record_for_merge || exit 1
@@ -1481,6 +1508,10 @@ case "$PROVIDER" in
     require_current_away_authority || away_status=$?
     [ "$away_status" -eq 0 ] || exit "$away_status"
     refuse_github_queue_while_away || exit 2
+    # Protection is re-read here, after every other gate and immediately before
+    # the forge command, so a ruleset weakened or removed since evidence
+    # collection refuses instead of riding on the earlier verdict.
+    reverify_branch_protection || exit 1
     merge_status=0
     merge_output=$(gh pr merge "$PR_NUMBER" --repo "$PR_OWNER/$PR_REPO" \
       --match-head-commit "$FM_PR_MERGE_HEAD" \
