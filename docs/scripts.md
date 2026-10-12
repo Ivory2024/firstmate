@@ -163,7 +163,7 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `fm-lock.sh`             | Per-home firstmate session lock                                                      |
 | `fm-x-lib.sh`            | Shared Relay config, relay, and reply-threading helpers                              |
 | `fm-x-poll.sh`           | One bounded Relay poll: stash newly offered mentions, emit their once-only wake, and raise queued public-followup rejection wakes at least once |
-| `fm-discord-lib.sh`      | Shared self-hosted Discord configuration, channel selection, and the decision-ask marker every send path refuses |
+| `fm-discord-lib.sh`      | Shared self-hosted Discord configuration, channel selection, and the decision-ask marker unregistered sends refuse |
 | `fm-discord-notify.sh`   | Push a keyed captain decision or requested report to the configured self-hosted Discord channel and retry pending sends |
 | `fm-discord-report.sh`   | Send the bounded fleet snapshot to Discord when quiet mode is active and the captain asks for a report |
 | `fm-discord-notify-status.sh` | Map a yolo-off PR-ready or done status line to a Discord decision notification or plain report; blocked/failed status is not sent |

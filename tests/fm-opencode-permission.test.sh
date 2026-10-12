@@ -377,9 +377,9 @@ SH
   assert_contains "$summary" '/private/a' "the first resource is shown"
   assert_contains "$summary" '/private/b' "the last resource is shown too, not only the first"
   assert_contains "$summary" '/tmp/dir with space/x' "a resource containing a space is shown whole"
-  assert_contains "$summary" 'resources=["/private/a","/private/b","/tmp/dir with space/x"]' \
+  assert_contains "$summary" '대상=["/private/a","/private/b","/tmp/dir with space/x"]' \
     "the full resource list is shown with its element boundaries intact"
-  assert_contains "$summary" 'these paths: ["/private/a","/tmp/dir with space/x"]' \
+  assert_contains "$summary" '저장됩니다: ["/private/a","/tmp/dir with space/x"]' \
     "the complete remember scope is shown with its boundaries intact"
   case "$summary" in
     *$'\n'*) fail "the pushed summary must stay one line" ;;
@@ -553,10 +553,10 @@ SH
   assert_present "$calls" "the captain decision was pushed"
   summary=$(cat "$calls")
   assert_contains "$summary" "perm-ask $TASK perm-$REQUEST" "the push uses the perm-ask trigger and the perm- key"
-  assert_contains "$summary" "action=external_directory" "the question states the action"
-  assert_contains "$summary" 'resources=["/tmp/fake-probe/*"]' "the question states the complete resource list"
-  assert_contains "$summary" "would save" "the question states the proposed remember scope"
-  assert_contains "$summary" "Recommendation:" "the question states a recommendation"
+  assert_contains "$summary" "동작=external_directory" "the question states the action"
+  assert_contains "$summary" '대상=["/tmp/fake-probe/*"]' "the question states the complete resource list"
+  assert_contains "$summary" "저장됩니다" "the question states the proposed remember scope"
+  assert_contains "$summary" "권장:" "the question states a recommendation"
   assert_contains "$summary" "Approve once|Approve once and remember this|Reject the request" \
     "the question offers exactly the three installed-API decisions"
   pass "the ask reaches the existing notifier with the action, resource, save scope, and a recommendation"

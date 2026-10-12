@@ -117,7 +117,7 @@ async function sendRecord(path, record, botId, recover) {
 	saveRecord(path, sending);
 	const payload = {
 		content: [
-			`**결정 필요** - 작업: ${record.task_id}`,
+			`**결정 필요** - 작업: ${taskLabel(record)}`,
 			"",
 			`왜 연락했나: ${localize(record.summary)}`,
 			"",
@@ -219,13 +219,21 @@ function decisionPrompt(trigger) {
 	})[trigger] || "어떻게 진행할지";
 }
 
+// A decision message names the task by its backlog title beside its id, with
+// the id alone as the fallback for a task whose title the backlog cannot
+// resolve. The title arrives from the wrapper, which owns the backlog read.
+function taskLabel(record) {
+	const title = typeof record.task_title === "string" ? record.task_title.replace(/[\r\n]+/g, " ").trim() : "";
+	return title ? `${title} [${record.task_id}]` : record.task_id;
+}
+
 async function main() {
   if (reportMode) {
     const [reportChannelId, reportMessage, reportEventId] = process.argv.slice(3);
     if (!token || !/^\d+$/.test(reportChannelId || "") || !reportMessage) {
       throw new Error("report requires a bot token, numeric channel id, and a non-empty message");
     }
-    if (refusesDecisionMarker(reportMessage)) {
+    if (!reportEventId && refusesDecisionMarker(reportMessage)) {
       throw new Error("a captain decision ask cannot be sent as a generic report; use the keyed decision notification path");
     }
     // An event id makes this a completion outcome, which gets the durable
@@ -352,6 +360,7 @@ async function main() {
 		event_id: digest,
 		trigger,
 		task_id: taskId,
+		task_title: (process.env.FM_DISCORD_TASK_TITLE || "").replace(/[\r\n]+/g, " ").trim(),
 		key,
 		status_task_id: statusTaskId,
 		summary,

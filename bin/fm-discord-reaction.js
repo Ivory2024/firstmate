@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const reactions = {
-	accepted: "👁️",
+	accepted: "✅",
 	claimed: "🛠️",
 	success: "🟢",
 	blocked: "⚠️",

@@ -130,9 +130,14 @@ case "$verb:$key" in
     fm_discord_task_is_done "$task_id" || exit 0
     note=$(status_line_note "$line")
     note=$(printf '%s' "$note" | tr '\n\r' '  ')
+    # The completion names the work by its backlog title beside its id, so the
+    # captain reads which task finished without cross-referencing the queue.
+    task_label=$task_id
+    task_title=$(fm_discord_task_title "$task_id")
+    [ -n "$task_title" ] && task_label="$task_title [$task_id]"
     fm_discord_send_completion "$task_id" \
       "$(fm_discord_completion_event_id "$task_id" "$note")" \
-      "작업 완료 [$task_id]: ${note:-완료}" || exit $?
+      "작업 완료 - $task_label: ${note:-완료}" || exit $?
     ;;
   *) exit 0 ;;
 esac

@@ -36,6 +36,31 @@ fm_discord_trim() {
   printf '%s' "$value"
 }
 
+# Resolve one task's human-readable title from this home's backlog through
+# bin/fm-tasks-axi.sh, which is the backlog format's single owner. Prints
+# nothing when the task is unknown, the backlog or data directory is absent,
+# or tasks-axi is unavailable: a captain-facing notification then names the
+# task id alone rather than failing to send.
+fm_discord_task_title() {
+  local task_id=$1 show title
+  case "$task_id" in ''|.*|*[!A-Za-z0-9._-]*) return 0 ;; esac
+  show=$("$_FM_DISCORD_LIB_DIR/fm-tasks-axi.sh" show "$task_id" --full 2>/dev/null) || return 0
+  title=$(printf '%s\n' "$show" | sed -n 's/^  title: //p' | head -1)
+  [ -n "$title" ] || return 0
+  case "$title" in
+    '"'*'"')
+      title=${title#\"}
+      title=${title%\"}
+      title=${title//\\\"/\"}
+      title=${title//\\\\/\\}
+      ;;
+  esac
+  # A notification stays scannable, so an unusually long title is capped
+  # rather than pushing the outcome below the fold.
+  [ "${#title}" -le 100 ] || title="${title:0:100}…"
+  printf '%s' "$title"
+}
+
 # The one marker that identifies an outbound message as a captain decision ask.
 # The canonical notification path (fm-discord-notify.sh <trigger> ...) renders it
 # and registers the durable correlation record; every generic send path refuses a
