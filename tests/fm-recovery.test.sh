@@ -278,6 +278,21 @@ run_rec "$home" advance --fingerprint "$fp" NOT_A_STATE >/dev/null 2>&1
 expect_code 1 "$?" "an unknown state is refused"
 pass "budgets: the recovery converges on an escalation and refuses illegal transitions"
 
+# --- 9b. an attempt cannot bypass the transition table --------------------
+home=$(make_home attempt-gate)
+out=$(run_rec "$home" begin t52 --class run-failed --signature "sig" --target fm/t52)
+fp=$(printf '%s' "$out" | sed -n 's/^begun: \([^ ]*\) .*/\1/p')
+assert_equals RETRYABLE "$(rec_state "$home" "$fp")" "the fixture recovery starts RETRYABLE"
+before=$(wc -l < "$home/state/recovery/$fp.ledger" | tr -d ' ')
+run_rec "$home" attempt --fingerprint "$fp" --cause run-failed --result ok > "$home/attempt.out" 2>&1
+expect_code 1 "$?" "a retry success cannot jump straight to RECOVERABLE off the transition table"
+assert_contains "$(cat "$home/attempt.out")" "illegal transition" "the refusal names the illegal transition"
+assert_equals RETRYABLE "$(rec_state "$home" "$fp")" "the refused attempt left the recovery in RETRYABLE"
+assert_equals "$before" "$(wc -l < "$home/state/recovery/$fp.ledger" | tr -d ' ')" "a refused attempt records no ledger event"
+run_rec "$home" attempt --fingerprint "$fp" --cause run-failed --result fail >/dev/null
+assert_equals "$((before + 1))" "$(wc -l < "$home/state/recovery/$fp.ledger" | tr -d ' ')" "a legal attempt still records its ledger event"
+pass "attempt gate: an attempt state change is refused unless the transition table allows it"
+
 # --- 10. deterministic classification from real evidence ------------------
 home=$(make_home classify)
 printf 'working: job under way\nblocked: no-mistakes PR target mismatch on the lane\n' > "$home/state/t17.status"

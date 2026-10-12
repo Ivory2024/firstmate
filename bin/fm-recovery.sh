@@ -634,24 +634,31 @@ cmd_attempt() {
   fm_recovery_state_terminal "$REC_STATE" && die "recovery $fp is already terminal: $REC_STATE"
   fm_recovery_class_valid "$cause" || die "unknown failure class: $cause"
   enforce_total_budget "$fp" && return 0
-  local max
+  local max target
   max=$(fm_recovery_bound max-same-cause-retries) || max=2
+  if [ "$result" = ok ]; then
+    target=RECOVERABLE
+  elif [ "$cause" = "$REC_CLASS" ] && [ "$REC_RETRIES" -lt "$max" ]; then
+    target=RETRYABLE
+  else
+    target=DIAGNOSING
+  fi
+  fm_recovery_transition_allowed "$REC_STATE" "$target" \
+    || die "illegal transition for $fp: $REC_STATE -> $target"
   REC_ATTEMPTS=$((REC_ATTEMPTS + 1))
   if [ "$result" = ok ]; then
     REC_STATE=RECOVERABLE
     REC_REASON="retry succeeded"
     ledger_append "$fp" attempt "cause=$cause result=ok"
+  elif [ "$target" = RETRYABLE ]; then
+    REC_RETRIES=$((REC_RETRIES + 1))
+    REC_STATE=RETRYABLE
+    REC_REASON="same-cause retry $REC_RETRIES/$max"
+    ledger_append "$fp" attempt "cause=$cause result=fail retry=$REC_RETRIES"
   elif [ "$cause" = "$REC_CLASS" ]; then
-    if [ "$REC_RETRIES" -ge "$max" ]; then
-      REC_STATE=DIAGNOSING
-      REC_REASON="same-cause retry budget exhausted ($max)"
-      ledger_append "$fp" attempt "cause=$cause result=fail retry-refused"
-    else
-      REC_RETRIES=$((REC_RETRIES + 1))
-      REC_STATE=RETRYABLE
-      REC_REASON="same-cause retry $REC_RETRIES/$max"
-      ledger_append "$fp" attempt "cause=$cause result=fail retry=$REC_RETRIES"
-    fi
+    REC_STATE=DIAGNOSING
+    REC_REASON="same-cause retry budget exhausted ($max)"
+    ledger_append "$fp" attempt "cause=$cause result=fail retry-refused"
   else
     REC_STATE=DIAGNOSING
     REC_REASON="new cause: $cause"
