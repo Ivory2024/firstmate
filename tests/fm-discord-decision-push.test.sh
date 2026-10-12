@@ -905,20 +905,25 @@ test_failed_done_delivery_retries() {
   pass "a failed completion delivery is retried by the sweep, not by a re-read"
 }
 
-test_unconfigured_done_status_fails_closed_and_retryable() {
-  local home log
+test_unconfigured_done_status_is_silent_and_misconfig_fails_closed() {
+  local home log rc
   home="$TMP_ROOT/done-unconfigured"
   mkdir -p "$home/state/x-context"
   chmod 700 "$home/state" "$home/state/x-context"
   make_fake_node "$home"
   log="$home/posts.jsonl"
-  if PATH="$BASE_PATH" FM_CREW_STATE_BIN="$home/fake-bin/fm-crew-state.sh" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
-    FM_DISCORD_BOT_TOKEN='' "$ROOT/bin/fm-discord-notify-status.sh" task-a \
-    'done: wired up the new endpoint' >/dev/null 2>&1; then
-    fail "unconfigured completion reported success"
-  fi
+  # Discord is an optional opt-in feature: no token means nothing was
+  # configured and nothing could be delivered, so the bridge exits 0 with no
+  # stderr and records no delivery.
+  PATH="$BASE_PATH" FM_CREW_STATE_BIN="$home/fake-bin/fm-crew-state.sh" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN='' FM_DISCORD_TOKEN='' "$ROOT/bin/fm-discord-notify-status.sh" task-a \
+    'done: wired up the new endpoint' >/dev/null 2>"$home/stderr"; rc=$?
+  assert_equals "0" "$rc" "an unconfigured completion exits silently with success"
+  [ ! -s "$home/stderr" ] || fail "an unconfigured completion wrote to stderr: $(cat "$home/stderr")"
   [ -z "$(find "$home/state/x-context" -name 'discord-completion-*.json' -print -quit 2>/dev/null)" ] \
     || fail "unconfigured completion was marked delivered"
+  # A token set with an unusable channel is a real misconfiguration and must
+  # still fail closed.
   if PATH="$BASE_PATH" FM_CREW_STATE_BIN="$home/fake-bin/fm-crew-state.sh" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
     FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=not-a-channel \
     "$ROOT/bin/fm-discord-notify-status.sh" task-a \
@@ -930,9 +935,9 @@ test_unconfigured_done_status_fails_closed_and_retryable() {
     FM_DISCORD_BOT_TOKEN=fake-token FM_DISCORD_CHANNEL_ID=1000000000000000001 \
     "$ROOT/bin/fm-discord-notify-status.sh" task-a \
       'done: wired up the new endpoint' >/dev/null \
-    || fail "completion did not retry after Discord was configured"
-  assert_equals "1" "$(wc -l < "$log" | tr -d '[:space:]')" "unconfigured completion is retried when configured"
-  pass "an unconfigured completion fails closed and remains retryable"
+    || fail "completion did not send once Discord was configured"
+  assert_equals "1" "$(wc -l < "$log" | tr -d '[:space:]')" "a configured completion posts once"
+  pass "an unconfigured completion is a silent no-op; a malformed channel fails closed"
 }
 
 test_blocked_status_sends_no_report() {
@@ -1091,7 +1096,7 @@ test_done_status_recovers_from_a_crash_before_its_receipt
 test_nonterminal_done_status_sends_no_report
 test_pr_awaiting_merge_done_status_sends_no_report
 test_failed_done_delivery_retries
-test_unconfigured_done_status_fails_closed_and_retryable
+test_unconfigured_done_status_is_silent_and_misconfig_fails_closed
 test_blocked_status_sends_no_report
 test_failed_status_sends_no_report
 test_done_status_deduplicates_repeated_lines
