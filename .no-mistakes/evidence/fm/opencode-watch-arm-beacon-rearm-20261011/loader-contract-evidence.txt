@@ -1,0 +1,19 @@
+REAL opencode 2.0.26 loader contract evidence (machine's own opencode service, run=9131d0ea,
+log: /Users/irene/.local/share/opencode/log/opencode.log)
+
+1) BASE COMMIT (3260eeb) plugin -- default export is the bare function FmPrimaryWatchArm:
+2026-10-12T15:37:54.080Z WARN "failed to load plugin"
+  target=.../fm-oc-ctrl.WSzH0o/.opencode/plugins/fm-primary-watch-arm.js
+  cause="PluginModule.LoadError: Plugin must export a default definition with an id and an
+  effect or setup function. (cause: SchemaError(Expected object at [\"default\"])))"
+
+Same rejection is logged in the same service for every earlier old-export copy it touched
+(scratch worktrees 09:29/11:54/14:32Z, Ivory2024 wt-sync copies), i.e. the P0 is real: with the
+function default the loader never loads the plugin, so no arm path ever runs.
+
+2) THIS BRANCH's plugin (object default {id, setup}): ZERO "failed to load plugin" lines for
+   the worktree's own plugin path, plugin reconciliation went through with plugins=16 and the
+   plugin then EXECUTED: it armed the machine's real firstmate home with the real
+   bin/fm-watch-arm.sh --restart at 2026-10-12 00:23:57 JST (real home state/.watch-cycle-exits.log:
+   arm_pid=68419 watcher_pid=68782 ... successor=started:70253), and it armed a disposable lab
+   home under a busy (never quiescent) session in the controlled live runs in this evidence dir.

@@ -1,0 +1,2 @@
+ACCEPTED: default export is {id, setup}; id=fm-primary-watch-arm
+RESULT=quiet

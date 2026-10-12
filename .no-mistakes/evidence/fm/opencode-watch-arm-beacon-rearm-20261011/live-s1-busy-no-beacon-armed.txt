@@ -1,0 +1,3 @@
+ACCEPTED: default export is {id, setup}; id=fm-primary-watch-arm
+ARMED: watcher_pid=31622 beacon_age_s=0
+RESULT=armed

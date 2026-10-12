@@ -1,0 +1,2 @@
+ARMED-by-poll: watcher_pid=48195 beacon_age_s=0
+RESULT=armed(timer)
