@@ -1,0 +1,25 @@
+# Live validation transcript - fm-originals-index (target 2fe7a114)
+
+## Scenario 1: real host, read-only summary index
+$ python3 bin/fm-originals-index.py --summary-only
+exit=0; roots all present; totals:
+{"candidate_records": 149, "collected": 2970, "discovered": 2970, "duplicate_copies": 2833, "duplicate_record_copies": 5079, "excluded": 0, "file_units": 2970, "raw_evidence_records": 5189, "realpath_duplicates": 0, "record_units": 5338, "sibling_groups": 493, "unique_contents": 137, "unique_record_contents": 259}
+
+## Scenario 2: disposable fixture host - discovery, dedup, provenance, counts
+$ python3 bin/fm-originals-index.py --root canonical=... --worktree-root treehouse=...
+exit=0; NO_MUTATION: fixture identical before/after (mtime+size+sha256 snapshot)
+totals: {"candidate_records": 5, "collected": 13, "discovered": 16, "duplicate_copies": 1, "duplicate_record_copies": 1, "excluded": 3, "file_units": 13, "raw_evidence_records": 12, "realpath_duplicates": 1, "record_units": 17, "sibling_groups": 1, "unique_contents": 12, "unique_record_contents": 16}
+exclusions: [('broken.md', 'broken-symlink'), ('escapes.md', 'symlink-escapes-root'), ('inside.md', 'duplicate-realpath')]
+sibling_groups: [{"directory": "journal/retro", "jsonl": "journal/retro/2026-01-01-a.jsonl", "md": "journal/retro/2026-01-01-a.md", "root": "canonical", "stem": "2026-01-01-a"}]
+
+## Scenario 3: PROMOTABLE_STATES single owner (review-1 regression, before vs after)
+fixed module:      owner=default -> agree=true ; owner=empty -> agree=true (0/0)
+pre-fix 5f78a596:  owner=empty   -> per_record.auto_promotable=5 vs totals.candidate_records=0, agree=false
+
+## Scenario 4: fm-test-run.sh python-case mapping (pre vs post)
+pre-fix:  tests/fm-probe-python.test.py (has wrapper) -> exit 2 no changed-test mapping
+target:   tests/fm-probe-python.test.py (has wrapper) -> exit 0, selects tests/fm-probe-python.test.sh
+target:   tests/fm-probe-orphan.test.py (no wrapper)  -> exit 2 no changed-test mapping (fail closed)
+
+## Scenario 5: adversarial symlink/link-safety + unreadable
+exit=0; escape-hosts.md -> symlink-escapes-root; unreadable.md -> unreadable; dir-symlink cycle not followed

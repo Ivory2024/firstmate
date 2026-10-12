@@ -1,0 +1,589 @@
+{
+  "excluded": [
+    {
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/canonical/journal/retro/broken.md",
+      "reason": "broken-symlink",
+      "root": "canonical"
+    },
+    {
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/canonical/journal/retro/escapes.md",
+      "reason": "symlink-escapes-root",
+      "root": "canonical"
+    },
+    {
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/canonical/journal/retro/inside.md",
+      "reason": "duplicate-realpath",
+      "root": "canonical"
+    }
+  ],
+  "files": [
+    {
+      "bytes": 16,
+      "duplicate_group": 8,
+      "duplicate_of": null,
+      "kind": "stow-notes",
+      "realpath": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/canonical/.stow-notes.md",
+      "record_units": 1,
+      "records": [
+        {
+          "auto_promotable": false,
+          "duplicate_group": 11,
+          "duplicate_of": null,
+          "line": null,
+          "marker_kind": "",
+          "marker_state": "raw-evidence",
+          "record_id": "canonical:.stow-notes.md",
+          "relpath": ".stow-notes.md",
+          "root": "canonical",
+          "sha256": "a673e543279f10d80693b39ac8ae569ecfa2136129de1a152dece07dd0863e90",
+          "source": "canonical:.stow-notes.md",
+          "unit": "document"
+        }
+      ],
+      "relpath": ".stow-notes.md",
+      "root": "canonical",
+      "sha256": "a673e543279f10d80693b39ac8ae569ecfa2136129de1a152dece07dd0863e90",
+      "sibling": ""
+    },
+    {
+      "bytes": 197,
+      "duplicate_group": 4,
+      "duplicate_of": null,
+      "kind": "retro-jsonl",
+      "realpath": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/canonical/journal/retro/2026-01-01-a.jsonl",
+      "record_units": 5,
+      "records": [
+        {
+          "auto_promotable": true,
+          "duplicate_group": 4,
+          "duplicate_of": null,
+          "line": 1,
+          "marker_kind": "is_candidate",
+          "marker_state": "candidate",
+          "record_id": "canonical:journal/retro/2026-01-01-a.jsonl:1",
+          "relpath": "journal/retro/2026-01-01-a.jsonl",
+          "root": "canonical",
+          "sha256": "43b4d26a8e70b3b0faf75174cb6197920e8b0eba9fc2ea528193df9f60d613da",
+          "source": "canonical:journal/retro/2026-01-01-a.jsonl",
+          "unit": "line"
+        },
+        {
+          "auto_promotable": false,
+          "duplicate_group": 9,
+          "duplicate_of": null,
+          "line": 2,
+          "marker_kind": "",
+          "marker_state": "raw-evidence",
+          "record_id": "canonical:journal/retro/2026-01-01-a.jsonl:2",
+          "relpath": "journal/retro/2026-01-01-a.jsonl",
+          "root": "canonical",
+          "sha256": "70eb95bd423b94addf37e4b9628d72bec2885523c69e727cc8e9e3d1e1f2aebe",
+          "source": "canonical:journal/retro/2026-01-01-a.jsonl",
+          "unit": "line"
+        },
+        {
+          "auto_promotable": true,
+          "duplicate_group": 5,
+          "duplicate_of": null,
+          "line": 3,
+          "marker_kind": "lane",
+          "marker_state": "candidate",
+          "record_id": "canonical:journal/retro/2026-01-01-a.jsonl:3",
+          "relpath": "journal/retro/2026-01-01-a.jsonl",
+          "root": "canonical",
+          "sha256": "4bc70c399d828d1cd0b840fef3fed95aebcbf9e2f817b2805a7337ab27e3db7f",
+          "source": "canonical:journal/retro/2026-01-01-a.jsonl",
+          "unit": "line"
+        },
+        {
+          "auto_promotable": true,
+          "duplicate_group": 13,
+          "duplicate_of": null,
+          "line": 4,
+          "marker_kind": "doctrine_candidate",
+          "marker_state": "candidate",
+          "record_id": "canonical:journal/retro/2026-01-01-a.jsonl:4",
+          "relpath": "journal/retro/2026-01-01-a.jsonl",
+          "root": "canonical",
+          "sha256": "d8d1865aa858de806b3db93a050c9aa72a2841b69d255611bff9a90065c69002",
+          "source": "canonical:journal/retro/2026-01-01-a.jsonl",
+          "unit": "line"
+        },
+        {
+          "auto_promotable": false,
+          "duplicate_group": 8,
+          "duplicate_of": null,
+          "line": 5,
+          "marker_kind": "",
+          "marker_state": "raw-evidence",
+          "record_id": "canonical:journal/retro/2026-01-01-a.jsonl:5",
+          "relpath": "journal/retro/2026-01-01-a.jsonl",
+          "root": "canonical",
+          "sha256": "6df50233c3e571b8b9f60dff2dddf6d5c2a9f778614ab15c83a4459316d5fe42",
+          "source": "canonical:journal/retro/2026-01-01-a.jsonl",
+          "unit": "line"
+        }
+      ],
+      "relpath": "journal/retro/2026-01-01-a.jsonl",
+      "root": "canonical",
+      "sha256": "4e7e783ed2706d85bc37781bd8ad44e3c3f3849b8eaa76cff22185529cd71650",
+      "sibling": "journal/retro/2026-01-01-a.md"
+    },
+    {
+      "bytes": 57,
+      "duplicate_group": 7,
+      "duplicate_of": null,
+      "kind": "retro-md",
+      "realpath": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/canonical/journal/retro/2026-01-01-a.md",
+      "record_units": 1,
+      "records": [
+        {
+          "auto_promotable": true,
+          "duplicate_group": 10,
+          "duplicate_of": null,
+          "line": null,
+          "marker_kind": "## 후보 제안",
+          "marker_state": "candidate",
+          "record_id": "canonical:journal/retro/2026-01-01-a.md",
+          "relpath": "journal/retro/2026-01-01-a.md",
+          "root": "canonical",
+          "sha256": "881527b9a9e76fbd3f2146d1660e07f7b659e8b747e41fd65925139052274805",
+          "source": "canonical:journal/retro/2026-01-01-a.md",
+          "unit": "document"
+        }
+      ],
+      "relpath": "journal/retro/2026-01-01-a.md",
+      "root": "canonical",
+      "sha256": "881527b9a9e76fbd3f2146d1660e07f7b659e8b747e41fd65925139052274805",
+      "sibling": "journal/retro/2026-01-01-a.jsonl"
+    },
+    {
+      "bytes": 32,
+      "duplicate_group": 10,
+      "duplicate_of": null,
+      "kind": "retro-md",
+      "realpath": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/runtime/journal/retro/2026-01-03-c.md",
+      "record_units": 1,
+      "records": [
+        {
+          "auto_promotable": false,
+          "duplicate_group": 14,
+          "duplicate_of": null,
+          "line": null,
+          "marker_kind": "",
+          "marker_state": "raw-evidence",
+          "record_id": "runtime:journal/retro/2026-01-03-c.md",
+          "relpath": "journal/retro/2026-01-03-c.md",
+          "root": "runtime",
+          "sha256": "daa0a4819f6e9d73759c1e7427759f7cb774accfac6452d6e5d5011eebdc234d",
+          "source": "runtime:journal/retro/2026-01-03-c.md",
+          "unit": "document"
+        }
+      ],
+      "relpath": "journal/retro/2026-01-03-c.md",
+      "root": "runtime",
+      "sha256": "daa0a4819f6e9d73759c1e7427759f7cb774accfac6452d6e5d5011eebdc234d",
+      "sibling": ""
+    },
+    {
+      "bytes": 16,
+      "duplicate_group": 12,
+      "duplicate_of": null,
+      "kind": "stow-notes",
+      "realpath": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/firstmate/.stow-notes.md",
+      "record_units": 1,
+      "records": [
+        {
+          "auto_promotable": false,
+          "duplicate_group": 16,
+          "duplicate_of": null,
+          "line": null,
+          "marker_kind": "",
+          "marker_state": "raw-evidence",
+          "record_id": "firstmate:.stow-notes.md",
+          "relpath": ".stow-notes.md",
+          "root": "firstmate",
+          "sha256": "f97dae48585a5dd8437d519cb473c0ab3db024924eba7039fc40faef5f412f26",
+          "source": "firstmate:.stow-notes.md",
+          "unit": "document"
+        }
+      ],
+      "relpath": ".stow-notes.md",
+      "root": "firstmate",
+      "sha256": "f97dae48585a5dd8437d519cb473c0ab3db024924eba7039fc40faef5f412f26",
+      "sibling": ""
+    },
+    {
+      "bytes": 27,
+      "duplicate_group": 11,
+      "duplicate_of": null,
+      "kind": "retro-md",
+      "realpath": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/firstmate/projects/IMAC/journal/retro/2026-01-02-b.md",
+      "record_units": 1,
+      "records": [
+        {
+          "auto_promotable": false,
+          "duplicate_group": 15,
+          "duplicate_of": null,
+          "line": null,
+          "marker_kind": "",
+          "marker_state": "raw-evidence",
+          "record_id": "firstmate:projects/IMAC/journal/retro/2026-01-02-b.md",
+          "relpath": "projects/IMAC/journal/retro/2026-01-02-b.md",
+          "root": "firstmate",
+          "sha256": "eadad4d8fc5dd34d714cb42be083a012cf380643585a0ee59815f928a0ed4150",
+          "source": "firstmate:projects/IMAC/journal/retro/2026-01-02-b.md",
+          "unit": "document"
+        }
+      ],
+      "relpath": "projects/IMAC/journal/retro/2026-01-02-b.md",
+      "root": "firstmate",
+      "sha256": "eadad4d8fc5dd34d714cb42be083a012cf380643585a0ee59815f928a0ed4150",
+      "sibling": ""
+    },
+    {
+      "bytes": 11,
+      "duplicate_group": 1,
+      "duplicate_of": null,
+      "kind": "stow-notes",
+      "realpath": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/orca/IMAC/.stow-notes.md",
+      "record_units": 1,
+      "records": [
+        {
+          "auto_promotable": false,
+          "duplicate_group": 1,
+          "duplicate_of": null,
+          "line": null,
+          "marker_kind": "",
+          "marker_state": "raw-evidence",
+          "record_id": "orca:.stow-notes.md",
+          "relpath": ".stow-notes.md",
+          "root": "orca",
+          "sha256": "1898baf4f60555587438dbe765d1d967ca99bb136fdc6f2d33bf1935e364d7c4",
+          "source": "orca:.stow-notes.md",
+          "unit": "document"
+        }
+      ],
+      "relpath": ".stow-notes.md",
+      "root": "orca",
+      "sha256": "1898baf4f60555587438dbe765d1d967ca99bb136fdc6f2d33bf1935e364d7c4",
+      "sibling": ""
+    },
+    {
+      "bytes": 93,
+      "duplicate_group": 2,
+      "duplicate_of": null,
+      "kind": "retro-md",
+      "realpath": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/orca/IMAC/.worktrees/disk-cleanup-active/journal/retro/2026-09-11-sunday.md",
+      "record_units": 1,
+      "records": [
+        {
+          "auto_promotable": true,
+          "duplicate_group": 2,
+          "duplicate_of": null,
+          "line": null,
+          "marker_kind": "## 후보 제안",
+          "marker_state": "candidate",
+          "record_id": "orca:.worktrees/disk-cleanup-active/journal/retro/2026-09-11-sunday.md",
+          "relpath": ".worktrees/disk-cleanup-active/journal/retro/2026-09-11-sunday.md",
+          "root": "orca",
+          "sha256": "3a1b0ca1b9e6cf0e1ea0423b648332204a8e8a08ab8321aa1139e5ae9bc997a5",
+          "source": "orca:.worktrees/disk-cleanup-active/journal/retro/2026-09-11-sunday.md",
+          "unit": "document"
+        }
+      ],
+      "relpath": ".worktrees/disk-cleanup-active/journal/retro/2026-09-11-sunday.md",
+      "root": "orca",
+      "sha256": "3a1b0ca1b9e6cf0e1ea0423b648332204a8e8a08ab8321aa1139e5ae9bc997a5",
+      "sibling": ""
+    },
+    {
+      "bytes": 26,
+      "duplicate_group": 3,
+      "duplicate_of": null,
+      "kind": "retro-md",
+      "realpath": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/orca/IMAC/journal/retro/2026-01-04-d.md",
+      "record_units": 1,
+      "records": [
+        {
+          "auto_promotable": false,
+          "duplicate_group": 3,
+          "duplicate_of": null,
+          "line": null,
+          "marker_kind": "",
+          "marker_state": "raw-evidence",
+          "record_id": "orca:journal/retro/2026-01-04-d.md",
+          "relpath": "journal/retro/2026-01-04-d.md",
+          "root": "orca",
+          "sha256": "3d7b92168d69e410134171de7fe8aede450161d675081b4af434690e3649fd7e",
+          "source": "orca:journal/retro/2026-01-04-d.md",
+          "unit": "document"
+        }
+      ],
+      "relpath": "journal/retro/2026-01-04-d.md",
+      "root": "orca",
+      "sha256": "3d7b92168d69e410134171de7fe8aede450161d675081b4af434690e3649fd7e",
+      "sibling": ""
+    },
+    {
+      "bytes": 15,
+      "duplicate_group": 6,
+      "duplicate_of": null,
+      "kind": "stow-notes",
+      "realpath": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/treehouse/IMAC-292463/11/IMAC/.stow-notes.md",
+      "record_units": 1,
+      "records": [
+        {
+          "auto_promotable": false,
+          "duplicate_group": 7,
+          "duplicate_of": null,
+          "line": null,
+          "marker_kind": "",
+          "marker_state": "raw-evidence",
+          "record_id": "treehouse:IMAC-292463/11/IMAC/.stow-notes.md",
+          "relpath": "IMAC-292463/11/IMAC/.stow-notes.md",
+          "root": "treehouse",
+          "sha256": "51839567d765dbd7f498d0a3df9dd0d46cf377f7315ff5236c443ea388c68736",
+          "source": "treehouse:IMAC-292463/11/IMAC/.stow-notes.md",
+          "unit": "document"
+        }
+      ],
+      "relpath": "IMAC-292463/11/IMAC/.stow-notes.md",
+      "root": "treehouse",
+      "sha256": "51839567d765dbd7f498d0a3df9dd0d46cf377f7315ff5236c443ea388c68736",
+      "sibling": ""
+    },
+    {
+      "bytes": 26,
+      "duplicate_group": 9,
+      "duplicate_of": null,
+      "kind": "retro-md",
+      "realpath": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/treehouse/IMAC-292463/11/IMAC/journal/retro/2026-01-05-e.md",
+      "record_units": 1,
+      "records": [
+        {
+          "auto_promotable": false,
+          "duplicate_group": 12,
+          "duplicate_of": null,
+          "line": null,
+          "marker_kind": "",
+          "marker_state": "raw-evidence",
+          "record_id": "treehouse:IMAC-292463/11/IMAC/journal/retro/2026-01-05-e.md",
+          "relpath": "IMAC-292463/11/IMAC/journal/retro/2026-01-05-e.md",
+          "root": "treehouse",
+          "sha256": "cf03034a9f2bc61cd031c12680787f5a643a85aac5ee4bb78148b2c9e2acb797",
+          "source": "treehouse:IMAC-292463/11/IMAC/journal/retro/2026-01-05-e.md",
+          "unit": "document"
+        }
+      ],
+      "relpath": "IMAC-292463/11/IMAC/journal/retro/2026-01-05-e.md",
+      "root": "treehouse",
+      "sha256": "cf03034a9f2bc61cd031c12680787f5a643a85aac5ee4bb78148b2c9e2acb797",
+      "sibling": ""
+    },
+    {
+      "bytes": 32,
+      "duplicate_group": 10,
+      "duplicate_of": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/runtime/journal/retro/2026-01-03-c.md",
+      "kind": "retro-md",
+      "realpath": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/treehouse/IMAC-292463/11/IMAC/journal/retro/copy-c.md",
+      "record_units": 1,
+      "records": [
+        {
+          "auto_promotable": false,
+          "duplicate_group": 14,
+          "duplicate_of": "runtime:journal/retro/2026-01-03-c.md",
+          "line": null,
+          "marker_kind": "",
+          "marker_state": "raw-evidence",
+          "record_id": "treehouse:IMAC-292463/11/IMAC/journal/retro/copy-c.md",
+          "relpath": "IMAC-292463/11/IMAC/journal/retro/copy-c.md",
+          "root": "treehouse",
+          "sha256": "daa0a4819f6e9d73759c1e7427759f7cb774accfac6452d6e5d5011eebdc234d",
+          "source": "treehouse:IMAC-292463/11/IMAC/journal/retro/copy-c.md",
+          "unit": "document"
+        }
+      ],
+      "relpath": "IMAC-292463/11/IMAC/journal/retro/copy-c.md",
+      "root": "treehouse",
+      "sha256": "daa0a4819f6e9d73759c1e7427759f7cb774accfac6452d6e5d5011eebdc234d",
+      "sibling": ""
+    },
+    {
+      "bytes": 26,
+      "duplicate_group": 5,
+      "duplicate_of": null,
+      "kind": "retro-md",
+      "realpath": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/orca/IMAC-agy-quota/journal/retro/2026-01-06-f.md",
+      "record_units": 1,
+      "records": [
+        {
+          "auto_promotable": false,
+          "duplicate_group": 6,
+          "duplicate_of": null,
+          "line": null,
+          "marker_kind": "",
+          "marker_state": "raw-evidence",
+          "record_id": "orca-worktrees:IMAC-agy-quota/journal/retro/2026-01-06-f.md",
+          "relpath": "IMAC-agy-quota/journal/retro/2026-01-06-f.md",
+          "root": "orca-worktrees",
+          "sha256": "4f5a93c82de9ca299d96775a9a69ede65a39eb9f61cf15f4a1ddaaf229d75812",
+          "source": "orca-worktrees:IMAC-agy-quota/journal/retro/2026-01-06-f.md",
+          "unit": "document"
+        }
+      ],
+      "relpath": "IMAC-agy-quota/journal/retro/2026-01-06-f.md",
+      "root": "orca-worktrees",
+      "sha256": "4f5a93c82de9ca299d96775a9a69ede65a39eb9f61cf15f4a1ddaaf229d75812",
+      "sibling": ""
+    }
+  ],
+  "generated_at": "2026-10-12T22:10:11Z",
+  "per_root": {
+    "canonical": {
+      "collected": 3,
+      "discovered": 6,
+      "excluded": 3,
+      "exclusion_reasons": {
+        "broken-symlink": 1,
+        "duplicate-realpath": 1,
+        "symlink-escapes-root": 1
+      },
+      "file_units": 3,
+      "kind": "allowlist",
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/canonical",
+      "present": true,
+      "record_units": 7,
+      "unique_contents": 3
+    },
+    "firstmate": {
+      "collected": 2,
+      "discovered": 2,
+      "excluded": 0,
+      "exclusion_reasons": {},
+      "file_units": 2,
+      "kind": "allowlist",
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/firstmate",
+      "present": true,
+      "record_units": 2,
+      "unique_contents": 2
+    },
+    "orca": {
+      "collected": 3,
+      "discovered": 3,
+      "excluded": 0,
+      "exclusion_reasons": {},
+      "file_units": 3,
+      "kind": "allowlist",
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/orca/IMAC",
+      "present": true,
+      "record_units": 3,
+      "unique_contents": 3
+    },
+    "orca-worktrees": {
+      "collected": 1,
+      "discovered": 1,
+      "excluded": 0,
+      "exclusion_reasons": {},
+      "file_units": 1,
+      "kind": "worktree",
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/orca",
+      "present": true,
+      "record_units": 1,
+      "unique_contents": 1
+    },
+    "runtime": {
+      "collected": 1,
+      "discovered": 1,
+      "excluded": 0,
+      "exclusion_reasons": {},
+      "file_units": 1,
+      "kind": "allowlist",
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/runtime",
+      "present": true,
+      "record_units": 1,
+      "unique_contents": 1
+    },
+    "treehouse": {
+      "collected": 3,
+      "discovered": 3,
+      "excluded": 0,
+      "exclusion_reasons": {},
+      "file_units": 3,
+      "kind": "worktree",
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/treehouse",
+      "present": true,
+      "record_units": 3,
+      "unique_contents": 3
+    }
+  },
+  "roots": [
+    {
+      "kind": "allowlist",
+      "max_depth": 8,
+      "name": "canonical",
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/canonical",
+      "present": true
+    },
+    {
+      "kind": "allowlist",
+      "max_depth": 8,
+      "name": "runtime",
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/runtime",
+      "present": true
+    },
+    {
+      "kind": "allowlist",
+      "max_depth": 8,
+      "name": "firstmate",
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/firstmate",
+      "present": true
+    },
+    {
+      "kind": "allowlist",
+      "max_depth": 8,
+      "name": "orca",
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/orca/IMAC",
+      "present": true
+    },
+    {
+      "kind": "worktree",
+      "max_depth": 6,
+      "name": "treehouse",
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/treehouse",
+      "present": true
+    },
+    {
+      "kind": "worktree",
+      "max_depth": 6,
+      "name": "orca-worktrees",
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-fixture.E9Bpt3/orca",
+      "present": true
+    }
+  ],
+  "schema": "fm-originals-index/v1",
+  "sibling_groups": [
+    {
+      "directory": "journal/retro",
+      "jsonl": "journal/retro/2026-01-01-a.jsonl",
+      "md": "journal/retro/2026-01-01-a.md",
+      "root": "canonical",
+      "stem": "2026-01-01-a"
+    }
+  ],
+  "totals": {
+    "candidate_records": 5,
+    "collected": 13,
+    "discovered": 16,
+    "duplicate_copies": 1,
+    "duplicate_record_copies": 1,
+    "excluded": 3,
+    "file_units": 13,
+    "raw_evidence_records": 12,
+    "realpath_duplicates": 1,
+    "record_units": 17,
+    "sibling_groups": 1,
+    "unique_contents": 12,
+    "unique_record_contents": 16
+  }
+}

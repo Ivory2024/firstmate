@@ -1,0 +1,30 @@
+schema: fm-originals-index/v1
+roots (name/kind/present/max_depth):
+  canonical       allowlist present=True max_depth=8
+  runtime         allowlist present=True max_depth=8
+  firstmate       allowlist present=True max_depth=8
+  orca            allowlist present=True max_depth=8
+  treehouse       worktree  present=True max_depth=6
+  orca-worktrees  worktree  present=True max_depth=6
+totals: {
+  "candidate_records": 149,
+  "collected": 2970,
+  "discovered": 2970,
+  "duplicate_copies": 2833,
+  "duplicate_record_copies": 5079,
+  "excluded": 0,
+  "file_units": 2970,
+  "raw_evidence_records": 5189,
+  "realpath_duplicates": 0,
+  "record_units": 5338,
+  "sibling_groups": 493,
+  "unique_contents": 137,
+  "unique_record_contents": 259
+}
+per_root:
+  canonical       discovered=261 collected=261 excluded=0 file_units=261 unique_contents=126 record_units=483
+  firstmate       discovered=115 collected=115 excluded=0 file_units=115 unique_contents=115 record_units=237
+  orca            discovered=289 collected=289 excluded=0 file_units=289 unique_contents=55 record_units=450
+  orca-worktrees  discovered=583 collected=583 excluded=0 file_units=583 unique_contents=104 record_units=945
+  runtime         discovered=97 collected=97 excluded=0 file_units=97 unique_contents=97 record_units=185
+  treehouse       discovered=1625 collected=1625 excluded=0 file_units=1625 unique_contents=110 record_units=3038

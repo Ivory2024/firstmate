@@ -1,0 +1,88 @@
+{
+  "excluded": [
+    {
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-adversarial.weLrH5/canonical/journal/retro/escape-hosts.md",
+      "reason": "symlink-escapes-root",
+      "root": "canonical"
+    },
+    {
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-adversarial.weLrH5/canonical/journal/retro/unreadable.md",
+      "reason": "unreadable",
+      "root": "canonical"
+    }
+  ],
+  "files": [
+    {
+      "bytes": 33,
+      "duplicate_group": 1,
+      "duplicate_of": null,
+      "kind": "retro-md",
+      "realpath": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-adversarial.weLrH5/canonical/journal/retro/real.md",
+      "record_units": 1,
+      "records": [
+        {
+          "auto_promotable": true,
+          "duplicate_group": 1,
+          "duplicate_of": null,
+          "line": null,
+          "marker_kind": "## 후보 제안",
+          "marker_state": "candidate",
+          "record_id": "canonical:journal/retro/real.md",
+          "relpath": "journal/retro/real.md",
+          "root": "canonical",
+          "sha256": "77426bf26d0c8b195b7243cfbdd5737623f0cd271b3f7f3029d580fff16bb604",
+          "source": "canonical:journal/retro/real.md",
+          "unit": "document"
+        }
+      ],
+      "relpath": "journal/retro/real.md",
+      "root": "canonical",
+      "sha256": "77426bf26d0c8b195b7243cfbdd5737623f0cd271b3f7f3029d580fff16bb604",
+      "sibling": ""
+    }
+  ],
+  "generated_at": "2026-10-12T22:16:13Z",
+  "per_root": {
+    "canonical": {
+      "collected": 1,
+      "discovered": 3,
+      "excluded": 2,
+      "exclusion_reasons": {
+        "symlink-escapes-root": 1,
+        "unreadable": 1
+      },
+      "file_units": 1,
+      "kind": "allowlist",
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-adversarial.weLrH5/canonical",
+      "present": true,
+      "record_units": 1,
+      "unique_contents": 1
+    }
+  },
+  "roots": [
+    {
+      "kind": "allowlist",
+      "max_depth": 8,
+      "name": "canonical",
+      "path": "/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-orig-adversarial.weLrH5/canonical",
+      "present": true
+    }
+  ],
+  "schema": "fm-originals-index/v1",
+  "sibling_groups": [],
+  "totals": {
+    "candidate_records": 1,
+    "collected": 1,
+    "discovered": 3,
+    "duplicate_copies": 0,
+    "duplicate_record_copies": 0,
+    "excluded": 2,
+    "file_units": 1,
+    "raw_evidence_records": 0,
+    "realpath_duplicates": 0,
+    "record_units": 1,
+    "sibling_groups": 0,
+    "unique_contents": 1,
+    "unique_record_contents": 1
+  }
+}

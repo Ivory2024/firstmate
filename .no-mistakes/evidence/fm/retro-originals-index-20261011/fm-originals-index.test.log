@@ -1,0 +1,28 @@
+test_aggregation_is_mechanical_and_adds_up (__main__.OriginalsIndexTest.test_aggregation_is_mechanical_and_adds_up) ... ok
+test_allowlist_and_worktree_roots_are_all_discovered (__main__.OriginalsIndexTest.test_allowlist_and_worktree_roots_are_all_discovered) ... ok
+test_allowlist_root_nested_under_a_worktree_root_is_scanned_once (__main__.OriginalsIndexTest.test_allowlist_root_nested_under_a_worktree_root_is_scanned_once) ... ok
+test_auto_promotable_field_and_totals_share_the_promotable_owner (__main__.OriginalsIndexTest.test_auto_promotable_field_and_totals_share_the_promotable_owner) ... ok
+test_byte_identical_copies_are_duplicates_of_one_record (__main__.OriginalsIndexTest.test_byte_identical_copies_are_duplicates_of_one_record) ... ok
+test_depth_bound_is_enforced (__main__.OriginalsIndexTest.test_depth_bound_is_enforced) ... ok
+test_distinct_records_are_not_reported_as_copies (__main__.OriginalsIndexTest.test_distinct_records_are_not_reported_as_copies) ... ok
+test_every_root_is_reported_with_its_kind (__main__.OriginalsIndexTest.test_every_root_is_reported_with_its_kind) ... ok
+test_exclusion_ledger_carries_a_reason_per_excluded_path (__main__.OriginalsIndexTest.test_exclusion_ledger_carries_a_reason_per_excluded_path) ... ok
+test_help_prints_the_contract_and_exits_zero (__main__.OriginalsIndexTest.test_help_prints_the_contract_and_exits_zero) ... ok
+test_indexing_never_changes_an_original (__main__.OriginalsIndexTest.test_indexing_never_changes_an_original) ... ok
+test_invalid_use_exits_two (__main__.OriginalsIndexTest.test_invalid_use_exits_two) ... ok
+test_markerless_records_stay_raw_evidence_and_unpromotable (__main__.OriginalsIndexTest.test_markerless_records_stay_raw_evidence_and_unpromotable) ... ok
+test_missing_root_is_reported_and_not_fatal (__main__.OriginalsIndexTest.test_missing_root_is_reported_and_not_fatal) ... ok
+test_no_present_root_exits_three (__main__.OriginalsIndexTest.test_no_present_root_exits_three) ... ok
+test_non_journal_retro_directory_is_never_discovered (__main__.OriginalsIndexTest.test_non_journal_retro_directory_is_never_discovered) ... ok
+test_orca_worktree_retro_omission_is_resolved (__main__.OriginalsIndexTest.test_orca_worktree_retro_omission_is_resolved) ... ok
+test_promotable_states_owner_refuses_every_other_state (__main__.OriginalsIndexTest.test_promotable_states_owner_refuses_every_other_state) ... ok
+test_real_old_collectors_miss_the_same_two_cases (__main__.OriginalsIndexTest.test_real_old_collectors_miss_the_same_two_cases) ... ok
+test_record_units_and_sibling_pairing (__main__.OriginalsIndexTest.test_record_units_and_sibling_pairing) ... ok
+test_summary_only_omits_the_per_file_detail (__main__.OriginalsIndexTest.test_summary_only_omits_the_per_file_detail) ... ok
+test_symlink_boundary_validation (__main__.OriginalsIndexTest.test_symlink_boundary_validation) ... ok
+test_worktree_stow_notes_omission_is_resolved (__main__.OriginalsIndexTest.test_worktree_stow_notes_omission_is_resolved) ... ok
+
+----------------------------------------------------------------------
+Ran 23 tests in 1.589s
+
+OK
