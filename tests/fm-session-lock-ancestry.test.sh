@@ -849,11 +849,17 @@ install_autoarm_scripts() {
   cp "$ROOT/bin/fm-primary-scope-lib.sh" "$dir/bin/fm-primary-scope-lib.sh"
   cp "$ROOT/bin/fm-supervision-lib.sh" "$dir/bin/fm-supervision-lib.sh"
   cp "$ROOT/bin/fm-wake-lib.sh" "$dir/bin/fm-wake-lib.sh"
+  cp "$ROOT/bin/fm-path-lib.sh" "$dir/bin/fm-path-lib.sh"
   cp "$ROOT/bin/fm-session-lock-lib.sh" "$dir/bin/fm-session-lock-lib.sh"
   cp "$ROOT/bin/fm-cursor-lib.sh" "$dir/bin/fm-cursor-lib.sh"
   cp "$ROOT/bin/fm-hook-host-lib.sh" "$dir/bin/fm-hook-host-lib.sh"
   cp "$ROOT/bin/fm-lock.sh" "$dir/bin/fm-lock.sh"
+  cp "$ROOT/bin/fm-supervision-engine-lib.sh" "$dir/bin/fm-supervision-engine-lib.sh"
   chmod +x "$dir/bin/fm-claude-stop-autoarm.sh" "$dir/bin/fm-lock.sh"
+  # The fixture arm written here stands in for the watcher arm, so the home opts out
+  # of the supervision host a Claude home otherwise runs by default.
+  mkdir -p "$dir/config"
+  : > "$dir/config/supervision-host-off"
   cat > "$dir/bin/fm-watch-arm.sh" <<'SH'
 #!/usr/bin/env bash
 if [ -n "${FM_WATCH_PREDECESSOR_ARM_PID:-}" ]; then
@@ -1121,7 +1127,9 @@ arm_count() {  # <dir>
 
 # The recycled chain must still be treated as the owner: arm, no diagnostic,
 # lock accepted, line 1 untouched while the recorded pid lives, sidecar bytes
-# untouched.
+# untouched. Only foreground arms are counted below: the fixture records a
+# handling successor, started with a predecessor pid, in successor-arm-ran, so
+# one owned actionable phase adds exactly one arm here.
 expect_phase_owned() {  # <dir> <n> <expected-arms> <expected-lock-pid> <label>
   local dir=$1 n=$2 arms=$3 lock_pid=$4 label=$5 sidecar_mode=${6:-same} birth
   expect_code 2 "$(phase_value "$dir" "$n" hook.rc)" "$label: the Stop auto-arm did not rewake"
