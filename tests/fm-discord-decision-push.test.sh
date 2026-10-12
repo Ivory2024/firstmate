@@ -113,7 +113,7 @@ test_report_requires_token() {
   pass "Discord report fails clearly without the self-hosted token"
 }
 test_retry_pending_without_configuration_is_a_silent_noop() {
-  local home out retry_out retry_rc
+  local home out retry_rc
   home="$TMP_ROOT/retry-unconfigured"
   mkdir -p "$home"
   out=$(FM_HOME="$home" FM_DISCORD_BOT_TOKEN='' \
