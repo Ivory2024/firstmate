@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Usage:
 #   fm-pr-target-guard.sh [<owner>/<repo>] [--repair]
-#   fm-pr-target-guard.sh --pin <worktree> [--optional]
 #   fm-pr-target-guard.sh --gate <gate-dir> --ref <refname> --old <sha> --new <sha>
 #
 # The single owner of the fail-closed rule that a pull-request branch may only
@@ -14,7 +13,7 @@
 # there. Ownership is therefore read live from the forge and never inferred
 # from a remote name, a local path, the caller's intent, or any recorded row.
 #
-# Three modes, one rule:
+# Two modes, one rule:
 #
 #   check (default) - the target is the <owner>/<repo> argument when given, and
 #     otherwise the repository the forge CLI resolves for the current
@@ -27,17 +26,6 @@
 #     command, because a bare forge command in this directory can still resolve
 #     somewhere else. `--repair` additionally pins the verified target as this
 #     directory's forge default; without it nothing is changed.
-#
-#   --pin <worktree> - repoint <worktree>'s `origin` at the approved repository.
-#     This is the routing fix: a run start re-derives its target from the
-#     pushing checkout's `origin`, so an `origin` that already names the
-#     approved repository makes that re-derivation idempotent instead of
-#     origin-dependent. The approved repository is the worktree's
-#     `firstmate.expectedRepository`, and the URL written is the configured
-#     remote URL that resolves to that identity, so no remote name is trusted.
-#     A worktree with no approved identity refuses unless `--optional` is given,
-#     which turns exactly that absence into a documented no-op for a caller that
-#     must not require one.
 #
 #   --gate <gate-dir> - a no-mistakes gate's pre-receive boundary, run from the
 #     gate's `hooks/pre-receive.no-mistakes-user` seam, which the vendor
@@ -99,29 +87,16 @@ refuse() { # <message> <exit-code>
 MODE=check
 TARGET=
 REPAIR=false
-WORKTREE=
 GATE=
 GATE_REF=
 GATE_OLD=
 GATE_NEW=
-PIN_OPTIONAL=false
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --repair)
       REPAIR=true
       shift
-      ;;
-    --optional)
-      PIN_OPTIONAL=true
-      shift
-      ;;
-    --pin)
-      [ "$MODE" = check ] || refuse "only one mode may be requested" 2
-      [ "$#" -ge 2 ] || refuse "--pin requires a worktree path" 2
-      MODE=pin
-      WORKTREE=$2
-      shift 2
       ;;
     --gate)
       [ "$MODE" = check ] || refuse "only one mode may be requested" 2
@@ -265,43 +240,6 @@ run_check() {
   fi
 }
 
-# ------------------------------------------------------------------ pin mode
-
-run_pin() {
-  [ -d "$WORKTREE" ] || refuse "worktree '$WORKTREE' does not exist" 2
-  git -C "$WORKTREE" rev-parse --git-dir >/dev/null 2>&1 \
-    || refuse "worktree '$WORKTREE' is not a git checkout" 2
-
-  local slug url me current
-  slug=$(approved_repository "$WORKTREE" || true)
-  if [ -z "$slug" ]; then
-    [ "$PIN_OPTIONAL" = true ] \
-      || refuse "worktree '$WORKTREE' has no approved repository identity (set firstmate.expectedRepository); refusing to guess one" 3
-    printf 'PR_TARGET_GUARD: PINNED skipped=no-expected-repository worktree=%s\n' "$WORKTREE"
-    return 0
-  fi
-
-  url=$(fm_git_base_verified_source_url "$WORKTREE" "$slug" 2>/dev/null) \
-    || refuse "no configured remote URL in '$WORKTREE' resolves to the approved repository '$slug'; refusing to trust a remote name such as origin" 3
-
-  me=$(authenticated_user) || refuse "the authenticated gh user could not be read" 3
-  require_owned "$slug" "approved repository" "$me"
-
-  current=$(git -C "$WORKTREE" remote get-url origin 2>/dev/null || true)
-  if [ "$current" = "$url" ]; then
-    printf 'PR_TARGET_GUARD: PINNED origin=%s target=%s (unchanged)\n' "$url" "$slug"
-    return 0
-  fi
-  if [ -n "$current" ]; then
-    git -C "$WORKTREE" remote set-url origin "$url" >/dev/null 2>&1 \
-      || refuse "could not repoint '$WORKTREE' origin from '$current' to '$url'" 3
-  else
-    git -C "$WORKTREE" remote add origin "$url" >/dev/null 2>&1 \
-      || refuse "could not add origin '$url' to '$WORKTREE'" 3
-  fi
-  printf 'PR_TARGET_GUARD: PINNED origin=%s target=%s (was %s)\n' "$url" "$slug" "${current:-none}"
-}
-
 # ----------------------------------------------------------------- gate mode
 
 # The no-mistakes state database that holds the repos row the daemon reads. A
@@ -433,7 +371,6 @@ run_gate() {
 
 case $MODE in
   check) run_check ;;
-  pin) run_pin ;;
   gate) run_gate ;;
   *) refuse "unknown mode '$MODE'" 2 ;;
 esac
