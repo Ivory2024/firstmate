@@ -1529,11 +1529,19 @@ case "$PROVIDER" in
     # fm-merge-evidence.sh always exits 0 (HOLD is a reported verdict, not a
     # script failure), so the gate is the parsed status/head, never the exit code.
     evidence_json=$("$EVIDENCE_SCRIPT" collect "$ID" "$URL" "$FM_PR_MERGE_HEAD" 2>&1)
-    if ! printf '%s' "$evidence_json" | jq -e --arg sha "$FM_PR_MERGE_HEAD" \
+    evidence_risk=$(printf '%s' "$evidence_json" | jq -r '.risk // ""' 2>/dev/null) || evidence_risk=''
+    evidence_scope=$(printf '%s' "$evidence_json" | jq -r '.scope // ""' 2>/dev/null) || evidence_scope=''
+    merge_decision=HOLD
+    if printf '%s' "$evidence_json" | jq -e --arg sha "$FM_PR_MERGE_HEAD" \
       '.status == "PASS" and .head_sha == $sha' >/dev/null 2>&1; then
+      merge_decision=PASS
+    fi
+    record_merge_decision "$merge_decision" "$evidence_risk" "$evidence_scope" || exit 1
+    if [ "$merge_decision" != PASS ]; then
       printf 'error: merge refused - evidence verification failed: %s\n' "$evidence_json" >&2
       exit 1
     fi
+    enforce_recorded_merge_decision || exit 1
     # --sha binds the merge to the head this run verified, so a push that lands
     # in between is refused by GitLab instead of merged unverified. --yes only
     # skips the interactive confirmation, which no supervised run can answer;

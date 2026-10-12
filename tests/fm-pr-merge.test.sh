@@ -2129,6 +2129,53 @@ test_gitlab_merge_failure_propagates() {
   pass "fm-pr-merge propagates a real glab merge failure without silently succeeding"
 }
 
+# The GitLab arm shares the merge boundary's durable decision record: the same
+# HOLD a GitHub case persists must be recorded before the glab merge and
+# enforced from that record. A HOLD that only ever existed as the collector's
+# return value dies with the process that read it, so this case collects a
+# HOLD (an approval from the author alone is not independent), records it, and
+# proves a second independent run still refuses from the durable record without
+# ever reaching glab.
+test_gitlab_merge_decision_is_persisted_and_survives_restart() {
+  local case_dir rc record
+  case_dir=$(make_gitlab_case gitlab-merge-decision-hold)
+  printf '%s\n' '{"approvals_left":0,"approved_by":[{"user":{"username":"author","id":1}}]}' \
+    > "$case_dir/$EVIDENCE_DIRNAME/glab-approvals.json"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$MR_URL" \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "gitlab-merge-decision-hold: a HOLD fixture merged"
+  record="$case_dir/state/task-x1.merge-decision"
+  assert_present "$record" "gitlab-merge-decision-hold: no durable decision was recorded"
+  [ "$(stat -c %a "$record" 2>/dev/null || stat -f %Lp "$record")" = 600 ] \
+    || fail "gitlab-merge-decision-hold: the decision record is not mode 0600"
+  assert_equals HOLD "$(sed -n '7p' "$record")" \
+    "gitlab-merge-decision-hold: the recorded decision was not HOLD"
+  assert_equals "$MR_HEAD" "$(sed -n '6p' "$record")" \
+    "gitlab-merge-decision-hold: the record was not bound to the run's head"
+  assert_equals 7 "$(sed -n '5p' "$record")" \
+    "gitlab-merge-decision-hold: the record was not bound to the merge request"
+  [ -z "$(glab_merge_line "$case_dir/glab.log")" ] \
+    || fail "gitlab-merge-decision-hold: glab merge ran on a recorded HOLD"
+
+  # A second, independent run is the restart: nothing of the first run's shell
+  # survives, so only the durable record can carry the HOLD forward.
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$MR_URL" \
+    > "$case_dir/stdout2" 2> "$case_dir/stderr2"
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "gitlab-merge-decision-hold: a HOLD fixture merged after a restart"
+  assert_equals HOLD "$(sed -n '7p' "$record")" \
+    "gitlab-merge-decision-hold: the HOLD did not survive the restart"
+  [ -z "$(glab_merge_line "$case_dir/glab.log")" ] \
+    || fail "gitlab-merge-decision-hold: glab merge ran on a recorded HOLD after a restart"
+  pass "a recorded GitLab HOLD is persisted and still refuses after a restart"
+}
+
 # Each pre-merge condition, driven one at a time, so no condition can be
 # carried by another. The refusal names that condition, no merge is attempted,
 # and pr= is still recorded and the poll still armed exactly as the GitHub path
@@ -2698,6 +2745,7 @@ test_gitlab_host_comes_from_the_url
 test_gitlab_imposes_no_merge_method
 test_gitlab_extra_args_forwarded
 test_gitlab_merge_failure_propagates
+test_gitlab_merge_decision_is_persisted_and_survives_restart
 test_gitlab_each_condition_refuses_independently
 test_gitlab_reports_every_failing_condition
 test_gitlab_stale_recorded_head_is_reported
