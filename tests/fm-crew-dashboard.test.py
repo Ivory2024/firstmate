@@ -119,6 +119,29 @@ class DashboardTestCase(unittest.TestCase):
             return resp.status, resp.headers, resp.read()
 
 
+class FmHomeResolutionTest(unittest.TestCase):
+    """FM must track FM_HOME and default to this checkout, never a fixed path."""
+
+    def load_fm(self, fm_home):
+        env = dict(os.environ)
+        env.pop("FM_HOME", None)
+        if fm_home is not None:
+            env["FM_HOME"] = fm_home
+        spec = importlib.util.spec_from_file_location("fm_crew_dashboard_reload", READER_PATH)
+        module = importlib.util.module_from_spec(spec)
+        with mock.patch.dict(os.environ, env, clear=True):
+            spec.loader.exec_module(module)
+        return module.FM
+
+    def test_fm_home_selects_the_operational_home(self):
+        home = tempfile.mkdtemp(prefix="fm-home.")
+        self.addCleanup(shutil.rmtree, home, ignore_errors=True)
+        self.assertEqual(self.load_fm(home), home)
+
+    def test_fm_defaults_to_this_checkout(self):
+        self.assertEqual(self.load_fm(None), str(READER_PATH.resolve().parent.parent))
+
+
 class LivenessClassificationTest(DashboardTestCase):
     """A gone session must classify dead; a live one must not be misclassified."""
 

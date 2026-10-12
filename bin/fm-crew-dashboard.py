@@ -41,8 +41,9 @@
 # because a refresh was already running; `error` means the last refresh failed
 # and the served lanes are the last good ones (never presented as current).
 import glob, http.server, json, os, re, socketserver, subprocess, threading, time
+from pathlib import Path
 
-FM = "/Users/irene/Developer/kunchenguid_repos/firstmate"
+FM = os.environ.get("FM_HOME") or str(Path(__file__).resolve().parent.parent)
 STATE = f"{FM}/state"
 BACKLOG = f"{FM}/data/backlog.md"
 PORT = 8770
