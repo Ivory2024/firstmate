@@ -200,8 +200,10 @@ jobs:
   tests-portable-serial:
     name: Behavior portable serial ${{ matrix.shard }}
     runs-on: ubuntu-latest
-    # Normal tier (see the timeout policy above).
-    timeout-minutes: 30
+    # Heavy tier (see the timeout policy above): the last-resort job backstop.
+    # One serial shard runs tests/fm-supervision-host.test.sh, a ~28 minute
+    # stateful test too close to the Normal tier's 30-minute bound to trip safely.
+    timeout-minutes: 75
     strategy:
       # Every shard reports so one failure never hides another shard's result.
       fail-fast: false

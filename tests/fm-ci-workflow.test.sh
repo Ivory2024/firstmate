@@ -74,8 +74,8 @@ puts YAML.load_file(ARGV[0]).fetch("jobs").fetch(ARGV[1]).fetch("timeout-minutes
 # must join a tier, and a job-level value outside these tiers is exactly the
 # one-off number the policy removed.
 FAST_TIER_JOBS='test-coverage invariants tests-timing-aggregate'
-NORMAL_TIER_JOBS='lint tests-portable-parallel-1 tests-portable-parallel-2 tests-portable-serial macos-stock-bash'
-HEAVY_TIER_JOBS='tests-herdr'
+NORMAL_TIER_JOBS='lint tests-portable-parallel-1 tests-portable-parallel-2 macos-stock-bash'
+HEAVY_TIER_JOBS='tests-herdr tests-portable-serial'
 
 # Print the one timeout every listed job shares; fail on any disagreement.
 tier_timeout() {  # <tier> <job>...
@@ -188,9 +188,11 @@ test_normal_tier_shares_one_budget() {
   pass "normal tier jobs share one $normal minute budget"
 }
 
-# Heavy tier: Herdr alone carries a job-level last-resort backstop above the
-# normal tier, while its family-run step owns a tighter tripwire so the
-# always() cleanup and timing upload still run after a hang.
+# Heavy tier: Herdr and the portable serial shards share a job-level
+# last-resort backstop above the normal tier. Herdr's family-run step owns a
+# tighter tripwire so the always() cleanup and timing upload still run after a
+# hang, and the serial shard holds one stateful test too close to the normal
+# bound to trip there safely.
 test_heavy_tier_keeps_a_step_tripwire_under_a_job_backstop() {
   local normal heavy step
   # shellcheck disable=SC2086
@@ -216,7 +218,7 @@ puts steps[index].fetch("timeout-minutes", "none")
     || fail "the Herdr family-run step must be the 20-minute tripwire, got $step"
   [ "$step" -lt "$heavy" ] \
     || fail "the Herdr step tripwire ($step) must stay below the job backstop ($heavy)"
-  pass "Herdr keeps a $step minute step tripwire under a $heavy minute job backstop"
+  pass "heavy tier jobs share a $heavy minute backstop and the Herdr step keeps a $step minute tripwire"
 }
 
 test_ci_matrices_match_executable_partitions() {
