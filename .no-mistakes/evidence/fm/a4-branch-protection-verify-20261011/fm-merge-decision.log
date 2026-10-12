@@ -1,0 +1,12 @@
+ok - a decision is recorded durably and read back bound to its identity
+ok - a HOLD recorded before a restart is still enforced after it
+ok - a decision recorded at one head SHA is refused at another
+ok - a decision recorded for one pull request is refused for another
+ok - a lapsed decision is refused and a current one is not
+ok - a missing record is reported as absent
+ok - a tampered record is refused
+ok - a record with unsafe permissions is refused
+ok - persistence refuses an identity that disagrees with the task metadata
+ok - persistence refuses a head that contradicts the recorded pr_head
+ok - persistence accepts a head that agrees with the recorded pr_head
+ok - persistence refuses an unknown decision word

@@ -1,0 +1,21 @@
+=== positive control: unchanged protection merges through ===
+ok - fm-pr-merge merges when every required check reported and is green
+--- forge calls (gh.log) ---
+pr view https://github.com/example/repo/pull/91 --json headRefOid -q .headRefOid
+pr view https://github.com/example/repo/pull/91 --json state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName,statusCheckRollup
+api repos/example/repo/branches/main
+api --paginate repos/example/repo/rules/branches/main
+pr view https://github.com/example/repo/pull/91 --json author,headRefOid,baseRefName,changedFiles
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main
+api --paginate --slurp repos/example/repo/commits/a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2/check-runs?per_page=100
+api --paginate --slurp repos/example/repo/commits/a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2/statuses?per_page=100
+api --paginate --slurp repos/example/repo/pulls/91/reviews
+api user --jq .login
+api --paginate --slurp repos/example/repo/pulls/91/files?per_page=100
+pr view https://github.com/example/repo/pull/91 --json baseRefName
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main
+pr merge 91 --repo example/repo --match-head-commit a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2 --squash
+api graphql -f query=query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){state merged isInMergeQueue baseRefName}}} -F owner=example -F repo=repo -F number=91 --jq .data.repository.pullRequest | "state=" + (.state // ""), "merged=" + (.merged | tostring), "queued=" + (.isInMergeQueue | tostring), "base=" + (.baseRefName // "")
+RESULT: gh pr merge WAS invoked

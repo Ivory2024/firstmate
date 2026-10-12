@@ -1,0 +1,15 @@
+pr view https://github.com/example/repo/pull/74 --json headRefOid -q .headRefOid
+pr view https://github.com/example/repo/pull/74 --json state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName,statusCheckRollup
+api repos/example/repo/branches/main
+api --paginate repos/example/repo/rules/branches/main
+pr view https://github.com/example/repo/pull/74 --json author,headRefOid,baseRefName,changedFiles
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main
+api --paginate --slurp repos/example/repo/commits/4242424242424242424242424242424242424242/check-runs?per_page=100
+api --paginate --slurp repos/example/repo/commits/4242424242424242424242424242424242424242/statuses?per_page=100
+api --paginate --slurp repos/example/repo/pulls/74/reviews
+api user --jq .login
+api --paginate --slurp repos/example/repo/pulls/74/files?per_page=100
+pr view https://github.com/example/repo/pull/74 --json baseRefName
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main

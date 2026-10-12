@@ -1,0 +1,9 @@
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QS4B5MCGM8G4AEJZHTD896/.pi/extensions/fm-primary-turnend-guard.ts -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QS4B5MCGM8G4AEJZHTD896/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+verified: https://github.com/example/repo/pull/74 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 4242424242424242424242424242424242424242
+error: merge refused - branch protection re-verification failed: {"status":"HOLD","protection":false,"protection_scope":"","reasons":["branch-protection-changed"]}

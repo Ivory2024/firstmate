@@ -1,0 +1,24 @@
+$ bin/fm-merge-evidence.sh branch-protection https://github.com/example/repo/pull/9 <scope>  (base branch read from forge; protection fixture: {required_status_checks:[ci]}, ruleset rule 'ci')
+{"status":"PASS","protection":true,"protection_scope":"30a972546aec7d274b5610ccfa2bb282509db0dce9ca402e65fc4c64ec06da43","reasons":[]}
+rc=0
+
+$ same, but the required status check was removed from protection after collection (weakened):
+{"status":"HOLD","protection":false,"protection_scope":"","reasons":["branch-protection-changed"]}
+rc=0
+
+$ same, but the enforcing ruleset rule was removed after collection (weakened via ruleset):
+{"status":"HOLD","protection":false,"protection_scope":"","reasons":["branch-protection-changed"]}
+rc=0
+
+$ same, but protection removed entirely (classic endpoint 404, no rulesets):
+{"status":"HOLD","protection":false,"protection_scope":"","reasons":["branch-protection-missing"]}
+rc=0
+
+$ same, but protection endpoint unreadable (HTTP 500):
+{"status":"HOLD","protection":false,"protection_scope":"","reasons":["branch-protection-unreadable"]}
+rc=0
+
+$ malformed expected scope is refused up front:
+usage: fm-merge-evidence.sh collect <task-id> <pr-url> <expected-head> [--waived-check <check-name>]
+usage: fm-merge-evidence.sh branch-protection <pr-url> <expected-protection-scope>
+rc=2

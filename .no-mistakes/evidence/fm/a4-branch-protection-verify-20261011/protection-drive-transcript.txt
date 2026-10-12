@@ -1,0 +1,108 @@
+===================================================================
+PART A - real bin/fm-merge-evidence.sh (collector + branch-protection)
+worktree: /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QS4B5MCGM8G4AEJZHTD896
+===================================================================
+
+--- A1: collect a complete fixture: protection read from the forge ---
+
+$ fm-merge-evidence.sh collect protection-drive https://github.com/example/repo/pull/9 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+{"status":"PASS","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","risk":"LOW","scope":"0bb78a870bc6f729ed179ddd2a878befa436c494e6805ebe6281bcfa618f6c94","protection":true,"protection_scope":"82750210165cf0d53a7e64304282318f25dce4089070f34010ac6801b39798ee","reasons":[]}
+recorded protection_scope=82750210165cf0d53a7e64304282318f25dce4089070f34010ac6801b39798ee
+
+--- A2: re-verify the same protection immediately before a merge ---
+
+$ fm-merge-evidence.sh branch-protection https://github.com/example/repo/pull/9 82750210165cf0d53a7e64304282318f25dce4089070f34010ac6801b39798ee
+{"status":"PASS","protection":true,"protection_scope":"82750210165cf0d53a7e64304282318f25dce4089070f34010ac6801b39798ee","reasons":[]}
+
+--- A3: protection weakened after collection (TOCTOU) -> fail closed ---
+
+$ branch-protection (protection weakened since collection)
+{"status":"HOLD","protection":false,"protection_scope":"","reasons":["branch-protection-changed"]}
+
+--- A4: base branch has no protection at all -> named gap, fail closed ---
+
+$ branch-protection (no protection on base branch)
+{"status":"HOLD","protection":false,"protection_scope":"","reasons":["branch-protection-missing"]}
+
+--- A5: caller cannot substitute a scope (malformed digest) ---
+
+$ branch-protection https://github.com/example/repo/pull/9 nothex
+usage: fm-merge-evidence.sh collect <task-id> <pr-url> <expected-head> [--waived-check <check-name>]
+usage: fm-merge-evidence.sh branch-protection <pr-url> <expected-protection-scope>
+exit code=2
+
+--- A6: re-verification is GitHub-only; a GitLab MR is refused ---
+
+$ branch-protection <gitlab mr>
+error: branch-protection re-verification is implemented for GitHub only
+exit code=2
+
+===================================================================
+PART B - real bin/fm-pr-merge.sh merge boundary
+===================================================================
+
+--- B1: complete fixture -> the merge proceeds (gh pr merge is called) ---
+ok - the shipped collector still passes on a complete forge fixture
+merge stderr:
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QS4B5MCGM8G4AEJZHTD896/.pi/extensions/fm-primary-turnend-guard.ts -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QS4B5MCGM8G4AEJZHTD896/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+verified: https://github.com/example/repo/pull/73 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 4040404040404040404040404040404040404040
+forge calls recorded:
+pr view https://github.com/example/repo/pull/73 --json headRefOid -q .headRefOid
+pr view https://github.com/example/repo/pull/73 --json state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName,statusCheckRollup
+api repos/example/repo/branches/main
+api --paginate repos/example/repo/rules/branches/main
+pr view https://github.com/example/repo/pull/73 --json author,headRefOid,baseRefName,changedFiles
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main
+api --paginate --slurp repos/example/repo/commits/4040404040404040404040404040404040404040/check-runs?per_page=100
+api --paginate --slurp repos/example/repo/commits/4040404040404040404040404040404040404040/statuses?per_page=100
+api --paginate --slurp repos/example/repo/pulls/73/reviews
+api user --jq .login
+api --paginate --slurp repos/example/repo/pulls/73/files?per_page=100
+pr view https://github.com/example/repo/pull/73 --json baseRefName
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main
+pr merge 73 --repo example/repo --match-head-commit 4040404040404040404040404040404040404040 --squash
+api graphql -f query=query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){state merged isInMergeQueue baseRefName}}} -F owner=example -F repo=repo -F number=73 --jq .data.repository.pullRequest | "state=" + (.state // ""), "merged=" + (.merged | tostring), "queued=" + (.isInMergeQueue | tostring), "base=" + (.baseRefName // "")
+
+--- B2: protection changed after collection -> merge refuses, forge untouched ---
+ok - a merge refuses when protection changes after evidence collection
+merge exit path rc=0
+merge stderr:
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QS4B5MCGM8G4AEJZHTD896/.pi/extensions/fm-primary-turnend-guard.ts -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QS4B5MCGM8G4AEJZHTD896/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+verified: https://github.com/example/repo/pull/74 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 4242424242424242424242424242424242424242
+error: merge refused - branch protection re-verification failed: {"status":"HOLD","protection":false,"protection_scope":"","reasons":["branch-protection-changed"]}
+forge calls recorded:
+pr view https://github.com/example/repo/pull/74 --json headRefOid -q .headRefOid
+pr view https://github.com/example/repo/pull/74 --json state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName,statusCheckRollup
+api repos/example/repo/branches/main
+api --paginate repos/example/repo/rules/branches/main
+pr view https://github.com/example/repo/pull/74 --json author,headRefOid,baseRefName,changedFiles
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main
+api --paginate --slurp repos/example/repo/commits/4242424242424242424242424242424242424242/check-runs?per_page=100
+api --paginate --slurp repos/example/repo/commits/4242424242424242424242424242424242424242/statuses?per_page=100
+api --paginate --slurp repos/example/repo/pulls/74/reviews
+api user --jq .login
+api --paginate --slurp repos/example/repo/pulls/74/files?per_page=100
+pr view https://github.com/example/repo/pull/74 --json baseRefName
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main
+
+--- B3: #135's recorded-decision line still enforced after the rebase ---
+ok - a recorded HOLD is persisted and still refuses after a restart
+ok - a merge refuses when its decision cannot be recorded durably
+
+DONE

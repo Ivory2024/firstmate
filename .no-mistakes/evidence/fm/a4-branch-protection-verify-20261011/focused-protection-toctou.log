@@ -1,0 +1,30 @@
+=== running focused scenario: protection changed after evidence collection ===
+ok - a merge refuses when protection changes after evidence collection
+--- evidence: merge refused before the forge command ---
+stderr:
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QS4B5MCGM8G4AEJZHTD896/.pi/extensions/fm-primary-turnend-guard.ts -e /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4QS4B5MCGM8G4AEJZHTD896/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+verified: https://github.com/example/repo/pull/74 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 4242424242424242424242424242424242424242
+error: merge refused - branch protection re-verification failed: {"status":"HOLD","protection":false,"protection_scope":"","reasons":["branch-protection-changed"]}
+--- forge calls actually issued (gh.log) ---
+pr view https://github.com/example/repo/pull/74 --json headRefOid -q .headRefOid
+pr view https://github.com/example/repo/pull/74 --json state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName,statusCheckRollup
+api repos/example/repo/branches/main
+api --paginate repos/example/repo/rules/branches/main
+pr view https://github.com/example/repo/pull/74 --json author,headRefOid,baseRefName,changedFiles
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main
+api --paginate --slurp repos/example/repo/commits/4242424242424242424242424242424242424242/check-runs?per_page=100
+api --paginate --slurp repos/example/repo/commits/4242424242424242424242424242424242424242/statuses?per_page=100
+api --paginate --slurp repos/example/repo/pulls/74/reviews
+api user --jq .login
+api --paginate --slurp repos/example/repo/pulls/74/files?per_page=100
+pr view https://github.com/example/repo/pull/74 --json baseRefName
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main
+RESULT: gh pr merge was NEVER invoked

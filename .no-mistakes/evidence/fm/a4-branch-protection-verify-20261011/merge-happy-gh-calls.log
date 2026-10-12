@@ -1,0 +1,17 @@
+pr view https://github.com/example/repo/pull/73 --json headRefOid -q .headRefOid
+pr view https://github.com/example/repo/pull/73 --json state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName,statusCheckRollup
+api repos/example/repo/branches/main
+api --paginate repos/example/repo/rules/branches/main
+pr view https://github.com/example/repo/pull/73 --json author,headRefOid,baseRefName,changedFiles
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main
+api --paginate --slurp repos/example/repo/commits/4040404040404040404040404040404040404040/check-runs?per_page=100
+api --paginate --slurp repos/example/repo/commits/4040404040404040404040404040404040404040/statuses?per_page=100
+api --paginate --slurp repos/example/repo/pulls/73/reviews
+api user --jq .login
+api --paginate --slurp repos/example/repo/pulls/73/files?per_page=100
+pr view https://github.com/example/repo/pull/73 --json baseRefName
+api repos/example/repo/branches/main/protection
+api --paginate --slurp repos/example/repo/rules/branches/main
+pr merge 73 --repo example/repo --match-head-commit 4040404040404040404040404040404040404040 --squash
+api graphql -f query=query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){state merged isInMergeQueue baseRefName}}} -F owner=example -F repo=repo -F number=73 --jq .data.repository.pullRequest | "state=" + (.state // ""), "merged=" + (.merged | tostring), "queued=" + (.isInMergeQueue | tostring), "base=" + (.baseRefName // "")
