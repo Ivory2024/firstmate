@@ -291,7 +291,7 @@ def build_records(kind, root_name, relpath, data):
     if kind in ("stow-notes", "retro-md"):
         text = data.decode("utf-8", "replace")
         marker = markdown_marker(text)
-        return [{
+        record = {
             "record_id": source,
             "unit": "document",
             "source": source,
@@ -301,8 +301,9 @@ def build_records(kind, root_name, relpath, data):
             "sha256": sha256_bytes(data),
             "marker_state": STATE_CANDIDATE if marker else STATE_RAW,
             "marker_kind": marker or "",
-            "auto_promotable": bool(marker),
-        }]
+        }
+        record["auto_promotable"] = is_promotable(record)
+        return [record]
     records = []
     for index, raw_line in enumerate(data.decode("utf-8", "replace").splitlines(), start=1):
         line = raw_line.strip()
@@ -315,7 +316,7 @@ def build_records(kind, root_name, relpath, data):
         if not isinstance(parsed, dict):
             continue
         marker = jsonl_marker(parsed)
-        records.append({
+        record = {
             "record_id": "%s:%d" % (source, index),
             "unit": "line",
             "source": source,
@@ -325,8 +326,9 @@ def build_records(kind, root_name, relpath, data):
             "sha256": canonical_json_hash(parsed),
             "marker_state": STATE_CANDIDATE if marker else STATE_RAW,
             "marker_kind": marker or "",
-            "auto_promotable": bool(marker),
-        })
+        }
+        record["auto_promotable"] = is_promotable(record)
+        records.append(record)
     return records
 
 

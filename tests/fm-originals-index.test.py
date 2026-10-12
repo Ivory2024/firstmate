@@ -389,6 +389,51 @@ print(json.dumps({
             self.assertFalse(module.is_promotable({"marker_state": state}), repr(state))
         self.assertFalse(module.is_promotable({}))
 
+    def test_auto_promotable_field_and_totals_share_the_promotable_owner(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("fm_originals_index", INDEX)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        roots = [
+            ("canonical", str(self.fixture.canonical)),
+            ("runtime", str(self.fixture.runtime)),
+            ("firstmate", str(self.fixture.firstmate)),
+            ("orca", str(self.fixture.orca)),
+        ]
+        worktrees = [
+            ("treehouse", str(self.fixture.treehouse)),
+            ("orca-worktrees", str(self.fixture.orca_worktrees)),
+        ]
+
+        def records_of(result):
+            return [record for entry in result["files"] for record in entry["records"]]
+
+        original = module.PROMOTABLE_STATES
+        try:
+            result = module.index(roots, worktrees, 8, 6)
+            records = records_of(result)
+            self.assertTrue(any(record["marker_state"] == "candidate" for record in records))
+            for record in records:
+                self.assertEqual(record["auto_promotable"], module.is_promotable(record),
+                                 record["record_id"])
+            marked = sum(1 for record in records if record["auto_promotable"])
+            self.assertEqual(result["totals"]["candidate_records"], marked)
+            self.assertEqual(result["totals"]["raw_evidence_records"], len(records) - marked)
+
+            # A state the owner does not recognize must make both the per-record
+            # field and the totals agree that nothing is promotable.
+            module.PROMOTABLE_STATES = frozenset()
+            result = module.index(roots, worktrees, 8, 6)
+            records = records_of(result)
+            self.assertTrue(any(record["marker_state"] == "candidate" for record in records))
+            for record in records:
+                self.assertFalse(record["auto_promotable"], record["record_id"])
+            self.assertEqual(result["totals"]["candidate_records"], 0)
+            self.assertEqual(result["totals"]["raw_evidence_records"], len(records))
+        finally:
+            module.PROMOTABLE_STATES = original
+
     # --- mechanical aggregation --------------------------------------------
 
     def test_aggregation_is_mechanical_and_adds_up(self):
