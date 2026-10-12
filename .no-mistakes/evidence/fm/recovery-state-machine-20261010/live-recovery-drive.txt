@@ -1,0 +1,73 @@
+===== SCENARIO 1: deterministic classify + successful recovery resumes the objective =====
+class: pr-target-mismatch
+fingerprint: 5f73cbbf5f3f3ed0
+signature: no-mistakes PR target mismatch on the lane
+target: fm/t1
+initial-state: RETRYABLE
+  PASS classify identifies pr-target-mismatch
+  PASS classify says mismatch starts RETRYABLE
+begin: begun: 5f73cbbf5f3f3ed0 state=RETRYABLE class=pr-target-mismatch
+  PASS begin opens RETRYABLE
+attempt ok: attempted: 5f73cbbf5f3f3ed0 state=RECOVERABLE attempts=1 same-cause-retries=0
+  PASS successful retry from RETRYABLE reaches RECOVERABLE
+resume: resumed: 5f73cbbf5f3f3ed0 state=RESUMED
+resume-plan: bin/fm-control.sh t1 relaunch --note "recovery 5f73cbbf5f3f3ed0 applied; resume the original brief"
+  PASS resume hands the objective back
+  PASS resume plan uses the existing control owner
+  PASS RESUMED projects no registry verb
+===== SCENARIO 2: bounded retry converges, does not loop, does not die =====
+  PASS identical failures converge on DIAGNOSING
+  PASS retry counter capped at bound
+  PASS budget-exhausted retry recorded, not masked
+  PASS escalate to BLOCKED_EXHAUSTED
+  PASS check stops an escalated recovery
+===== SCENARIO 3 (adversarial): attempt cannot bypass captain/validation boundary =====
+attempt at WAITING_APPROVAL: rc=1 fm-recovery: attempt only runs from RETRYABLE or DIAGNOSING (recovery 9c89b3e10563aee0 is WAITING_APPROVAL)
+  PASS attempt refused at WAITING_APPROVAL
+  PASS refusal names attempt state space
+  PASS captain state untouched
+  PASS refused attempt wrote no ledger event
+attempt at VALIDATING: rc=1
+  PASS attempt refused at VALIDATING
+  PASS validation state untouched
+===== SCENARIO 4 (final-commit fix): DIAGNOSING -> RETRYABLE resume =====
+  PASS differing cause moves to DIAGNOSING
+original cause recurs: rc=0 attempted: fd70a86675f1be54 state=RETRYABLE attempts=2 same-cause-retries=1
+  PASS original cause recurring is accepted, not an illegal transition
+  PASS resumes same-cause retry budget on RETRYABLE
+  PASS record really is RETRYABLE
+  PASS then retry succeeds -> RECOVERABLE
+===== SCENARIO 5: checkpoint restore after worker death =====
+checkpoint: resumed: 09f1fc65d06ac976 state=VALIDATING attempts=0 alternatives=1
+  PASS stale lease restores from checkpoint
+  PASS checkpoint kept state
+  PASS checkpoint kept counters
+  PASS single begin in ledger
+===== SCENARIO 6: captain boundary raises a real hold =====
+  PASS approval-boundary starts at WAITING_APPROVAL
+  PASS real captain hold recorded
+decoded hold_reason: recovery approval: classified approval-boundary
+  PASS hold reason names recovery approval (decoded)
+===== SCENARIO 7: authority gate refuses reserved actions =====
+  PASS merge refused
+  PASS merge refused even with token
+  PASS approval-required needs token
+  PASS automatic action reported as decision
+  PASS unknown action fails closed
+===== SCENARIO 8: production class unrecordable; free text cannot relabel =====
+  PASS injected class cannot relabel record
+  PASS record has exactly one exec_class field
+  PASS production class refused
+  PASS refusal names the control plane
+===== SCENARIO 9: rollback preserves incident evidence =====
+archive: archived: /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-recovery-live.8BeUKc/rollback/data/recovery-archive/rollback-20261012T222855Z
+  PASS archived record byte-identical
+  PASS audit record versioned
+  PASS audit names reason
+===== SCENARIO 10: export is read-only and tagged =====
+  PASS export writes nothing
+  PASS export carries schema
+  PASS export carries exec_class
+  PASS every export line valid JSON
+
+===== RESULT: 46 passed, 0 failed =====

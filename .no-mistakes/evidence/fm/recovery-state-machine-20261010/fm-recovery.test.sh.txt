@@ -1,0 +1,40 @@
+ok - bounded retry: no infinite retry on an identical error
+ok - alternative search: a different alternative is tried after a failed verification
+ok - approval boundary: exact HOLD raised only for the captain-owned boundary
+ok - checkpoint: a worker death resumes the same recovery instead of restarting it
+  per-request: 1=[duplicate: df5604cfd46b62a6] 2=[begun: df5604cfd46b62a6 state=RETRYABLE class=run-failed]
+ok - concurrent recovery (clean state): exactly one begun, one duplicate
+  per-request: 1=[duplicate: df5604cfd46b62a6 (held by main)] 2=[duplicate: df5604cfd46b62a6]
+ok - concurrent recovery (held lease): both requests rejected
+ok - concurrent recovery: fan-out capped at 4
+ok - recovery failure: the original task state is preserved byte for byte
+ok - recovery success: the original work resumes through the existing control plane
+ok - playbook: neither a verified nor a stale entry can authorize a reserved write
+ok - budgets: the recovery converges on an escalation and refuses illegal transitions
+ok - attempt state space: an attempt outside RETRYABLE/DIAGNOSING is refused
+ok - attempt golden paths: ok/fail outcomes reach their table states
+ok - attempt state space: every RETRYABLE/DIAGNOSING outcome is a table-legal transition
+ok - attempt boundary: every state outside RETRYABLE/DIAGNOSING refuses attempt with no mutation
+ok - classification: deterministic cause classes from real evidence
+ok - retire: a recurring failure reopens after an audited retire
+simulated: captain hold for t24 was not written (exec_class=simulation never mutates the real backlog)
+ok - rollback: capability removed without destroying incident evidence
+ok - execution class: production is unrecordable here, so test output cannot be read as operational
+ok - measurement export: tagged, complete, JSON-valid, and read-only
+ok - record fields: no free-text argument can inject or relabel the execution class
+ok - record fields: a multi-word value round-trips instead of being truncated
+ok - retire: an archived incident is never overwritten by a second retire
+ok - rollback: two rollbacks never merge, so no audit record is lost
+ok - claim lock: an uncreatable claim fails closed instead of reading as a duplicate
+ok - apply: the engine records the authority decision and performs no action
+ok - approval boundary: WAITING_APPROVAL is only published with a recorded hold
+ok - simulation: a rehearsal writes its own record and never mutates the real backlog
+ok - ledger integrity: a value that would split an event is refused
+ok - measurement export: an operator label cannot break the event stream
+ok - playbook: verify and retire do not depend on the recovery store existing
+ok - classification: the worker's own current state and the task-id lookup are covered
+ok - rollback: a live claim lock is never removed, so a running begin keeps its mutual exclusion
+ok - record read: absent and unreadable are different facts and never read the same
+ok - budgets: the whole-recovery window bites on attempt, alternative, and validate, not only on advance
+ok - concurrent cap: an abandoned recovery is converged instead of silently blocking new work
+ok - fm-recovery state machine (all scenarios)
