@@ -130,10 +130,11 @@ EOF
       . "$ROOT/tests/lib.sh"
       [ "$FM_HOME" != "$1" ] || exit 91
       [ -f "$FM_HOME/.env" ] && [ ! -s "$FM_HOME/.env" ] || exit 92
-      # The replacement home is credential-free, so the notifier is expected to
-      # fail closed; the post-log assertion after this proves the hostile home
-      # was replaced and nothing reached the transport.
-      "$NOTIFY_STATUS" task-a "done: hostile inherited home fixture" >/dev/null 2>&1 || true
+      # The replacement home is credential-free, so Discord is not opted in and
+      # the notifier exits silently as a no-op; the post-log assertion after
+      # this proves the hostile home was replaced and nothing reached the
+      # transport.
+      "$NOTIFY_STATUS" task-a "done: hostile inherited home fixture" >/dev/null 2>&1
     ' _ "$hostile" || fail "the shared library did not replace the hostile ambient home"
 
   [ ! -s "$posts" ] \
