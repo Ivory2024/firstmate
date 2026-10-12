@@ -1,0 +1,73 @@
+=== Scenario S1: decision notification names task title + id in Korean ===
+  PASS: decision push exits 0
+  --- S1 message ---
+**결정 필요** - 작업: Ship the billing endpoint [task-a]
+
+왜 연락했나: 보류된 작업을 어떻게 진행할지
+
+**필요한 결정: 보류된 작업을 어떻게 진행할지**
+
+**선택지**
+1. 요청대로 진행
+2. 보류 상태로 두기
+
+**권장안: 보류 상태로 두기**
+
+↩️ 답장으로 선택해 주세요.
+  ------------------
+  PASS: header names title + id in Korean
+  PASS: title appears once
+=== Scenario S2: PR-ready names task title once, Korean ===
+  PASS: PR-ready status push exits 0
+  --- S2 message ---
+**결정 필요** - 작업: Ship the billing endpoint [task-a]
+
+왜 연락했나: app 저장소: 검토할 풀 리퀘스트가 준비되었습니다. https://github.com/acme/app/pull/42
+
+**필요한 결정: 풀 리퀘스트를 병합할지**
+
+**선택지**
+1. 병합
+2. 열어 두기
+
+**권장안: 열어 두기**
+
+↩️ 답장으로 선택해 주세요.
+  ------------------
+  PASS: header names title + id
+  PASS: PR-ready body is Korean
+  PASS: PR-ready names the repo
+  PASS: title appears exactly once (no duplicate)
+=== Scenario S3: completion names task title + id + outcome in Korean ===
+  PASS: done status push exits 0
+  --- S3 message ---
+작업 완료 - Wire the billing endpoint [task-a]: endpoint wired and tested
+  ------------------
+  PASS: completion names title, id, outcome in Korean
+  PASS: completion delivered once
+=== Scenario S4 (F1): completed task titled with 결정 필요 still delivers once ===
+  PASS: marker-in-title completion is not refused
+  --- S4 message ---
+작업 완료 - 결정 필요한 로그인 버그 수정 [task-a]: login bug fixed
+  ------------------
+  PASS: completion names the marker-containing title
+  PASS: completion carries the outcome
+  PASS: replayed completion still delivers exactly once
+=== Scenario S4b (adversarial): unregistered decision ask via --report is still refused ===
+  PASS: unregistered decision ask posts nothing
+  PASS: unregistered decision ask exits non-zero (1)
+  PASS: event-id report carrying the marker still delivers
+  PASS: event-id report posted once
+=== Scenario S5: green-check read reaction on accepted ingress ===
+  PASS: reaction helper exits 0
+  PASS: accepted reaction is the green check (✅)
+=== Scenario S6 (#123 fail-closed + #141 opt-in preserved) ===
+  PASS: decision push with no token fails closed (exit 1)
+  PASS: --retry-pending with no token exits 0
+  PASS: --retry-pending with no token is silent
+  PASS: completion with no token is a silent no-op (exit 0)
+  PASS: completion with no token prints nothing
+  PASS: completion with token but missing channel fails closed (exit 1)
+  PASS: completion with invalid channel fails closed (exit 1)
+
+ALL LIVE SCENARIOS PASSED
