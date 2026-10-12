@@ -1394,11 +1394,19 @@ case "$PROVIDER" in
     # Shared merge boundary: verify forge evidence before merge.
     # fm-merge-evidence.sh always exits 0 (HOLD is a reported verdict, not a
     # script failure), so the gate is the parsed status/head, never the exit code.
-    # An attended --allow-red is carried as an argument bound to this exact call,
-    # never as an inherited environment variable or a file: an ambient waiver
-    # would be a substitutable trust root another run could pick up.
+    # An attended --allow-red or --allow-missing is carried as an argument bound
+    # to this exact call, never as an inherited environment variable or a file:
+    # an ambient waiver would be a substitutable trust root another run could
+    # pick up. The collector accepts a single --waived-check, so the two waivers
+    # cannot be combined; that combination is refused rather than forwarded as
+    # one waiver while the other is silently dropped.
+    if [ "${#ALLOW_RED[@]}" -gt 0 ] && [ "${#ALLOW_MISSING[@]}" -gt 0 ]; then
+      printf 'error: merge refused - the evidence collector carries a single waiver, so --allow-red and --allow-missing cannot be combined\n' >&2
+      exit 1
+    fi
     evidence_args=(collect "$ID" "$URL" "$FM_PR_MERGE_HEAD")
     [ "${#ALLOW_RED[@]}" -eq 0 ] || evidence_args+=(--waived-check "${ALLOW_RED[0]}")
+    [ "${#ALLOW_MISSING[@]}" -eq 0 ] || evidence_args+=(--waived-check "${ALLOW_MISSING[0]}")
     evidence_json=$("$EVIDENCE_SCRIPT" "${evidence_args[@]}" 2>&1)
     if ! printf '%s' "$evidence_json" | jq -e --arg sha "$FM_PR_MERGE_HEAD" \
       '.status == "PASS" and .head_sha == $sha' >/dev/null 2>&1; then

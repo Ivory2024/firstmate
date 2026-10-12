@@ -28,10 +28,12 @@
 #     shared server that no longer exposes its own process is identified by the
 #     session/tab pane identity that harness passes down to its tool shells.
 #
-# Ownership is then: ancestry membership in this session's own harness run, or
-# an exact match on the recorded session id and harness. Neither signal ever
-# fails open: no id, no sidecar, an untrusted id, a different recorded id, or a
-# shared server leaves the ancestry verdict exactly as it was.
+# Ownership is then: ancestry membership in this session's own contiguous
+# harness run, or a recorded session id and harness that match this session's
+# own while the recorded pid is still a live session with the recorded process
+# identity. Neither signal ever fails open: no id, no sidecar, an untrusted id,
+# a different recorded id, or a shared server leaves the ancestry verdict
+# exactly as it was.
 # This file is sourced by scripts and has no side effects on source.
 
 # Cursor process identity is NOT expressible as a command-name pattern and is

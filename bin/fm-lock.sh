@@ -57,10 +57,10 @@ if [ "${1:-}" = "status" ]; then
       if fm_session_lock_recorded_owner_live "$STATE"; then
         echo "lock: held by live harness pid $FM_LOCK_INSPECT_PID"
       else
-        echo "lock: stale (pid $FM_LOCK_INSPECT_PID dead, recycled, or not a live harness session)"
+        echo "lock: stale (pid $FM_LOCK_INSPECT_PID dead or not a harness)"
       fi
       ;;
-    *) echo "lock: stale (pid $FM_LOCK_INSPECT_PID dead, recycled, or not a live harness session)" ;;
+    *) echo "lock: stale (pid $FM_LOCK_INSPECT_PID dead or not a harness)" ;;
   esac
   exit 0
 fi
@@ -219,7 +219,7 @@ if [ -f "$LOCK" ] && [ ! -L "$LOCK" ]; then
     confirm_own_lock "$old"
     old=$(cat "$LOCK" 2>/dev/null || true)
   fi
-if fm_session_lock_recorded_owner_live "$STATE"; then
+  if fm_session_lock_recorded_owner_live "$STATE"; then
     refuse_live_owner "$old"
   fi
 fi
@@ -243,7 +243,7 @@ if [ -e "$LOCK" ] || [ -L "$LOCK" ]; then
     echo "error: session lock is unreadable; operate read-only until resolved" >&2
     exit 1
   }
-if [ "$old" != "$me" ] && fm_session_lock_recorded_owner_live "$STATE"; then
+  if [ "$old" != "$me" ] && fm_session_lock_recorded_owner_live "$STATE"; then
     fm_session_lock_owned_by_self "$STATE" && confirm_own_lock "$old"
     old=$(cat "$LOCK" 2>/dev/null || true)
     if [ "$old" != "$me" ] && fm_session_lock_recorded_owner_live "$STATE"; then
