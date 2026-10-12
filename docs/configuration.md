@@ -1608,6 +1608,7 @@ When `FM_DISCORD_ALLOW_DMS` is on, the bot's DM channels are polled even when `F
 Replies to ordinary messages do not resolve decisions.
 A reply that lands after its decision was already answered is still captured, flagged `decision.superseded` with the message id it supersedes, so the captain's words reach firstmate without rebinding a settled decision; the keyed appliers refuse that superseded key.
 Failed sends remain in private state for watcher retries, including recovery of interrupted sends without reposting a notification already accepted by Discord.
+A send that cannot proceed because the bot token or a usable channel is missing or invalid reports the gap on stderr and exits non-zero instead of reporting success, so an undelivered notification never looks delivered and the retry sweep owns redelivery.
 
 ## Relay (.env)
 
