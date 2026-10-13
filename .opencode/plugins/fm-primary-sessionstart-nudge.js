@@ -4,6 +4,19 @@ import { resolve } from "node:path";
 
 const handledSessions = new Set();
 
+// session.created only fires for sessions created after the plugin's
+// subscription (verified on 2.0.27: a plugin-created session emits
+// session.created, while the CLI's own `opencode run` session never does).
+// Treat the first sight of a session - its queued user message or the start
+// of its first execution - as the same once-per-session open event, so a
+// CLI-created or restart-carried primary session still gets the nudge.
+const FIRST_SIGHT_EVENTS = new Set([
+  "session.created",
+  "session.inbox.enqueued",
+  "session.execution.started",
+  "session.step.started",
+]);
+
 function runProcess(command, args) {
   return new Promise((resolveResult) => {
     const child = spawn(command, args, { stdio: ["ignore", "pipe", "ignore"] });
@@ -37,8 +50,10 @@ export const FmPrimarySessionstartNudge = async ({ client, directory, worktree }
 
   return {
     event: async ({ event }) => {
-      if (event.type !== "session.created") return;
-      const sessionID = event.properties?.info?.id ?? event.properties?.sessionID;
+      if (!FIRST_SIGHT_EVENTS.has(event.type)) return;
+      // v2 carries the id in `data.sessionID`; a legacy created event carries
+      // it in `properties.sessionID` with the session object under `info`.
+      const sessionID = event.properties?.sessionID ?? event.properties?.info?.id;
       if (!sessionID || handledSessions.has(sessionID) || !root) return;
       handledSessions.add(sessionID);
 

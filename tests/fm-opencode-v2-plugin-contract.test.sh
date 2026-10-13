@@ -180,6 +180,26 @@ try {
     await stopCreated();
   }
 
+  // A CLI-created or restart-carried session never emits session.created
+  // (verified on 2.0.27: `opencode run`'s own session fires no session.created).
+  // The nudge must still fire exactly once at that session's first sight.
+  const cliPrompts = [];
+  const cliEvents = [
+    { type: "session.inbox.enqueued", data: { sessionID: "cli-session" } },
+    { type: "session.execution.started", data: { sessionID: "cli-session" } },
+    { type: "integration.updated", data: {} },
+  ];
+  const cliCtx = eventContext(fixture, cliEvents, cliPrompts);
+  const cliNudgeMod = await import(pathToFileURL(`${root}/.opencode/plugins/fm-primary-sessionstart-nudge.js`).href + `?clisight=${Date.now()}`);
+  if (cliNudgeMod.default?.setup) {
+    const stopCli = await cliNudgeMod.default.setup(cliCtx);
+    await waitFor(() => cliPrompts.length === 1);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(cliPrompts.length, 1, "nudge fires exactly once for a CLI-created session without session.created");
+    assert.equal(cliPrompts[0].sessionID, "cli-session", "first sight of a session carries data.sessionID");
+    await stopCli();
+  }
+
   // The turn-end handler must pass v2 idle IDs into the shared arm coordinator.
   const armedSessions = [];
   globalThis.__firstmateOpenCodeWatchArm = { ensureArmed: async (sessionID) => { armedSessions.push(sessionID); return "armed"; } };
