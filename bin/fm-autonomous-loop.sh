@@ -1403,7 +1403,7 @@ cmd_task_resume() {  # <task-id> [--reason <text>]
   while [ "$#" -gt 0 ]; do
     case "$1" in --reason) reason=$2; shift 2 ;; *) shift ;; esac
   done
-  lifecycle_transition "$id" "RECOVERY_HOLD" "Manual resume requested: $reason"
+  lifecycle_transition "$id" "RECOVERY_HOLD" "Manual resume requested: $reason" || return 1
   append_evidence "$id" "Manual resume: $reason"
   fm_control_relaunch "$id" "" "$reason"
 }
@@ -1427,7 +1427,7 @@ cmd_task_reassign() {  # <task-id> --harness <name> [--model <name>] [--effort <
   done
   [ -n "$harness" ] || die "--harness required"
   [ -n "$note" ] || die "--note required"
-  lifecycle_transition "$id" "RECOVERY_HOLD" "Reassignment to $harness requested: $note"
+  lifecycle_transition "$id" "RECOVERY_HOLD" "Reassignment to $harness requested: $note" || return 1
   local args
   args=("--harness" "$harness" "--note" "$note")
   [ -n "$model" ] && args+=("--model" "$model")
@@ -1449,7 +1449,7 @@ cmd_task_hold() {  # <task-id> --reason <text> [--until <epoch>]
     esac
   done
   [ -n "$reason" ] || die "--reason required"
-  lifecycle_transition "$id" "WAITING_EXTERNAL" "Held: $reason"
+  lifecycle_transition "$id" "WAITING_EXTERNAL" "Held: $reason" || return 1
   [ -n "$until" ] && lifecycle_lock "$id" && {
     local file tmp
     file=$(lifecycle_path "$id")

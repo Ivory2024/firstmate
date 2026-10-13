@@ -133,6 +133,77 @@ assert_contains "$output" "Invalid transition" \
 assert_equals DONE "$(sed -n 's/^current_step=//p' "$home/state/task-lifecycle/double-done.lifecycle")" \
   "the refused transition still moved the task"
 
+# The manual lifecycle commands apply the same fail-closed rule as task-done:
+# a refused transition (here, on a terminal DONE/FAILED task) must abort
+# non-zero and must not reach the delegated side effect (fm-control relaunch or
+# the captain hold). A dedicated root captures those side effects.
+termroot="$TMP_ROOT/termroot"
+mkdir -p "$termroot/bin"
+for script in "$ROOT"/bin/*.sh; do
+  ln -s "$script" "$termroot/bin/$(basename "$script")"
+done
+rm "$termroot/bin/fm-control.sh" "$termroot/bin/fm-captain-hold.sh"
+cat > "$termroot/bin/fm-control.sh" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${FM_CONTROL_LOG:?}"
+SH
+cat > "$termroot/bin/fm-captain-hold.sh" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${FM_CAPTAIN_HOLD_LOG:?}"
+SH
+chmod +x "$termroot/bin/fm-control.sh" "$termroot/bin/fm-captain-hold.sh"
+
+for terminal in DONE FAILED; do
+  id="resume-${terminal,,}"
+  write_task "$id" lane-terminal "$terminal"
+  output=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$termroot" FM_CONTROL_LOG="$TMP_ROOT/terminal-control.log" \
+    "$termroot/bin/fm-autonomous-loop.sh" task-resume "$id" --reason "terminal test" 2>&1)
+  rc=$?
+  assert_equals 1 "$rc" "task-resume on a $terminal task reported success"
+  assert_contains "$output" "Invalid transition" \
+    "the refused task-resume transition was not surfaced"
+  assert_equals "$terminal" "$(sed -n 's/^current_step=//p' "$home/state/task-lifecycle/$id.lifecycle")" \
+    "task-resume on a $terminal task moved the lifecycle"
+  assert_absent "$TMP_ROOT/terminal-control.log" \
+    "task-resume on a $terminal task reached fm-control"
+
+  id="reassign-${terminal,,}"
+  write_task "$id" lane-terminal "$terminal"
+  output=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$termroot" FM_CONTROL_LOG="$TMP_ROOT/terminal-control.log" \
+    "$termroot/bin/fm-autonomous-loop.sh" task-reassign "$id" --harness codex --note "terminal test" 2>&1)
+  rc=$?
+  assert_equals 1 "$rc" "task-reassign on a $terminal task reported success"
+  assert_contains "$output" "Invalid transition" \
+    "the refused task-reassign transition was not surfaced"
+  assert_equals "$terminal" "$(sed -n 's/^current_step=//p' "$home/state/task-lifecycle/$id.lifecycle")" \
+    "task-reassign on a $terminal task moved the lifecycle"
+  assert_absent "$TMP_ROOT/terminal-control.log" \
+    "task-reassign on a $terminal task reached fm-control"
+
+  id="hold-${terminal,,}"
+  write_task "$id" lane-terminal "$terminal"
+  output=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$termroot" FM_CAPTAIN_HOLD_LOG="$TMP_ROOT/terminal-hold.log" \
+    "$termroot/bin/fm-autonomous-loop.sh" task-hold "$id" --reason "terminal test" 2>&1)
+  rc=$?
+  assert_equals 1 "$rc" "task-hold on a $terminal task reported success"
+  assert_contains "$output" "Invalid transition" \
+    "the refused task-hold transition was not surfaced"
+  assert_equals "$terminal" "$(sed -n 's/^current_step=//p' "$home/state/task-lifecycle/$id.lifecycle")" \
+    "task-hold on a $terminal task moved the lifecycle"
+  assert_absent "$TMP_ROOT/terminal-hold.log" \
+    "task-hold on a $terminal task reached fm-captain-hold"
+done
+
+# The ordinary path still runs: a resumable task transitions and reaches
+# fm-control.
+write_task resumable lane-terminal ASSIGNED
+FM_HOME="$home" FM_ROOT_OVERRIDE="$termroot" FM_CONTROL_LOG="$TMP_ROOT/terminal-control.log" \
+  "$termroot/bin/fm-autonomous-loop.sh" task-resume resumable --reason "ordinary resume" >/dev/null 2>&1
+assert_equals RECOVERY_HOLD "$(sed -n 's/^current_step=//p' "$home/state/task-lifecycle/resumable.lifecycle")" \
+  "the ordinary task-resume did not move the lifecycle"
+assert_contains "$(cat "$TMP_ROOT/terminal-control.log")" "resumable relaunch" \
+  "the ordinary task-resume did not reach fm-control"
+
 for lifecycle_state in READY ASSIGNED RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD ESCALATED; do
   for external_state in "done" failed; do
     id="${lifecycle_state,,}-$external_state"
