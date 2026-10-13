@@ -21,7 +21,8 @@
 # cross-home nudge stay defense in depth, not the primary mechanism.
 #
 # SCOPE. fm_backlog_transition_applies is the single gate. It excludes
-# secondmates (persistent agents are never backlog items, AGENTS.md section 10),
+# secondmates (persistent agents are never backlog items; see the backlog-operations
+# skill, pointed at from AGENTS.md section 10),
 # homes whose configured backlog backend is manual and markdown homes that keep
 # no backlog file. Those return-1 exemptions are never errors; an
 # unresolvable configured data directory, a backend resolution error, or

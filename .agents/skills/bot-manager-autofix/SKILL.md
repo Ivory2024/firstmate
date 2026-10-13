@@ -54,7 +54,7 @@ ledger evidence for the current occurrence.
 ## Dispatch actionable defects
 
 For each distinct code-level defect, create one brief and backlog item using
-`bin/fm-brief.sh` and the section 7/11 contract in `AGENTS.md`. Put the relevant
+`bin/fm-brief.sh` and the section 7 contract in `AGENTS.md` plus the `crewmate-briefs` skill. Put the relevant
 issue evidence and root cause under `## Captain's intent`; put the concrete fix
 under `## Firstmate spec`. Use the registered IMAC project name and classify
 internal automation/tooling fixes as `direct-PR`; product-facing or uncertain

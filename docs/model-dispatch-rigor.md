@@ -33,7 +33,7 @@ strong pinned model (dispatch narrows little) or a weekly-rotating free model
 
 - **Known-strong** (a pinned model with an established track record — e.g. the
   models `config/crew-harness`/`config/secondmate-harness` name explicitly):
-  ordinary brief per `AGENTS.md` section 11. No extra narrowing.
+  ordinary brief per the `crewmate-briefs` skill that `AGENTS.md` section 11 points at. No extra narrowing.
 - **Rotating/unvetted** (anything selected fresh each cycle with no track
   record yet — today this means opencode's free-tier models): narrow the brief
   further than you would for a known-strong model doing the same task, and
