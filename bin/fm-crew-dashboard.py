@@ -662,15 +662,21 @@ async function tickBoard(){try{const r=await fetch('/board',{cache:'no-store'});
  const set=(id,v)=>{document.getElementById(id).textContent=v};
  const put=(id,v)=>{document.getElementById(id).innerHTML=v};
  const ready=d.lanes_ready!==false;
- set('qc-flight',ready?(c.in_flight||0):'…');set('qc-queued',c.queued||0);set('qc-stuck',(c.blocked||0)+(c.held||0));
+ // With no board at all the counts are unknown, not zero: show the read
+ // failure in the sections rather than an authoritative-looking 0.
+ const hasBoard=d.queued!==undefined;
+ set('qc-flight',ready?(c.in_flight||0):'…');
+ set('qc-queued',hasBoard?(c.queued||0):'?');
+ set('qc-stuck',hasBoard?((c.blocked||0)+(c.held||0)):'?');
  let tag='읽기 전용';const qs=r.headers.get('X-Queue-Status')||'?';
  if(d.computed_at)tag+=' · 갱신 '+new Date(d.computed_at*1000).toLocaleTimeString();
  if(qs!=='fresh')tag+=' · '+(qs==='stale'?'이전 값(갱신 중)':'갱신 실패 '+(r.headers.get('X-Queue-Error')||''));
  set('qmeta',tag);
  set('qn-flight','('+(d.in_flight||[]).length+')');
- set('qn-queued','('+(q.total||0)+')');
- set('qn-stuck','차단 '+(b.count||0)+' · 보류 '+(h.count||0));
+ set('qn-queued',hasBoard?'('+(q.count||0)+')':'');
+ set('qn-stuck',hasBoard?'차단 '+(b.count||0)+' · 보류 '+(h.count||0):'');
  const empty='<div class=mut>없음</div>';
+ const unread='<div class=mut>백로그를 읽지 못했습니다</div>';
  const flight=(d.in_flight||[]).map(t=>qrow('live',t.title||t.id,
    esc(t.harness||'')+' · '+esc(t.window||'')+' · <span class=sid>'+esc(t.id)+'</span><br>'+esc(t.last||'(상태 줄 없음)'),true)).join('');
  const queued=(q.items||[]).map(t=>qrow('',t.title||t.id,
@@ -680,8 +686,8 @@ async function tickBoard(){try{const r=await fetch('/board',{cache:'no-store'});
   +(h.items||[]).map(t=>qrow('hld',t.title||t.id,
    '보류: '+esc(t.hold_reason||'-')+(t.hold_until&&t.hold_until!=='-'?' (~'+esc(t.hold_until)+')':'')+' · <span class=sid>'+esc(t.id)+'</span>',true)).join('');
  put('q-flight',flight||(ready?empty:'<div class=mut>라이브 워커 계산 중 (메인 뷰가 준비되면 표시)</div>'));
- put('q-queued',(queued+qextra(q))||empty);
- put('q-stuck',(stuck+qextra(b)+qextra(h))||empty);
+ put('q-queued',hasBoard?((queued+qextra(q))||empty):unread);
+ put('q-stuck',hasBoard?((stuck+qextra(b)+qextra(h))||unread):unread);
 }catch(e){document.getElementById('qmeta').textContent='읽기 전용 · /board 실패';}}
 tick();setInterval(tick,5000);
 tickTasks();setInterval(tickTasks,5000);
