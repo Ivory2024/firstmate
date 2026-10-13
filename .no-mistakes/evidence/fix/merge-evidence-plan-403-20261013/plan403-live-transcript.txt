@@ -1,0 +1,46 @@
+=== scenario 1: plan-gated 403 on both protection sources ===
+collector verdict: {"status":"PASS","head_sha":"0000000000000000000000000000000000000001","risk":"LOW","scope":"ba98a4f5a61e7c913ef1fb182e4179baf4e15294f676fa8b1500fd03e8aca759","protection":false,"protection_scope":"5c097cdae17accf8ab6de6bebdcfa49905eb741faa8603e2e2713bfd817cd899","reasons":[],"protection_source":"unavailable-by-plan"}
+ok - plan-403 both: merge lands
+ok - plan-403 both: collector PASS
+ok - plan-403 both: collector records the relaxation
+ok - plan-403 both: collector does not claim protection exists
+ok - plan-403 both: the forge merge command ran (pr merge 9 --repo example/repo --match-head-commit 0000000000000000000000000000000000000001 --squash)
+ok - plan-403 both: durable merge wake names the relaxed gate
+1791892600	1	check	merged-task-x1-https://github.com/example/repo/pull/9	check: merge landed: task-x1 https://github.com/example/repo/pull/9 gate-relaxed(unavailable-by-plan)
+
+=== scenario 2 (control): ordinary protected repo, no relaxation ===
+collector verdict: {"status":"PASS","head_sha":"0000000000000000000000000000000000000002","risk":"LOW","scope":"ba98a4f5a61e7c913ef1fb182e4179baf4e15294f676fa8b1500fd03e8aca759","protection":true,"protection_scope":"82750210165cf0d53a7e64304282318f25dce4089070f34010ac6801b39798ee","reasons":[]}
+ok - ordinary protected: merge lands
+ok - ordinary protected: collector enforces the gate
+ok - ordinary protected: collector records no relaxation
+ok - ordinary protected: the forge merge command ran (pr merge 9 --repo example/repo --match-head-commit 0000000000000000000000000000000000000002 --squash)
+ok - ordinary protected: no relaxation tag in the durable wake
+
+=== scenario 3 (adversarial): unrelated 403 on protection still refuses ===
+collector verdict: {"status":"HOLD","head_sha":"0000000000000000000000000000000000000003","reasons":["branch-protection-unreadable"]}
+ok - unrelated 403: collector holds unreadable protection
+ok - unrelated 403: merge refuses
+ok - unrelated 403: no forge merge ran
+ok - unrelated 403: no merged wake recorded
+refusal: branch-protection-unreadable
+
+=== scenario 4 (adversarial): plan on protection + 5xx on rules still refuses ===
+collector verdict: {"status":"HOLD","head_sha":"0000000000000000000000000000000000000004","reasons":["rulesets-unreadable"]}
+ok - partial plan: collector holds the unreadable rules source
+ok - partial plan: merge refuses
+ok - partial plan: no forge merge ran
+
+=== scenario 5 (adversarial): plan 403 on rules alone is not the plan proof ===
+collector verdict: {"status":"PASS","head_sha":"0000000000000000000000000000000000000005","risk":"LOW","scope":"ba98a4f5a61e7c913ef1fb182e4179baf4e15294f676fa8b1500fd03e8aca759","protection":true,"protection_scope":"82750210165cf0d53a7e64304282318f25dce4089070f34010ac6801b39798ee","reasons":[]}
+ok - plan rules only: healthy classic gate still passes
+ok - plan rules only: no relaxation recorded
+ok - plan rules only: merge lands
+ok - plan rules only: the forge merge command ran (pr merge 9 --repo example/repo --match-head-commit 0000000000000000000000000000000000000005 --squash)
+ok - plan rules only: no relaxation tag in the durable wake
+
+=== scenario 6 (adversarial TOCTOU): protection appears before the merge ===
+ok - TOCTOU: merge refuses when the gate appears after collection
+ok - TOCTOU: no forge merge ran
+refusal: branch-protection-changed
+
+# plan403-live-driver PASS=25 FAIL=0

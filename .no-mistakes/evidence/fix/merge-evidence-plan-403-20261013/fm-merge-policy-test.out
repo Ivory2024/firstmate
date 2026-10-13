@@ -1,0 +1,92 @@
+ok - docs -> LOW
+ok - test -> LOW
+ok - pipeline py -> MEDIUM
+ok - automation py -> MEDIUM
+ok - watcher -> HIGH
+ok - PR merge -> HIGH
+ok - local merge -> HIGH
+ok - workflow -> HIGH
+ok - credential -> HIGH
+ok - credential markdown -> HIGH
+ok - secret markdown -> HIGH
+ok - unknown path -> HIGH
+ok - missing path detection -> HIGH
+ok - mixed docs+bin -> HIGH
+ok - review-route command is unavailable
+ok - verified producer accepts matching forge evidence
+ok - axi status read is bound to the task worktree, not the caller cwd
+ok - later captain rejection invalidates approval
+ok - verified producer holds stale SHA
+ok - verified producer holds forge API failure
+ok - branch-effective endpoint omits non-applicable rules
+ok - branch-effective ? pattern required check is enforced
+ok - branch-effective endpoint omits excluded patterns
+ok - unreadable branch rules hold
+ok - ruleset-only branch enforces the effective ruleset check
+ok - ruleset-only branch holds a red ruleset check
+ok - collector marks the verified protection evidence
+ok - collector records a protection evidence digest
+ok - re-verification passes on unchanged protection
+ok - the protection digest is stable across reads
+ok - re-verification holds when protection changed after collection
+ok - re-verification holds an unreadable protection read
+ok - re-verification holds an unreadable ruleset read
+ok - re-verification holds a branch with no protection
+ok - collector names a branch with no protection
+ok - re-verification rejects a malformed scope
+ok - plan-gated 403 on both protection sources resolves to no enforceable required check
+ok - the plan resolution records why the gate was not enforced
+ok - the plan resolution does not claim protection exists
+ok - the plan resolution still records a protection evidence digest
+ok - re-verification resolves the same plan-gated 403 to the same unenforced gate
+ok - re-verification refuses protection that appeared after a plan-gated collection
+ok - a plan refusal on one source only still holds the other source's failure
+ok - a plan refusal on branch rules does not excuse a permission refusal on protection
+ok - an unrelated 403 still holds an unreadable protection read
+ok - a 5xx still holds an unreadable protection read
+ok - an unrelated 403 still holds an unreadable branch-rules read
+ok - a 5xx still holds an unreadable branch-rules read
+ok - plan-gated 403 on branch rules alone leaves the classic source in force
+ok - plan-gated 403 on branch rules alone records no relaxation
+ok - protection present with no required check still holds
+ok - protection present with an empty required set records no relaxation
+ok - protection present with a red required check still holds
+ok - protection present and green still passes with no relaxation
+ok - no waiver holds a red required check
+ok - waived-check waives exactly its named required check
+ok - waived-check leaves a different red required check holding
+ok - waived-check without a name is refused
+ok - verified producer holds missing test evidence
+ok - producer ignores caller-writable test record
+ok - producer holds a status that never states its findings
+ok - producer ignores caller-writable review record
+ok - producer ignores caller-writable captain approval
+ok - later failed check run invalidates success
+ok - later in-progress check run invalidates success
+ok - later legacy status invalidates success
+ok - newer legacy failure supersedes earlier check run
+ok - producer rejects required check at wrong SHA
+ok - producer rejects caller evidence flags
+ok - completed required check with conclusion neutral is accepted
+ok - completed required check with conclusion skipped is accepted
+ok - GitLab producer accepts matching forge evidence
+ok - GitLab producer rejects failed pipeline job
+ok - GitLab producer holds stale SHA
+ok - GitLab producer accepts required pipeline success
+ok - GitLab producer rejects failed required pipeline
+ok - GitLab producer rejects missing required pipeline
+ok - GitHub truncated changed-file list holds
+ok - GitHub protected path past file 100 is classified
+ok - GitHub unreadable changed-file pages hold
+ok - GitHub empty changed-file pages hold
+ok - GitHub missing changed-file count holds
+ok - GitLab complete diff passes
+ok - GitLab overflowing diff holds
+ok - GitLab changes/changes_count mismatch holds
+ok - GitLab missing overflow flag holds
+ok - GitLab unreadable changes_count holds
+ok - empty risk classification output holds
+ok - the merge outcome reports a plan-relaxed gate
+ok - an ordinary merge outcome carries no relaxation tag
+ok - an unknown gate relaxation is refused
+# fm-merge-policy.test.sh PASS=91 FAIL=0
