@@ -309,7 +309,7 @@ Whenever the digest is incomplete, this approved containment keeps the prefix an
 OpenCode is a nudge-tier harness.
 The `.opencode/plugins/fm-primary-sessionstart-nudge.js` plugin does three things:
 
-- It listens for `session.created`.
+- It listens for a session's first sight: `session.created`, or the first queued user message or execution start for a session the runtime never announced.
 - It runs once per session id.
 - It calls `client.session.promptAsync` only when the wrapper prints a nudge.
 
@@ -317,9 +317,9 @@ Interactive TUI delivery is supported.
 Headless `opencode run` is intentionally fail-open, because the process can exit before the queued turn.
 That early exit is also why OpenCode cannot use the run tier.
 
-The OpenCode nudge runs only on `session.created`.
-The turn-end plugin runs later on `session.idle`; the watcher-arm plugin accepts normalized `QUIESCENT` signals, including OpenCode 2 execution terminal events.
-For legacy `session.idle`, the guard lets the watcher coordinator act first so the plugins do not race for one lifecycle event.
+The OpenCode nudge fires once per session at its first sight: `session.created` where the runtime emits it, and otherwise the first queued user message or first execution-start the plugin sees for a session (a CLI-created or restart-carried session in 2.0.27 emits no `session.created`).
+The turn-end plugin runs on legacy `session.idle` or the OpenCode 2 execution-terminal boundary (`session.execution.succeeded`, `.failed`, `.interrupted`; v2.0.27 emits no `session.idle`); the watcher-arm plugin accepts normalized `QUIESCENT` signals from the same terminals.
+On either boundary, the guard lets the watcher coordinator act first so the plugins do not race for one lifecycle event.
 The OpenCode lifecycle mapping is documented in the [harness reference](../.agents/skills/harness-adapters/references/harness/opencode.md#primary-integration).
 
 ### Grok
