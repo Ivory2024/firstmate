@@ -1,0 +1,26 @@
+ok - fm-discord-poll is a hard no-op without a token
+ok - missing Discord runtime queues a durable diagnostic wake
+ok - self-hosted Discord ingestion writes x-inbox payload shape and fires x-mention wake
+ok - a failed Discord reaction does not fail durable ingress
+ok - all four lifecycle reactions follow durable transitions
+ok - token recovery preserves the durable claim and allows terminal success
+ok - self-hosted Discord default polling discovers permitted DMs
+ok - fm-x-reply routes self-hosted Discord requests to self-hosted reply adapter
+ok - a successful Discord reply delivery is not treated as terminal request success
+ok - collision handling excludes gajae-way channel 1551134713727426570
+ok - explicit allowlist takes precedence over the default Discord collision exclusion with a warning
+ok - a reply to the bot's own message without a mention is captured
+ok - a reply to the bot's own message that also mentions the bot is captured
+ok - a reply to a non-bot message without a mention is still ignored
+ok - a DM command is polled and captured even when a channel allowlist is configured
+ok - an out-of-band Discord poll queues its mention durably, not only on stdout
+ok - an out-of-band Discord poll queues its auth diagnostic durably, not only on stdout
+ok - fm-bootstrap handles FM_DISCORD_BOT_TOKEN activation and artifact generation
+ok - an authorized captain's plain message in a command channel is captured
+ok - an unauthorized author is ignored even in a command channel
+ok - a plain message in an ordinary channel is still ignored
+ok - command-channel capture is idempotent across re-polls
+ok - an excluded command channel fails safe with an explicit diagnostic
+ok - claimed reaction fires on consumer claim
+ok - a sent captain decision notification marks its linked Discord request blocked
+ok - dry-run final follow-up suppresses live green reaction and success receipts
