@@ -1,0 +1,68 @@
+models.dev reachable; REAL cost for opencode-go/kimi-k3: {"input":3,"output":15,"cache_read":0.3}
+
+===== S1 default free-only gate refuses the paid id (no allowlist) =====
+ok - S1 paid id refused against real models.dev cost (exit=1) [saw: is not classified as free by models.dev]
+  agent launched: no
+    | error: OpenCode model 'opencode-go/kimi-k3' is not classified as free by models.dev; to allow this paid model, add its exact id to FM_OPENCODE_PAID_MODELS or config/opencode-paid-models
+
+===== S2 FM_OPENCODE_PAID_MODELS allows the paid id =====
+ok - S2 env allowlist dispatches the paid id (exit=0)
+ok - S2 warns untracked, does not refuse (exit=0) [saw: not tracked by the opencode free-model health catalog]
+  meta: harness=opencode model=opencode-go/kimi-k3 
+  agent launched: yes
+  launch model token: --model 'opencode-go/kimi-k3'
+    | warning: allowlisted paid model 'opencode-go/kimi-k3' is not tracked by the opencode free-model health catalog (expected 'opencode-free/kimi-k3'); skipping its status check
+    | warning: /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-live-paid.pHGP6n/live-paid-env/home/data/s2/launch-brief.md records no ship branch; defaulting to legacy branch fm/s2
+    | warning: /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-live-paid.pHGP6n/live-paid-env/home/data/s2/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+    | /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-live-paid.pHGP6n/live-paid-env/fake/fakebin/timeout: line 3: exec: 1: not found
+    | /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-live-paid.pHGP6n/live-paid-env/fake/fakebin/timeout: line 3: exec: 1: not found
+    | spawned s2 harness=opencode kind=ship mode=no-mistakes yolo=off window=firstmate:fm-s2 worktree=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-live-paid.pHGP6n/live-paid-env/wt
+
+===== S3 config/opencode-paid-models allows the paid id =====
+ok - S3 file allowlist dispatches the paid id (exit=0)
+  agent launched: yes
+    | warning: allowlisted paid model 'opencode-go/kimi-k3' is not tracked by the opencode free-model health catalog (expected 'opencode-free/kimi-k3'); skipping its status check
+    | warning: /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-live-paid.pHGP6n/live-paid-file/home/data/s3/launch-brief.md records no ship branch; defaulting to legacy branch fm/s3
+    | warning: /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-live-paid.pHGP6n/live-paid-file/home/data/s3/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+    | /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-live-paid.pHGP6n/live-paid-file/fake/fakebin/timeout: line 3: exec: 1: not found
+    | /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-live-paid.pHGP6n/live-paid-file/fake/fakebin/timeout: line 3: exec: 1: not found
+    | spawned s3 harness=opencode kind=ship mode=no-mistakes yolo=off window=firstmate:fm-s3 worktree=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-live-paid.pHGP6n/live-paid-file/wt
+
+===== S4 exact-id only: prefix/suffix/wildcard must NOT match =====
+ok - S4 entry 'opencode-go/kimi' (exit=1) [saw: is not classified as free by models.dev]
+  agent launched: no
+ok - S4 entry 'opencode-go/kimi-k3-extra' (exit=1) [saw: is not classified as free by models.dev]
+  agent launched: no
+ok - S4 entry 'opencode-go/kimi-*' (exit=1) [saw: is not classified as free by models.dev]
+  agent launched: no
+ok - S4 entry 'opencode-go/kimi-k3 ' (exit=0)
+  agent launched: yes
+ok - S4 entry 'opencode-go/kimi-k3 # captain approved' (exit=1) [saw: is not classified as free by models.dev]
+  agent launched: no
+
+===== S5 real free model dispatch unchanged with paid allowlist present =====
+ok - S5 free model dispatches (exit=0)
+ok - S5 free model did not take the allowlist skip path
+  agent launched: yes
+    | warning: /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-live-paid.pHGP6n/live-paid-free/home/data/s5/launch-brief.md records no ship branch; defaulting to legacy branch fm/s5
+    | warning: /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-live-paid.pHGP6n/live-paid-free/home/data/s5/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+    | /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-live-paid.pHGP6n/live-paid-free/fake/fakebin/timeout: line 3: exec: 1: not found
+    | /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-live-paid.pHGP6n/live-paid-free/fake/fakebin/timeout: line 3: exec: 1: not found
+    | spawned s5 harness=opencode kind=ship mode=no-mistakes yolo=off window=firstmate:fm-s5 worktree=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-live-paid.pHGP6n/live-paid-free/wt
+
+===== S6 unreadable allowlist path keeps the free-only gate =====
+ok - S6 directory allowlist path refuses the paid id (exit=1) [saw: is not classified as free by models.dev]
+  agent launched: no
+    | error: OpenCode model 'opencode-go/kimi-k3' is not classified as free by models.dev; to allow this paid model, add its exact id to FM_OPENCODE_PAID_MODELS or config/opencode-paid-models
+
+===== S7 allowlisted paid id with a tracked unhealthy health entry still refuses =====
+ok - S7 tracked unhealthy entry refuses (exit=1) [saw: flagged unhealthy in the free-model health catalog]
+  agent launched: no
+    | error: OpenCode model 'opencode-go/kimi-k3' is flagged unhealthy in the free-model health catalog (status=retired, early_termination_detected=false); choose a different model or domain default
+
+===== S8 allowlist does not exempt an unreadable models.dev response =====
+ok - S8 models.dev failure still refuses (exit=1) [saw: could not verify OpenCode model]
+  agent launched: no
+    | error: could not verify OpenCode model 'opencode-go/kimi-k3' free pricing metadata; refusing dispatch
+
+===== live drive complete =====
