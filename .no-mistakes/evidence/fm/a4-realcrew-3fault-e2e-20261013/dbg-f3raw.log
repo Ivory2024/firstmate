@@ -1,0 +1,13 @@
+=== adapter dispatch (raw) ===
+error: no configured remote URL resolves to expected repository 'e2e-owner/scratch'; refusing to trust a remote name such as origin
+error: could not fetch 'refs/heads/main' from verified repository 'e2e-owner/scratch'; refusing to launch from an unverified base
+SPAWN_FAILED rc=1 spawn_id=f3-exec
+adapter rc=0
+windows=[firstmate:zsh firstmate:fm-f3-exec ]
+--- meta ---
+--- brief ---
+total 48
+drwxr-xr-x@ 4 irene  staff    128 Oct 13 21:24 .
+drwxr-xr-x@ 3 irene  staff     96 Oct 13 21:24 ..
+-rw-r--r--@ 1 irene  staff   8580 Oct 13 21:24 brief.md
+-rw-r--r--@ 1 irene  staff  11165 Oct 13 21:24 launch-brief.md

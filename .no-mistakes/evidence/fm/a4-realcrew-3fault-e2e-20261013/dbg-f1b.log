@@ -1,0 +1,94 @@
+Note: switching to '34143dd4d3b8198e7bcd382a9db14b1c4a3f7a17'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+  MON t=1791893604 state=QUEUED windows=[]
+  MON t=1791893605 state=DISPATCHING windows=[]
+  MON t=1791893606 state=DISPATCHING windows=[]
+  MON t=1791893608 state=DISPATCHING windows=[firstmate:tmux firstmate:fm-f1-exec ]
+  MON t=1791893609 state=DISPATCHING windows=[firstmate:zsh firstmate:fm-f1-exec ]
+  MON t=1791893610 state=DISPATCHING windows=[firstmate:zsh firstmate:fm-f1-exec ]
+  MON t=1791893611 state=DISPATCHING windows=[firstmate:zsh firstmate:fm-f1-exec ]
+  MON t=1791893612 state=DISPATCHING windows=[firstmate:zsh firstmate:fm-f1-exec ]
+  MON t=1791893613 state=DISPATCHING windows=[firstmate:zsh firstmate:fm-f1-exec ]
+  MON t=1791893615 state=DISPATCHING windows=[firstmate:zsh firstmate:fm-f1-exec ]
+  INJECT saw RUNNING at 1791893615 windows=[firstmate:zsh firstmate:fm-f1-exec ]
+    KILL firstmate:fm-f1-exec at 1791893616
+  INJECT killed; windows now [firstmate:zsh ]
+  MON t=1791893616 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893617 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893618 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893619 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893621 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893622 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893623 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893625 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893626 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893627 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893628 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893629 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893631 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893632 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893633 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893634 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893635 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893636 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893637 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893639 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893640 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893641 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893642 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893643 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893644 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893646 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893647 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893648 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893649 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893650 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893651 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893653 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893654 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893655 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893656 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893657 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893658 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893660 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893661 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893662 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893663 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893664 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893665 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893666 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893667 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893669 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893670 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893671 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893672 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893673 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893674 state=RUNNING windows=[firstmate:zsh ]
+  RUN 0 end t=1791893675 state=RUNNING windows=[firstmate:zsh ]
+  MON t=1791893676 state=RUNNING windows=[firstmate:zsh ]
+  RUN 1 end t=1791893676 state=HOLD windows=[firstmate:zsh ]
+  HELD
+inject_rc=0 final state=HOLD windows=[firstmate:zsh ]
+--- state.jsonl ---
+at=2026-10-13T12:13:24Z run_id=f1 task_id=t1 attempt=0 session= role= baseline_sha= prev= new=QUEUED reason=batch-init evidence=
+at=2026-10-13T12:13:25Z run_id=f1 task_id=t1 attempt=1 session= role= baseline_sha=e2e prev=QUEUED new=DISPATCHING reason=dispatch-executor evidence=
+at=2026-10-13T12:13:35Z run_id=f1 task_id=t1 attempt=1 session=firstmate:fm-f1-exec role= baseline_sha=e2e prev=DISPATCHING new=ACKNOWLEDGED reason=executor-ack evidence=
+at=2026-10-13T12:13:35Z run_id=f1 task_id=t1 attempt=1 session=firstmate:fm-f1-exec role= baseline_sha=e2e prev=ACKNOWLEDGED new=RUNNING reason=executor-running evidence=
+at=2026-10-13T12:14:36Z run_id=f1 task_id=t1 attempt=1 session= role= baseline_sha=e2e prev=RUNNING new=HOLD reason=executor-timeout evidence=
+--- crew windows still alive ---
+firstmate:zsh 

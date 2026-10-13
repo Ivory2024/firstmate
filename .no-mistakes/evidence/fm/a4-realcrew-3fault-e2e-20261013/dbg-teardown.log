@@ -1,0 +1,9 @@
+=== spawn (will fail, leaks window) ===
+error: no configured remote URL resolves to expected repository 'e2e-owner/scratch'; refusing to trust a remote name such as origin
+error: could not fetch 'refs/heads/main' from verified repository 'e2e-owner/scratch'; refusing to launch from an unverified base
+SPAWN_FAILED rc=1 spawn_id=f3-exec
+windows before teardown=[firstmate:zsh firstmate:fm-f3-exec ]
+=== teardown ===
+error: teardown refused: task record is not a regular file at /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//dbgtd.NC7Dxj/home/state/f3-exec.meta
+teardown rc=0
+windows after teardown=[firstmate:zsh firstmate:fm-f3-exec ]

@@ -1,0 +1,30 @@
+Note: switching to '34143dd4d3b8198e7bcd382a9db14b1c4a3f7a17'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+=== state.jsonl ===
+at=2026-10-13T13:39:20Z run_id=q task_id=t1 attempt=0 session= role= baseline_sha= prev= new=QUEUED reason=batch-init evidence=
+at=2026-10-13T13:39:20Z run_id=q task_id=t1 attempt=1 session= role= baseline_sha=e2e prev=QUEUED new=DISPATCHING reason=dispatch-executor evidence=
+at=2026-10-13T13:39:22Z run_id=q task_id=t1 attempt=1 session= role= baseline_sha=e2e prev=DISPATCHING new=REWORK reason=spawn-failed evidence=
+at=2026-10-13T13:39:22Z run_id=q task_id=t1 attempt=2 session= role= baseline_sha=e2e prev=REWORK new=DISPATCHING reason=dispatch-executor evidence=
+at=2026-10-13T13:39:23Z run_id=q task_id=t1 attempt=2 session= role= baseline_sha=e2e prev=DISPATCHING new=REWORK reason=spawn-failed evidence=
+at=2026-10-13T13:39:23Z run_id=q task_id=t1 attempt=2 session= role= baseline_sha=e2e prev=REWORK new=HOLD reason=retry-exhausted evidence=
+=== dispatches ===
+2
+=== quota-block file present? ===
+absent
+=== final state ===
+HOLD

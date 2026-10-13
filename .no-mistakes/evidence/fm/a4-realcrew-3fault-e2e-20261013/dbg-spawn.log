@@ -1,0 +1,17 @@
+Note: switching to '34143dd4d3b8198e7bcd382a9db14b1c4a3f7a17'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+backlog present: no
+=== adapter dispatch ===
+init: need --batch and a valid --contract
+error: no-mistakes gate agent must not drive the fleet (NO_MISTAKES_GATE set)
+SPAWN_FAILED rc=3 spawn_id=f1-exec
+rc=0
+windows=[]

@@ -1,0 +1,6 @@
+=== adapter dispatch with MISSING project dir ===
+/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//dbgmissing.V0Ab75/home/bin/fm-spawn.sh: line 3263: cd: /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//dbgmissing.V0Ab75/no-such-project: No such file or directory
+SPAWN_FAILED rc=1 spawn_id=f3-miss
+adapter rc=0
+windows=[]
+spawn meta: absent

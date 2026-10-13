@@ -1,0 +1,49 @@
+diff --git a/tests/fm-unattended-realcrew-3fault-e2e.test.sh b/tests/fm-unattended-realcrew-3fault-e2e.test.sh
+index d4764893..eb9f28f3 100755
+--- a/tests/fm-unattended-realcrew-3fault-e2e.test.sh
++++ b/tests/fm-unattended-realcrew-3fault-e2e.test.sh
+@@ -25,8 +25,13 @@
+ #       The ACK may already have been satisfied by the live endpoint, so both
+ #       worker-loss scenarios can terminalize through the same timeout path;
+ #       the guard records the reason instead of asserting one.
+-#   F3  dispatch refused        - real project whose verified base cannot be
+-#                                 resolved, so the adapter refuses to spawn
++#   F3  dispatch refused        - real project path that cannot be resolved,
++#                                 so the adapter refuses before any crew
++#                                 window exists. (NOT a verified-base refusal:
++#                                 fm-spawn creates the tmux window BEFORE its
++#                                 base-refresh refusal, so that variant leaks an
++#                                 orphan crew window and residual-0 could never
++#                                 hold - the documented flat-spawn limitation.)
+ #
+ # A3's third fault, identity-mismatch, has NO real-crew trigger and stays a
+ # mock-only lever; the guard states why as its final evidence line.
+@@ -70,7 +75,10 @@ mkdir -p "$TMUXDIR"
+ HOME_DIR="$LAB/home"
+ UC_HOME="$LAB/uc"
+ GOOD_PROJ="$LAB/proj-good"
+-BAD_PROJ="$LAB/proj-bad"
++# F3's "bad" project is deliberately NEVER created: fm-spawn must refuse the
++# dispatch before any crew window exists (see the F3 header comment), which
++# requires refusing at project resolution, not at base verification.
++BAD_PROJ="$LAB/proj-missing"
+ 
+ cleanup() {
+   env -u TMUX TMUX_TMPDIR="$TMUXDIR" tmux kill-server >/dev/null 2>&1 || true
+@@ -114,7 +122,6 @@ make_project() { # <dir> <local|none>
+   return 0
+ }
+ make_project "$GOOD_PROJ" local
+-make_project "$BAD_PROJ" none
+ 
+ # Every coordinator call runs on the private tmux server (TMUX_TMPDIR with TMUX
+ # unset), so a crew can never land in the operator's session. The spawn id is
+@@ -242,7 +249,7 @@ drive_until_held "$GOOD_PROJ" f2-exec f2 40 && ok "F2: reached HOLD with no repa
+ wait "$INJ" 2>/dev/null || true
+ assert_safety F2 "$GOOD_PROJ" f2-exec f2 2
+ 
+-# ---- F3: real dispatch refusal (unverifiable verified base) -----------------
++# ---- F3: real dispatch refusal (unresolvable project path) ------------------
+ write_contract "$LAB/f3.json" f3 1 8
+ uc "$BAD_PROJ" f3-exec init --batch f3 --contract "$LAB/f3.json" >/dev/null 2>&1
+ drive_until_held "$BAD_PROJ" f3-exec f3 40 && ok "F3: reached HOLD with no repair" \

@@ -1,0 +1,8 @@
+  batch-held: HOLD latch set (no further dispatch)
+run#0 state=HOLD held=yes windows=[]
+--- state.jsonl ---
+at=2026-10-13T12:27:49Z run_id=f3 task_id=t1 attempt=0 session= role= baseline_sha= prev= new=QUEUED reason=batch-init evidence=
+at=2026-10-13T12:27:50Z run_id=f3 task_id=t1 attempt=1 session= role= baseline_sha=e2e prev=QUEUED new=DISPATCHING reason=dispatch-executor evidence=
+at=2026-10-13T12:27:52Z run_id=f3 task_id=t1 attempt=1 session= role= baseline_sha=e2e prev=DISPATCHING new=REWORK reason=spawn-failed evidence=
+at=2026-10-13T12:27:52Z run_id=f3 task_id=t1 attempt=1 session= role= baseline_sha=e2e prev=REWORK new=HOLD reason=retry-exhausted evidence=
+--- residual crew: 0

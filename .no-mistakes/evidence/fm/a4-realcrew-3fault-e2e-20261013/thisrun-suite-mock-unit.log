@@ -1,0 +1,25 @@
+### tests/fm-unattended-faultinject.test.sh
+ok - CAPTAIN_HOLD never auto-retries (retry-exhausted -> hold)
+# fm-unattended-faultinject.test.sh PASS=35 FAIL=0
+### tests/fm-unattended-recovery.test.sh
+ok - unknown -> hold (fail-closed)
+# fm-unattended-recovery.test.sh PASS=32 FAIL=0
+### tests/fm-unattended-recovery-state.test.sh
+ok - concurrent decide: exactly 2 retries (no over-pass)
+# fm-unattended-recovery-state.test.sh PASS=16 FAIL=0
+### tests/fm-unattended-faultinject-e2e.test.sh
+ok - fault1 executor-fail -> HOLD (retry-exhausted)
+ok - fault1 bounded dispatch (2, no runaway)
+ok - fault2 no-ack -> HOLD (retry-exhausted)
+ok - fault3 identity-mismatch -> HOLD (identity-mismatch)
+ok - f1 re-run: no new dispatch
+ok - f2 re-run: no new dispatch (1)
+ok - f3 re-run: no new dispatch (1)
+ok - recovery f1 (retry-exhausted -> CAPTAIN_HOLD)
+ok - recovery f2 (retry-exhausted -> CAPTAIN_HOLD)
+ok - recovery f3 (identity-mismatch -> NON_RECOVERABLE)
+ok - isolated batch home separate from the operational home
+ok - operational queue unchanged (q=)
+ok - operational lock observed (before= after=)
+ok - isolated env cleaned
+# fm-unattended-faultinject-e2e.test.sh PASS=14 FAIL=0

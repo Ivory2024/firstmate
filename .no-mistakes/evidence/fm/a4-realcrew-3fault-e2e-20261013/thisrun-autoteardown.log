@@ -1,0 +1,9 @@
+--- custom evidence_root (F4 target) ---
+OK task=t1
+rc=0
+--- custom evidence_root, evidence missing (fail-closed) ---
+REFUSE task=t1 reason=evidence-missing
+rc=3
+--- default evidence root (compat) ---
+OK task=t1
+rc=0

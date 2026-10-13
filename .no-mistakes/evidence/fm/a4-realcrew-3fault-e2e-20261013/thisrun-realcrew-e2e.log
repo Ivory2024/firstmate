@@ -1,0 +1,45 @@
+Note: switching to '34143dd4d3b8198e7bcd382a9db14b1c4a3f7a17'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - F1: reached HOLD with no repair
+ok - F1: terminal HOLD
+ok - F1: dispatch bounded (1 <= 2)
+ok - F1: HOLD carries a reason
+ok - F1: no dispatch after HOLD (1)
+    evidence F1: state=HOLD dispatches=1 reasons=QUEUED:batch-init DISPATCHING:dispatch-executor ACKNOWLEDGED:executor-ack RUNNING:executor-running HOLD:executor-timeout 
+ok - F2: reached HOLD with no repair
+ok - F2: terminal HOLD
+ok - F2: dispatch bounded (1 <= 2)
+ok - F2: HOLD carries a reason
+ok - F2: no dispatch after HOLD (1)
+    evidence F2: state=HOLD dispatches=1 reasons=QUEUED:batch-init DISPATCHING:dispatch-executor REWORK:spawn-failed HOLD:retry-exhausted 
+ok - F3: reached HOLD with no repair
+ok - F3: terminal HOLD
+ok - F3: dispatch bounded (1 <= 2)
+ok - F3: HOLD carries a reason
+ok - F3: no dispatch after HOLD (1)
+    evidence F3: state=HOLD dispatches=1 reasons=QUEUED:batch-init DISPATCHING:dispatch-executor REWORK:spawn-failed HOLD:retry-exhausted 
+ok - residual crew 0 in the isolated session
+ok - operator tmux inventory unchanged (2 windows)
+ok - operator wake queue not present in this checkout (nothing to compare)
+    MOCK-ONLY: A3 fault-3 (identity-mismatch / FM_FAKE_WRONG_IDENTITY)
+      has no real-crew trigger: the adapter reads identity from the very
+      state/<spawn>.meta a successful dispatch just wrote, and it clears a
+      stale meta before spawning, so no real crew fault can make
+      identity != session. Real-crew coverage is therefore 2 of A3's 3
+      mock faults plus one real dispatch-boundary fault.
+# fm-unattended-realcrew-3fault-e2e.test.sh PASS=18 FAIL=0

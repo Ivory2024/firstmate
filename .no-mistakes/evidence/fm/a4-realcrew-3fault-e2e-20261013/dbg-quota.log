@@ -1,0 +1,14 @@
+run#0 state=REWORK held=no windows=[]
+  batch-held: HOLD latch set (no further dispatch)
+  t1: HOLD (attempts=2)
+run#1 state=HOLD held=yes windows=[]
+--- state.jsonl ---
+at=2026-10-13T12:34:02Z run_id=q task_id=t1 attempt=0 session= role= baseline_sha= prev= new=QUEUED reason=batch-init evidence=
+at=2026-10-13T12:34:03Z run_id=q task_id=t1 attempt=1 session= role= baseline_sha=e2e prev=QUEUED new=DISPATCHING reason=dispatch-executor evidence=
+at=2026-10-13T12:34:05Z run_id=q task_id=t1 attempt=1 session= role= baseline_sha=e2e prev=DISPATCHING new=REWORK reason=spawn-failed evidence=
+at=2026-10-13T12:34:05Z run_id=q task_id=t1 attempt=2 session= role= baseline_sha=e2e prev=REWORK new=DISPATCHING reason=dispatch-executor evidence=
+at=2026-10-13T12:34:06Z run_id=q task_id=t1 attempt=2 session= role= baseline_sha=e2e prev=DISPATCHING new=REWORK reason=spawn-failed evidence=
+at=2026-10-13T12:34:07Z run_id=q task_id=t1 attempt=2 session= role= baseline_sha=e2e prev=REWORK new=HOLD reason=retry-exhausted evidence=
+--- dispatches: 2
+--- quota block file: absent
+--- final windows=[]

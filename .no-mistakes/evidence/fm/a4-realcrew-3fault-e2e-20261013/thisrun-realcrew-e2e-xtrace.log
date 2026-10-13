@@ -1,0 +1,880 @@
++ set -u
+++ dirname tests/fm-unattended-realcrew-3fault-e2e.test.sh
++ . tests/lib.sh
+++ '[' -n '' ']'
+++ FM_TEST_LIB_SOURCED=1
+++ umask 022
++++ dirname tests/lib.sh
+++ . tests/git-config-helpers.sh
++++ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
++++ GIT_CONFIG_GLOBAL=/dev/null
++++ GIT_CONFIG_NOSYSTEM=1
++++ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
+++ export FM_GATE_REFUSE_BYPASS=1
+++ FM_GATE_REFUSE_BYPASS=1
+++ export FM_TEST_SEAM=1
+++ FM_TEST_SEAM=1
+++ unset FM_TASK_ID
+++ unset TASKS_AXI_FILE TASKS_AXI_BACKEND
+++ unset FM_DISCORD_BOT_TOKEN FM_DISCORD_TOKEN FM_DISCORD_CHANNEL_ID FM_DISCORD_ALLOWED_CHANNELS FM_DISCORD_EXCLUDE_CHANNELS FM_DISCORD_ALLOW_DMS FM_DISCORD_AUTHORIZED_USER_IDS FMX_PAIRING_TOKEN FMX_RELAY_URL FMX_DRY_RUN FMX_ENV_FILE FMX_REPORT_URL FMX_BUDGET_URL FMX_PLATFORM
+++ unset FM_HOME_OVERRIDE
+++++ dirname tests/lib.sh
++++ cd tests/..
++++ pwd
+++ ROOT=/Users/irene/.no-mistakes/worktrees/e10922160f77/01M4TG2V66X7M3J6JCKT4ZB4B0
++++ fm_test_tmpdir
++++ local base=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/ physical
++++ base=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T
++++ '[' -n /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T ']'
++++ case "$base" in
+++++ CDPATH=
+++++ cd -- /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T
+++++ pwd -P
++++ physical=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T
++++ base=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T
++++ '[' -e /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/.git ']'
++++ printf '%s\n' /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T
+++ FM_TEST_TMPDIR=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T
+++ FM_TEST_CLEANUP_DIRS=()
++++ mktemp /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/.fm-test-cleanup.1257.XXXXXX
+++ FM_TEST_CLEANUP_REGISTRY=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/.fm-test-cleanup.1257.kbqQcd
++++ fm_test_pid_identity 1257
++++ local pid=1257
++++ FM_STATE_OVERRIDE=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T
++++ bash -c '. "$1"; fm_pid_identity "$2"' _ /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4TG2V66X7M3J6JCKT4ZB4B0/bin/fm-wake-lib.sh 1257
+++ FM_TEST_OWNER_IDENTITY='Tue Oct 13 22:36:27 2026     bash -x tests/fm-unattended-realcrew-3fault-e2e.test.sh'
++++ mktemp /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/.fm-test-procevent.1257.XXXXXX
+++ FM_TEST_PROCEVENT_REGISTRY=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/.fm-test-procevent.1257.J4iH7O
++++ mktemp /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/.fm-test-watcher.1257.XXXXXX
+++ FM_TEST_WATCHER_REGISTRY=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/.fm-test-watcher.1257.6vkXcr
+++ FM_TEST_STUB_MAX_BLOCK_SECONDS=120
+++ export FM_TEST_STUB_MAX_BLOCK_SECONDS
+++ trap fm_test_cleanup EXIT
+++ trap 'fm_test_cleanup; exit 130' INT
+++ trap 'fm_test_cleanup; exit 143' TERM
+++ trap 'fm_test_cleanup; exit 129' HUP
+++ trap 'fm_test_cleanup; exit 131' QUIT
++++ fm_test_tmproot fm-test-home
++++ local prefix=fm-test-home root tmp_base
+++++ fm_test_tmpdir
+++++ local base=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/ physical
+++++ base=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T
+++++ '[' -n /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T ']'
+++++ case "$base" in
++++++ CDPATH=
++++++ cd -- /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T
++++++ pwd -P
+++++ physical=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T
+++++ base=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T
+++++ '[' -e /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/.git ']'
+++++ printf '%s\n' /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T
++++ tmp_base=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T
++++ tmp_base=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T
+++++ mktemp -d /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.XXXXXX
++++ root=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.rsty4m
+++++ cd -P -- /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.rsty4m
+++++ pwd -P
++++ root=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.rsty4m
++++ printf '%s\n%s\n' 1257 'Tue Oct 13 22:36:27 2026     bash -x tests/fm-unattended-realcrew-3fault-e2e.test.sh'
++++ printf '%s\n' /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.rsty4m
++++ printf '%s\n' /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.rsty4m
+++ FM_TEST_DEFAULT_HOME=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.rsty4m
+++ :
+++ mkdir -p /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.rsty4m/state /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.rsty4m/config /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.rsty4m/data
+++ export FM_TEST_DEFAULT_HOME
+++ export FM_HOME=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.rsty4m
+++ FM_HOME=/private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.rsty4m
+++ FM_TEST_ORPHAN_MAX_AGE_SECONDS=3600
+++ '[' 0 '!=' 1 ']'
+++ fm_test_reap_orphans
+++ local marker dir mtime now owner_pid owner_identity current_identity
++++ date +%s
+++ now=1791898587
+++ for marker in "$FM_TEST_TMPDIR"/fm-*/.fm-test-fixture
+++ '[' -e /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.EefyCC/.fm-test-fixture ']'
++++ sed -n 1p /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.EefyCC/.fm-test-fixture
+++ owner_pid=18722
++++ sed -n '2,$p' /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.EefyCC/.fm-test-fixture
+++ owner_identity='Tue Oct 13 22:12:05 2026     bash /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-watchfix-20261013/tests/fm-watcher-liveness-alert.test.sh'
+++ case "$owner_pid" in
++++ fm_test_pid_identity 18722
+++ current_identity=
+++ current_identity=
+++ '[' -n 'Tue Oct 13 22:12:05 2026     bash /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-watchfix-20261013/tests/fm-watcher-liveness-alert.test.sh' ']'
+++ '[' '' = 'Tue Oct 13 22:12:05 2026     bash /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-watchfix-20261013/tests/fm-watcher-liveness-alert.test.sh' ']'
++++ stat -c %Y /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.EefyCC/.fm-test-fixture
++++ stat -f %m /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.EefyCC/.fm-test-fixture
+++ mtime=1791897125
+++ '[' 1462 -ge 3600 ']'
+++ continue
+++ for marker in "$FM_TEST_TMPDIR"/fm-*/.fm-test-fixture
+++ '[' -e /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.MdNxyD/.fm-test-fixture ']'
++++ sed -n 1p /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.MdNxyD/.fm-test-fixture
+++ owner_pid=79609
++++ sed -n '2,$p' /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.MdNxyD/.fm-test-fixture
+++ owner_identity='Tue Oct 13 21:41:33 2026     bash /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-watchfix-20261013/tests/fm-watcher-liveness-alert.test.sh'
+++ case "$owner_pid" in
++++ fm_test_pid_identity 79609
+++ current_identity=
+++ current_identity=
+++ '[' -n 'Tue Oct 13 21:41:33 2026     bash /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-watchfix-20261013/tests/fm-watcher-liveness-alert.test.sh' ']'
+++ '[' '' = 'Tue Oct 13 21:41:33 2026     bash /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-watchfix-20261013/tests/fm-watcher-liveness-alert.test.sh' ']'
++++ stat -c %Y /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.MdNxyD/.fm-test-fixture
++++ stat -f %m /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.MdNxyD/.fm-test-fixture
+++ mtime=1791895293
+++ '[' 3294 -ge 3600 ']'
+++ continue
+++ for marker in "$FM_TEST_TMPDIR"/fm-*/.fm-test-fixture
+++ '[' -e /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.PkhYw0/.fm-test-fixture ']'
++++ sed -n 1p /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.PkhYw0/.fm-test-fixture
+++ owner_pid=96257
++++ sed -n '2,$p' /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.PkhYw0/.fm-test-fixture
+++ owner_identity='Tue Oct 13 22:33:48 2026     bash tests/fm-unattended-realcrew-3fault-e2e.test.sh'
+++ case "$owner_pid" in
++++ fm_test_pid_identity 96257
+++ current_identity=
+++ current_identity=
+++ '[' -n 'Tue Oct 13 22:33:48 2026     bash tests/fm-unattended-realcrew-3fault-e2e.test.sh' ']'
+++ '[' '' = 'Tue Oct 13 22:33:48 2026     bash tests/fm-unattended-realcrew-3fault-e2e.test.sh' ']'
++++ stat -c %Y /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.PkhYw0/.fm-test-fixture
++++ stat -f %m /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.PkhYw0/.fm-test-fixture
+++ mtime=1791898428
+++ '[' 159 -ge 3600 ']'
+++ continue
+++ for marker in "$FM_TEST_TMPDIR"/fm-*/.fm-test-fixture
+++ '[' -e /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.rsty4m/.fm-test-fixture ']'
++++ sed -n 1p /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.rsty4m/.fm-test-fixture
+++ owner_pid=1257
++++ sed -n '2,$p' /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-test-home.rsty4m/.fm-test-fixture
+++ owner_identity='Tue Oct 13 22:36:27 2026     bash -x tests/fm-unattended-realcrew-3fault-e2e.test.sh'
+++ case "$owner_pid" in
++++ fm_test_pid_identity 1257
+++ current_identity='Tue Oct 13 22:36:27 2026     bash -x tests/fm-unattended-realcrew-3fault-e2e.test.sh'
+++ '[' -n 'Tue Oct 13 22:36:27 2026     bash -x tests/fm-unattended-realcrew-3fault-e2e.test.sh' ']'
+++ '[' 'Tue Oct 13 22:36:27 2026     bash -x tests/fm-unattended-realcrew-3fault-e2e.test.sh' = 'Tue Oct 13 22:36:27 2026     bash -x tests/fm-unattended-realcrew-3fault-e2e.test.sh' ']'
+++ continue
+++ for marker in "$FM_TEST_TMPDIR"/fm-*/.fm-test-fixture
+++ '[' -e /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-watcher-liveness-alert.5zpiEf/.fm-test-fixture ']'
++++ sed -n 1p /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-watcher-liveness-alert.5zpiEf/.fm-test-fixture
+++ owner_pid=18722
++++ sed -n '2,$p' /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-watcher-liveness-alert.5zpiEf/.fm-test-fixture
+++ owner_identity='Tue Oct 13 22:12:05 2026     bash /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-watchfix-20261013/tests/fm-watcher-liveness-alert.test.sh'
+++ case "$owner_pid" in
++++ fm_test_pid_identity 18722
+++ current_identity=
+++ current_identity=
+++ '[' -n 'Tue Oct 13 22:12:05 2026     bash /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-watchfix-20261013/tests/fm-watcher-liveness-alert.test.sh' ']'
+++ '[' '' = 'Tue Oct 13 22:12:05 2026     bash /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-watchfix-20261013/tests/fm-watcher-liveness-alert.test.sh' ']'
++++ stat -c %Y /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-watcher-liveness-alert.5zpiEf/.fm-test-fixture
++++ stat -f %m /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-watcher-liveness-alert.5zpiEf/.fm-test-fixture
+++ mtime=1791897125
+++ '[' 1462 -ge 3600 ']'
+++ continue
+++ for marker in "$FM_TEST_TMPDIR"/fm-*/.fm-test-fixture
+++ '[' -e /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-watcher-liveness-alert.8hKztL/.fm-test-fixture ']'
++++ sed -n 1p /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-watcher-liveness-alert.8hKztL/.fm-test-fixture
+++ owner_pid=79609
++++ sed -n '2,$p' /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-watcher-liveness-alert.8hKztL/.fm-test-fixture
+++ owner_identity='Tue Oct 13 21:41:33 2026     bash /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-watchfix-20261013/tests/fm-watcher-liveness-alert.test.sh'
+++ case "$owner_pid" in
++++ fm_test_pid_identity 79609
+++ current_identity=
+++ current_identity=
+++ '[' -n 'Tue Oct 13 21:41:33 2026     bash /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-watchfix-20261013/tests/fm-watcher-liveness-alert.test.sh' ']'
+++ '[' '' = 'Tue Oct 13 21:41:33 2026     bash /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-watchfix-20261013/tests/fm-watcher-liveness-alert.test.sh' ']'
++++ stat -c %Y /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-watcher-liveness-alert.8hKztL/.fm-test-fixture
++++ stat -f %m /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-watcher-liveness-alert.8hKztL/.fm-test-fixture
+++ mtime=1791895294
+++ '[' 3293 -ge 3600 ']'
+++ continue
++ fm_live_gate opt-in FM_REALCREW_E2E opencode tmux git
++ local policy=opt-in vars=FM_REALCREW_E2E
++ shift 2
++ local var value rest primary requested=0 disabled_by= tool
++ var_list=()
++ local -a var_list
++ case "$policy" in
++ rest=FM_REALCREW_E2E
++ '[' -n FM_REALCREW_E2E ']'
++ var=FM_REALCREW_E2E
++ '[' FM_REALCREW_E2E = FM_REALCREW_E2E ']'
++ rest=
++ '[' -n FM_REALCREW_E2E ']'
++ var_list+=("$var")
++ '[' -n '' ']'
++ '[' 1 -gt 0 ']'
++ primary=FM_REALCREW_E2E
++ for var in "${var_list[@]}"
++ value=1
++ case "$value" in
++ requested=1
++ '[' 1 -eq 0 ']'
++ for tool in "$@"
++ command -v opencode
++ continue
++ for tool in "$@"
++ command -v tmux
++ continue
++ for tool in "$@"
++ command -v git
++ continue
++ export DISABLE_AUTOUPDATER=1
++ DISABLE_AUTOUPDATER=1
++ return 0
++++ dirname tests/fm-unattended-realcrew-3fault-e2e.test.sh
+++ cd tests/..
+++ pwd
++ ROOT=/Users/irene/.no-mistakes/worktrees/e10922160f77/01M4TG2V66X7M3J6JCKT4ZB4B0
++ IMPL=/Users/irene/.no-mistakes/worktrees/e10922160f77/01M4TG2V66X7M3J6JCKT4ZB4B0/bin
++ MODEL=opencode/mimo-v2.6-flash-free
++ HARNESS=opencode
++ PASS=0
++ FAIL=0
++ '[' '!' -x /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4TG2V66X7M3J6JCKT4ZB4B0/bin/fm-unattended.sh ']'
++ '[' '!' -x /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4TG2V66X7M3J6JCKT4ZB4B0/bin/fm-unattended-adapter.sh ']'
+++ mktemp -d /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.XXXXXX
++ LAB=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e
++ TMUXDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux
++ mkdir -p /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux
++ HOME_DIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/home
++ UC_HOME=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc
++ GOOD_PROJ=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good
++ BAD_PROJ=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-missing
++ trap cleanup EXIT
+++ tmux list-windows -a -F '#{session_name}:#{window_name}'
+++ sort
++ OP_WINDOWS_BEFORE=$':zsh\nagy-main:agy\nfirstmate:claude.exe'
++ OP_QUEUE=/Users/irene/.no-mistakes/worktrees/e10922160f77/01M4TG2V66X7M3J6JCKT4ZB4B0/state/.wake-queue
++ '[' -f /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4TG2V66X7M3J6JCKT4ZB4B0/state/.wake-queue ']'
++ OP_QUEUE_BEFORE=
++ git clone --quiet --local /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4TG2V66X7M3J6JCKT4ZB4B0 /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/home
+Note: switching to '34143dd4d3b8198e7bcd382a9db14b1c4a3f7a17'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
++ mkdir -p /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/home/config /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/home/data
++ cat
++ make_project /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good local
++ mkdir -p /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good
++ git -C /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good init --quiet -b main
++ printf '# scratch\n'
++ git -C /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good add README.md
++ git -C /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good -c user.email=e2e@local -c user.name=e2e commit --quiet -m init
++ git -C /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good config firstmate.expectedRepository e2e-owner/scratch
++ '[' local = local ']'
++ git -C /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good config firstmate.baseMode local
++ return 0
++ write_contract /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/f1.json f1 1 8
++ cat
++ uc /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good f1-exec init --batch f1 --contract /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/f1.json
++ INJ=2368
++ drive_until_held /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good f1-exec f1 40
++ local p=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good xid=f1-exec b=f1 max=40 i=0
++ inject_after_running f1
++ '[' 0 -lt 40 ']'
++ uc /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good f1-exec run --batch f1
++ local b=f1 i=0
++ '[' 0 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' QUEUED = RUNNING ']'
++ sleep 0.1
++ i=1
++ '[' 1 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' QUEUED = RUNNING ']'
++ sleep 0.1
++ i=2
++ '[' 2 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=3
++ '[' 3 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=4
++ '[' 4 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=5
++ '[' 5 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=6
++ '[' 6 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=7
++ '[' 7 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=8
++ '[' 8 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=9
++ '[' 9 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=10
++ '[' 10 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=11
++ '[' 11 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=12
++ '[' 12 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=13
++ '[' 13 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=14
++ '[' 14 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=15
++ '[' 15 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=16
++ '[' 16 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=17
++ '[' 17 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=18
++ '[' 18 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=19
++ '[' 19 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=20
++ '[' 20 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=21
++ '[' 21 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=22
++ '[' 22 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=23
++ '[' 23 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=24
++ '[' 24 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=25
++ '[' 25 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=26
++ '[' 26 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=27
++ '[' 27 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=28
++ '[' 28 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=29
++ '[' 29 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=30
++ '[' 30 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=31
++ '[' 31 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=32
++ '[' 32 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=33
++ '[' 33 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=34
++ '[' 34 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=35
++ '[' 35 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=36
++ '[' 36 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=37
++ '[' 37 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' DISPATCHING = RUNNING ']'
++ sleep 0.1
++ i=38
++ '[' 38 -lt 900 ']'
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' RUNNING = RUNNING ']'
++ kill_crew_windows
++ local tgt
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{session_name}:#{window_name}'
+++ grep -E :fm-
++ for tgt in $(env -u TMUX TMUX_TMPDIR="$TMUXDIR" tmux list-windows -a -F '#{session_name}:#{window_name}' 2> /dev/null | grep -E ':fm-' || true)
++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux kill-window -t firstmate:fm-f1-exec
++ return 0
++ held f1
++ '[' -f /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/.batch-held ']'
++ i=1
++ '[' 1 -lt 40 ']'
++ uc /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good f1-exec run --batch f1
++ held f1
++ '[' -f /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/.batch-held ']'
++ return 0
++ ok 'F1: reached HOLD with no repair'
++ PASS=1
++ printf 'ok - %s\n' 'F1: reached HOLD with no repair'
+ok - F1: reached HOLD with no repair
++ wait 2368
++ assert_safety F1 /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good f1-exec f1 2
++ local label=F1 p=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good xid=f1-exec b=f1 want=2 d
+++ dispatches f1
+++ grep -c new=DISPATCHING /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/state.jsonl
++ d=1
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
++ '[' HOLD = HOLD ']'
++ ok 'F1: terminal HOLD'
++ PASS=2
++ printf 'ok - %s\n' 'F1: terminal HOLD'
+ok - F1: terminal HOLD
++ '[' 1 -ge 1 ']'
++ '[' 1 -le 2 ']'
++ ok 'F1: dispatch bounded (1 <= 2)'
++ PASS=3
++ printf 'ok - %s\n' 'F1: dispatch bounded (1 <= 2)'
+ok - F1: dispatch bounded (1 <= 2)
++ case "$(reasons "$b" t1)" in
+++ reasons f1 t1
+++ sed -n 's/.*task_id=t1 .*new=\([A-Z_]*\) reason=\([^ ]*\).*/\1:\2/p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/state.jsonl
+++ tr '\n' ' '
++ ok 'F1: HOLD carries a reason'
++ PASS=4
++ printf 'ok - %s\n' 'F1: HOLD carries a reason'
+ok - F1: HOLD carries a reason
++ uc /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good f1-exec resume --batch f1
+++ dispatches f1
+++ grep -c new=DISPATCHING /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/state.jsonl
++ '[' 1 = 1 ']'
++ ok 'F1: no dispatch after HOLD (1)'
++ PASS=5
++ printf 'ok - %s\n' 'F1: no dispatch after HOLD (1)'
+ok - F1: no dispatch after HOLD (1)
+++ state_of f1 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/tasks/t1.state
+++ reasons f1 t1
+++ sed -n 's/.*task_id=t1 .*new=\([A-Z_]*\) reason=\([^ ]*\).*/\1:\2/p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f1/state.jsonl
+++ tr '\n' ' '
++ printf '    evidence %s: state=%s dispatches=%s reasons=%s\n' F1 HOLD 1 'QUEUED:batch-init DISPATCHING:dispatch-executor ACKNOWLEDGED:executor-ack RUNNING:executor-running HOLD:executor-timeout '
+    evidence F1: state=HOLD dispatches=1 reasons=QUEUED:batch-init DISPATCHING:dispatch-executor ACKNOWLEDGED:executor-ack RUNNING:executor-running HOLD:executor-timeout 
++ write_contract /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/f2.json f2 1 8
++ cat
++ uc /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good f2-exec init --batch f2 --contract /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/f2.json
++ INJ=70113
++ drive_until_held /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good f2-exec f2 40
++ inject_on_window
++ local p=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good xid=f2-exec b=f2 max=40 i=0
++ '[' 0 -lt 40 ']'
++ uc /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good f2-exec run --batch f2
++ local i=0
++ '[' 0 -lt 900 ']'
+++ crew_windows
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ grep -c '^fm-'
+++ true
++ '[' 0 '!=' 0 ']'
++ sleep 0.05
++ i=1
++ '[' 1 -lt 900 ']'
+++ crew_windows
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ grep -c '^fm-'
+++ true
++ '[' 0 '!=' 0 ']'
++ sleep 0.05
++ i=2
++ '[' 2 -lt 900 ']'
+++ crew_windows
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ grep -c '^fm-'
+++ true
++ '[' 0 '!=' 0 ']'
++ sleep 0.05
++ i=3
++ '[' 3 -lt 900 ']'
+++ crew_windows
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ grep -c '^fm-'
+++ true
++ '[' 0 '!=' 0 ']'
++ sleep 0.05
++ i=4
++ '[' 4 -lt 900 ']'
+++ crew_windows
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ grep -c '^fm-'
+++ true
++ '[' 0 '!=' 0 ']'
++ sleep 0.05
++ i=5
++ '[' 5 -lt 900 ']'
+++ crew_windows
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ grep -c '^fm-'
+++ true
++ '[' 0 '!=' 0 ']'
++ sleep 0.05
++ i=6
++ '[' 6 -lt 900 ']'
+++ crew_windows
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ grep -c '^fm-'
+++ true
++ '[' 0 '!=' 0 ']'
++ sleep 0.05
++ i=7
++ '[' 7 -lt 900 ']'
+++ crew_windows
+++ grep -c '^fm-'
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ true
++ '[' 0 '!=' 0 ']'
++ sleep 0.05
++ i=8
++ '[' 8 -lt 900 ']'
+++ crew_windows
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ grep -c '^fm-'
+++ true
++ '[' 0 '!=' 0 ']'
++ sleep 0.05
++ i=9
++ '[' 9 -lt 900 ']'
+++ crew_windows
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ grep -c '^fm-'
+++ true
++ '[' 0 '!=' 0 ']'
++ sleep 0.05
++ i=10
++ '[' 10 -lt 900 ']'
+++ crew_windows
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ grep -c '^fm-'
+++ true
++ '[' 0 '!=' 0 ']'
++ sleep 0.05
++ i=11
++ '[' 11 -lt 900 ']'
+++ crew_windows
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ grep -c '^fm-'
+++ true
++ '[' 0 '!=' 0 ']'
++ sleep 0.05
++ i=12
++ '[' 12 -lt 900 ']'
+++ crew_windows
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ grep -c '^fm-'
+++ true
++ '[' 0 '!=' 0 ']'
++ sleep 0.05
++ i=13
++ '[' 13 -lt 900 ']'
+++ crew_windows
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ grep -c '^fm-'
+++ true
++ '[' 0 '!=' 0 ']'
++ sleep 0.05
++ i=14
++ '[' 14 -lt 900 ']'
+++ crew_windows
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ grep -c '^fm-'
+++ true
++ '[' 0 '!=' 0 ']'
++ sleep 0.05
++ i=15
++ '[' 15 -lt 900 ']'
+++ crew_windows
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ grep -c '^fm-'
+++ true
++ '[' 0 '!=' 0 ']'
++ sleep 0.05
++ i=16
++ '[' 16 -lt 900 ']'
+++ crew_windows
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ grep -c '^fm-'
++ '[' 1 '!=' 0 ']'
++ kill_crew_windows
++ local tgt
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{session_name}:#{window_name}'
+++ grep -E :fm-
++ for tgt in $(env -u TMUX TMUX_TMPDIR="$TMUXDIR" tmux list-windows -a -F '#{session_name}:#{window_name}' 2> /dev/null | grep -E ':fm-' || true)
++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux kill-window -t firstmate:fm-f2-exec
++ return 0
++ held f2
++ '[' -f /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f2/.batch-held ']'
++ return 0
++ ok 'F2: reached HOLD with no repair'
++ PASS=6
++ printf 'ok - %s\n' 'F2: reached HOLD with no repair'
+ok - F2: reached HOLD with no repair
++ wait 70113
++ assert_safety F2 /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good f2-exec f2 2
++ local label=F2 p=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good xid=f2-exec b=f2 want=2 d
+++ dispatches f2
+++ grep -c new=DISPATCHING /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f2/state.jsonl
++ d=1
+++ state_of f2 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f2/tasks/t1.state
++ '[' HOLD = HOLD ']'
++ ok 'F2: terminal HOLD'
++ PASS=7
++ printf 'ok - %s\n' 'F2: terminal HOLD'
+ok - F2: terminal HOLD
++ '[' 1 -ge 1 ']'
++ '[' 1 -le 2 ']'
++ ok 'F2: dispatch bounded (1 <= 2)'
++ PASS=8
++ printf 'ok - %s\n' 'F2: dispatch bounded (1 <= 2)'
+ok - F2: dispatch bounded (1 <= 2)
++ case "$(reasons "$b" t1)" in
+++ reasons f2 t1
+++ sed -n 's/.*task_id=t1 .*new=\([A-Z_]*\) reason=\([^ ]*\).*/\1:\2/p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f2/state.jsonl
+++ tr '\n' ' '
++ ok 'F2: HOLD carries a reason'
++ PASS=9
++ printf 'ok - %s\n' 'F2: HOLD carries a reason'
+ok - F2: HOLD carries a reason
++ uc /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-good f2-exec resume --batch f2
+++ dispatches f2
+++ grep -c new=DISPATCHING /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f2/state.jsonl
++ '[' 1 = 1 ']'
++ ok 'F2: no dispatch after HOLD (1)'
++ PASS=10
++ printf 'ok - %s\n' 'F2: no dispatch after HOLD (1)'
+ok - F2: no dispatch after HOLD (1)
+++ state_of f2 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f2/tasks/t1.state
+++ reasons f2 t1
+++ sed -n 's/.*task_id=t1 .*new=\([A-Z_]*\) reason=\([^ ]*\).*/\1:\2/p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f2/state.jsonl
+++ tr '\n' ' '
++ printf '    evidence %s: state=%s dispatches=%s reasons=%s\n' F2 HOLD 1 'QUEUED:batch-init DISPATCHING:dispatch-executor REWORK:spawn-failed HOLD:retry-exhausted '
+    evidence F2: state=HOLD dispatches=1 reasons=QUEUED:batch-init DISPATCHING:dispatch-executor REWORK:spawn-failed HOLD:retry-exhausted 
++ write_contract /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/f3.json f3 1 8
++ cat
++ uc /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-missing f3-exec init --batch f3 --contract /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/f3.json
++ drive_until_held /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-missing f3-exec f3 40
++ local p=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-missing xid=f3-exec b=f3 max=40 i=0
++ '[' 0 -lt 40 ']'
++ uc /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-missing f3-exec run --batch f3
++ held f3
++ '[' -f /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f3/.batch-held ']'
++ return 0
++ ok 'F3: reached HOLD with no repair'
++ PASS=11
++ printf 'ok - %s\n' 'F3: reached HOLD with no repair'
+ok - F3: reached HOLD with no repair
++ assert_safety F3 /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-missing f3-exec f3 2
++ local label=F3 p=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-missing xid=f3-exec b=f3 want=2 d
+++ dispatches f3
+++ grep -c new=DISPATCHING /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f3/state.jsonl
++ d=1
+++ state_of f3 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f3/tasks/t1.state
++ '[' HOLD = HOLD ']'
++ ok 'F3: terminal HOLD'
++ PASS=12
++ printf 'ok - %s\n' 'F3: terminal HOLD'
+ok - F3: terminal HOLD
++ '[' 1 -ge 1 ']'
++ '[' 1 -le 2 ']'
++ ok 'F3: dispatch bounded (1 <= 2)'
++ PASS=13
++ printf 'ok - %s\n' 'F3: dispatch bounded (1 <= 2)'
+ok - F3: dispatch bounded (1 <= 2)
++ case "$(reasons "$b" t1)" in
+++ reasons f3 t1
+++ sed -n 's/.*task_id=t1 .*new=\([A-Z_]*\) reason=\([^ ]*\).*/\1:\2/p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f3/state.jsonl
+++ tr '\n' ' '
++ ok 'F3: HOLD carries a reason'
++ PASS=14
++ printf 'ok - %s\n' 'F3: HOLD carries a reason'
+ok - F3: HOLD carries a reason
++ uc /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/proj-missing f3-exec resume --batch f3
+++ dispatches f3
+++ grep -c new=DISPATCHING /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f3/state.jsonl
++ '[' 1 = 1 ']'
++ ok 'F3: no dispatch after HOLD (1)'
++ PASS=15
++ printf 'ok - %s\n' 'F3: no dispatch after HOLD (1)'
+ok - F3: no dispatch after HOLD (1)
+++ state_of f3 t1
+++ sed -n 's/^new=//p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f3/tasks/t1.state
+++ reasons f3 t1
+++ sed -n 's/.*task_id=t1 .*new=\([A-Z_]*\) reason=\([^ ]*\).*/\1:\2/p' /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/uc/batches/f3/state.jsonl
+++ tr '\n' ' '
++ printf '    evidence %s: state=%s dispatches=%s reasons=%s\n' F3 HOLD 1 'QUEUED:batch-init DISPATCHING:dispatch-executor REWORK:spawn-failed HOLD:retry-exhausted '
+    evidence F3: state=HOLD dispatches=1 reasons=QUEUED:batch-init DISPATCHING:dispatch-executor REWORK:spawn-failed HOLD:retry-exhausted 
+++ crew_windows
+++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux list-windows -a -F '#{window_name}'
+++ grep -c '^fm-'
+++ true
++ '[' 0 = 0 ']'
++ ok 'residual crew 0 in the isolated session'
++ PASS=16
++ printf 'ok - %s\n' 'residual crew 0 in the isolated session'
+ok - residual crew 0 in the isolated session
+++ tmux list-windows -a -F '#{session_name}:#{window_name}'
+++ sort
++ OP_WINDOWS_AFTER=$':zsh\nagy-main:agy\nfirstmate:claude.exe'
++ '[' $':zsh\nagy-main:agy\nfirstmate:claude.exe' = $':zsh\nagy-main:agy\nfirstmate:claude.exe' ']'
+++ printf %s $':zsh\nagy-main:agy\nfirstmate:claude.exe'
+++ wc -l
+++ tr -d ' '
++ ok 'operator tmux inventory unchanged (2 windows)'
++ PASS=17
++ printf 'ok - %s\n' 'operator tmux inventory unchanged (2 windows)'
+ok - operator tmux inventory unchanged (2 windows)
++ '[' -n '' ']'
++ ok 'operator wake queue not present in this checkout (nothing to compare)'
++ PASS=18
++ printf 'ok - %s\n' 'operator wake queue not present in this checkout (nothing to compare)'
+ok - operator wake queue not present in this checkout (nothing to compare)
++ printf '    MOCK-ONLY: A3 fault-3 (identity-mismatch / FM_FAKE_WRONG_IDENTITY)\n'
+    MOCK-ONLY: A3 fault-3 (identity-mismatch / FM_FAKE_WRONG_IDENTITY)
++ printf '      has no real-crew trigger: the adapter reads identity from the very\n'
+      has no real-crew trigger: the adapter reads identity from the very
++ printf '      state/<spawn>.meta a successful dispatch just wrote, and it clears a\n'
+      state/<spawn>.meta a successful dispatch just wrote, and it clears a
++ printf '      stale meta before spawning, so no real crew fault can make\n'
+      stale meta before spawning, so no real crew fault can make
++ printf '      identity != session. Real-crew coverage is therefore 2 of A3'\''s 3\n'
+      identity != session. Real-crew coverage is therefore 2 of A3's 3
++ printf '      mock faults plus one real dispatch-boundary fault.\n'
+      mock faults plus one real dispatch-boundary fault.
++ printf '# fm-unattended-realcrew-3fault-e2e.test.sh PASS=%s FAIL=%s\n' 18 0
+# fm-unattended-realcrew-3fault-e2e.test.sh PASS=18 FAIL=0
++ '[' 0 -eq 0 ']'
++ cleanup
++ env -u TMUX TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e/tmux tmux kill-server
++ chmod -R u+w /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e
++ rm -rf /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//realcrew.Jgzx3e
