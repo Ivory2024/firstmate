@@ -68,7 +68,10 @@ case "$1 ${2:-}" in
         # two always agree on file count.
         if [ -n "${FM_TEST_FILES_JSON:-}" ]; then cat "$FM_TEST_FILES_JSON"
         else jq -c '[.files | map({filename: .path})]' "$FM_TEST_PR_JSON"; fi;;
-      *rules/branches/*) [ "${FM_TEST_FAIL_RULES:-}" != yes ] || exit 1; cat "$FM_TEST_RULESETS_JSON";;
+      *rules/branches/*)
+        [ "${FM_TEST_FAIL_RULES:-}" != yes ] || exit 1
+        [ -z "${FM_TEST_RULES_ERR:-}" ] || { printf '%s\n' "$FM_TEST_RULES_ERR" >&2; exit 1; }
+        cat "$FM_TEST_RULESETS_JSON";;
       *) exit 2;;
     esac
     ;;
@@ -81,6 +84,7 @@ case "$1 ${2:-}" in
           exit 1
         fi
         [ "${FM_TEST_FAIL_PROTECTION:-}" != yes ] || exit 1
+        [ -z "${FM_TEST_PROTECTION_ERR:-}" ] || { printf '%s\n' "$FM_TEST_PROTECTION_ERR" >&2; exit 1; }
         cat "$FM_TEST_PROTECTION_JSON";;
       *) exit 2;;
     esac
@@ -231,6 +235,92 @@ cat > "$TMP/protection.json" <<'JSON'
 JSON
 env "${evidence_env[@]}" "$EVIDENCE" branch-protection "$PR" nothex >/dev/null 2>&1
 eq "re-verification rejects a malformed scope" "$?" 2
+
+# --- plan-gated protection reads ---
+# A repository whose GitHub plan cannot expose branch protection or branch rules
+# at all answers 403 "Upgrade to GitHub Pro or make this repository public" on
+# both endpoints. bin/fm-pr-merge.sh already resolves that exact 403 to "no rule
+# of any kind" rather than to an error, so the collector resolves it the same
+# way: when BOTH sources are refused by that one plan message, the required set
+# is provably empty, so the verdict passes as "no enforceable required check"
+# instead of holding a source it never failed to read. The relaxation is
+# recorded on the verdict as protection_source=unavailable-by-plan so the reason
+# is traceable, and only that plan refusal is relaxed: every other 403, every
+# 5xx, a permission refusal, and every repository that does carry protection
+# still hold below.
+PLAN_403_ERR='gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)'
+UNRELATED_403_ERR='gh: Resource not accessible by integration (HTTP 403)'
+SERVER_500_ERR='gh: Internal Server Error (HTTP 500)'
+plan_env=(FM_TEST_PROTECTION_ERR="$PLAN_403_ERR" FM_TEST_RULES_ERR="$PLAN_403_ERR")
+out=$(env "${evidence_env[@]}" "${plan_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "plan-gated 403 on both protection sources resolves to no enforceable required check" \
+  "$(printf '%s' "$out" | jq -r '.status + ":" + (.reasons | join(","))')" "PASS:"
+eq "the plan resolution records why the gate was not enforced" \
+  "$(printf '%s' "$out" | jq -r .protection_source)" unavailable-by-plan
+plan_relaxation=$(printf '%s' "$out" | jq -r .protection_source)
+eq "the plan resolution does not claim protection exists" \
+  "$(printf '%s' "$out" | jq -r '.protection | tostring')" false
+plan_scope=$(printf '%s' "$out" | jq -r .protection_scope)
+eq "the plan resolution still records a protection evidence digest" \
+  "$(printf '%s' "$plan_scope" | grep -cE '^[0-9a-f]{64}$')" 1
+out=$(env "${evidence_env[@]}" "${plan_env[@]}" "$EVIDENCE" branch-protection "$PR" "$plan_scope")
+eq "re-verification resolves the same plan-gated 403 to the same unenforced gate" \
+  "$(printf '%s' "$out" | jq -r '.status + ":" + .protection_source + ":" + .protection_scope')" \
+  "PASS:unavailable-by-plan:$plan_scope"
+out=$(env "${evidence_env[@]}" "${plan_env[@]}" "$EVIDENCE" branch-protection "$PR" "$prot_scope")
+eq "re-verification refuses protection that appeared after a plan-gated collection" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" branch-protection-changed
+# The negative controls. The plan refusal is a narrow exception, so two further
+# boundaries are pinned: a plan refusal on one source while the other still
+# reads is ordinary evidence, and an unrelated refusal never relaxes anything.
+out=$(env "${evidence_env[@]}" FM_TEST_PROTECTION_ERR="$PLAN_403_ERR" FM_TEST_RULES_ERR="$SERVER_500_ERR" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "a plan refusal on one source only still holds the other source's failure" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" rulesets-unreadable
+out=$(env "${evidence_env[@]}" FM_TEST_PROTECTION_ERR="$UNRELATED_403_ERR" FM_TEST_RULES_ERR="$PLAN_403_ERR" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "a plan refusal on branch rules does not excuse a permission refusal on protection" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" branch-protection-unreadable
+out=$(env "${evidence_env[@]}" FM_TEST_PROTECTION_ERR="$UNRELATED_403_ERR" FM_TEST_RULES_ERR="$UNRELATED_403_ERR" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "an unrelated 403 still holds an unreadable protection read" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" branch-protection-unreadable
+out=$(env "${evidence_env[@]}" FM_TEST_PROTECTION_ERR="$SERVER_500_ERR" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "a 5xx still holds an unreadable protection read" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" branch-protection-unreadable
+out=$(env "${evidence_env[@]}" FM_TEST_RULES_ERR="$UNRELATED_403_ERR" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "an unrelated 403 still holds an unreadable branch-rules read" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" rulesets-unreadable
+out=$(env "${evidence_env[@]}" FM_TEST_RULES_ERR="$SERVER_500_ERR" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "a 5xx still holds an unreadable branch-rules read" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" rulesets-unreadable
+out=$(env "${evidence_env[@]}" FM_TEST_RULES_ERR="$PLAN_403_ERR" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "plan-gated 403 on branch rules alone leaves the classic source in force" \
+  "$(printf '%s' "$out" | jq -r '.status + ":" + (.reasons | join(","))')" "PASS:"
+eq "plan-gated 403 on branch rules alone records no relaxation" \
+  "$(printf '%s' "$out" | jq -r '.protection_source // "none"')" none
+# A repository that DOES carry protection is never relaxed: the gate is read,
+# and an empty or red required set still holds exactly as before.
+cat > "$TMP/protection.json" <<'JSON'
+{"required_pull_request_reviews":{}}
+JSON
+out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "protection present with no required check still holds" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
+eq "protection present with an empty required set records no relaxation" \
+  "$(printf '%s' "$out" | jq -r '.protection_source // "none"')" none
+cat > "$TMP/protection.json" <<'JSON'
+{"required_status_checks":{"contexts":["ci"]},"required_pull_request_reviews":{}}
+JSON
+cat > "$TMP/check-runs.json" <<JSON
+[{"total_count":1,"check_runs":[{"id":1,"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"failure","started_at":"2026-10-10T00:00:00Z","completed_at":"2026-10-10T00:00:30Z","check_suite":{"id":7},"app":{"id":17,"slug":"github-actions"},"output":{"title":"failed","summary":null,"text":null}}]}]
+JSON
+out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "protection present with a red required check still holds" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" required-checks-not-green-or-unconfigured
+cat > "$TMP/check-runs.json" <<JSON
+[{"total_count":1,"check_runs":[{"id":1,"name":"ci","head_sha":"$HEAD","status":"completed","conclusion":"success","started_at":"2026-10-10T00:00:00Z","completed_at":"2026-10-10T00:00:30Z","check_suite":{"id":7},"app":{"id":17,"slug":"github-actions"},"output":{"title":"ok","summary":null,"text":null}}]}]
+JSON
+out=$(env "${evidence_env[@]}" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "protection present and green still passes with no relaxation" \
+  "$(printf '%s' "$out" | jq -r '.status + ":" + (.protection | tostring) + ":" + (.protection_source // "none")')" "PASS:true:none"
 
 # The waiver arrives as an argument bound to one call, never from an environment
 # variable or a file. It removes exactly the named check from the enforced set:
@@ -512,6 +602,28 @@ make_evidence_dir() { # <dir> <evidence-script-src>
 make_evidence_dir "$TMP/empty-bin" "$EVIDENCE"
 out=$(env "${evidence_env[@]}" "$TMP/empty-bin/fm-merge-evidence.sh" collect "$TASK" "$PR" "$HEAD")
 eq "empty risk classification output holds" "$(printf '%s' "$out" | jq -r .reasons[0])" risk-unknown
+
+# --- the relaxation is reported, not silent ---
+# A merge that passed because the plan could not express a gate must say so where
+# the captain reads the outcome. bin/fm-merge-outcome-lib.sh appends it to the
+# same durable line it already publishes - the parent channel in a mate home, the
+# merge wake in a main home - and takes the value from the evidence verdict's
+# protection_source through bin/fm-pr-merge.sh.
+outcome_state="$TMP/outcome-state"
+mkdir -p "$outcome_state"
+( . "$ROOT/bin/fm-merge-outcome-lib.sh"
+  fm_merge_outcome_report "$TMP/home" "$outcome_state" outcome-task "$PR" self '' "$plan_relaxation" ) >/dev/null 2>&1
+eq "the merge outcome reports a plan-relaxed gate" \
+  "$(grep -c 'merge landed: outcome-task .* gate-relaxed(unavailable-by-plan)' "$outcome_state/.wake-queue" 2>/dev/null)" 1
+outcome_plain="$TMP/outcome-plain"
+mkdir -p "$outcome_plain"
+( . "$ROOT/bin/fm-merge-outcome-lib.sh"
+  fm_merge_outcome_report "$TMP/home" "$outcome_plain" outcome-plain "$PR" self ) >/dev/null 2>&1
+eq "an ordinary merge outcome carries no relaxation tag" \
+  "$(grep -c 'gate-relaxed' "$outcome_plain/.wake-queue" 2>/dev/null)" 0
+( . "$ROOT/bin/fm-merge-outcome-lib.sh"
+  fm_merge_outcome_report "$TMP/home" "$outcome_state" outcome-task "$PR" self '' bogus ) >/dev/null 2>&1
+eq "an unknown gate relaxation is refused" "$?" 2
 
 echo "# fm-merge-policy.test.sh PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

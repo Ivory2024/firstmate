@@ -34,7 +34,7 @@ _FM_MERGE_OUTCOME_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC2034 # Public result consumed by sourcing callers.
 FM_MERGE_OUTCOME_ALREADY_RECORDED=false
 
-# fm_merge_outcome_report <home> <state> <task-id> <pr-url> <origin> [authority]
+# fm_merge_outcome_report <home> <state> <task-id> <pr-url> <origin> [authority] [gate-relaxation]
 #
 # <origin> says who observed the merge, because that decides whether the
 # existing poll path also needs a local wake:
@@ -48,15 +48,20 @@ FM_MERGE_OUTCOME_ALREADY_RECORDED=false
 # authority after forge acceptance, while the poll supplies the persisted
 # identity-bound value or external when no matching record proves that this
 # home authorized the merge.
+# Optional <gate-relaxation> names a gate the evidence verdict deliberately
+# resolved rather than enforced; the only value today is unavailable-by-plan,
+# set when GitHub's plan cannot expose branch protection at all. It is appended to
+# the same line, so the captain sees that the merge passed without that gate.
+# A poll-detected merge never carries it: the poll did not make the decision.
 #
 # Returns 0 when the outcome is recorded (or already was), 2 on an invalid
 # request, 3 when this home's own role or parent binding cannot be read well
 # enough to say where the outcome belongs, and 1 on any other failure to
 # record. A caller that has already merged must report a non-zero return rather
 # than treat it as success: the merge landed and the record did not.
-fm_merge_outcome_report() {  # <home> <state> <task-id> <pr-url> <origin> [authority]
+fm_merge_outcome_report() {  # <home> <state> <task-id> <pr-url> <origin> [authority] [gate-relaxation]
   local home=$1 state=$2 id=$3 url=$4 origin=$5
-  local authority=${6-} suffix=
+  local authority=${6-} relaxation=${7-} suffix='' relaxation_suffix=''
   local self_rc=0 destination='' line lock status=0
   local provider host path number
   # shellcheck disable=SC2034 # Sourced wake helpers consume these scoped globals.
@@ -68,6 +73,11 @@ fm_merge_outcome_report() {  # <home> <state> <task-id> <pr-url> <origin> [autho
     attended|'') ;;
     *) return 2 ;;
   esac
+  case "$relaxation" in
+    unavailable-by-plan) relaxation_suffix=" gate-relaxed(unavailable-by-plan)" ;;
+    '') ;;
+    *) return 2 ;;
+  esac
   fm_pr_task_id_valid "$id" || return 2
   fm_pr_url_parse "$url" || return 2
   provider=$FM_PR_PROVIDER
@@ -77,7 +87,7 @@ fm_merge_outcome_report() {  # <home> <state> <task-id> <pr-url> <origin> [autho
   [ -d "$state" ] && [ ! -L "$state" ] || return 1
 
   if destination=$(fm_parent_channel_destination "$home" "$state"); then
-    line="done [key=merged-$id]: merged $id $FM_PR_URL$suffix"
+    line="done [key=merged-$id]: merged $id $FM_PR_URL$suffix$relaxation_suffix"
   else
     self_rc=$?
     [ "$self_rc" -eq 1 ] || return 3
@@ -102,7 +112,7 @@ fm_merge_outcome_report() {  # <home> <state> <task-id> <pr-url> <origin> [autho
   fi
   if [ "$status" -eq 0 ] && { [ "$origin" = poll ] || [ -z "$destination" ]; }; then
     fm_wake_append check "merged-$id-$FM_PR_URL" \
-      "check: merge landed: $id $FM_PR_URL$suffix" || status=1
+      "check: merge landed: $id $FM_PR_URL$suffix$relaxation_suffix" || status=1
   fi
   if [ "$status" -eq 0 ]; then
     fm_pr_poll_merge_mark_notified "$state" "$id" \

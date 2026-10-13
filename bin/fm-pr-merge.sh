@@ -39,8 +39,8 @@
 # An unreadable producer read still refuses.
 # Successfully read requirements remain checked even if another
 # source fails, so known missing checks and all read errors are reported together.
-# github_branch_rules_unavailable_on_plan owns the narrow plan-unavailable
-# exception; every other unreadable required source refuses.
+# github_branch_rules_unavailable_on_plan (bin/fm-pr-lib.sh) owns the narrow
+# plan-unavailable exception; every other unreadable required source refuses.
 # Every failing condition is reported, not just the first.
 # The verified head is then passed to gh as
 # --match-head-commit, so a push that lands between that read and the merge
@@ -109,7 +109,11 @@
 # applicable rulesets from the forge. Immediately before the GitHub merge those
 # same two sources are re-read and their evidence digest must still equal the
 # one the gate recorded, so a ruleset removed or weakened after evidence
-# collection refuses instead of riding on the earlier verdict.
+# collection refuses instead of riding on the earlier verdict. A repository whose
+# plan cannot expose branch protection or branch rules at all is resolved by that
+# gate as "no enforceable required check" and records
+# protection_source=unavailable-by-plan; the durable merge outcome then says so,
+# so a merge that passed without that gate is visible rather than silent.
 #
 # A Forgejo merge is refused unless every pre-merge condition holds, each read
 # live at merge time: the pull request is open, not a draft, mergeable is
@@ -1262,20 +1266,6 @@ github_urlencode_path_segment() {
   printf '%s' "$encoded"
 }
 
-# Whether a failed branch-rules read (the gh stderr given) is GitHub's
-# plan-gated 403 ("Upgrade to GitHub Pro or make this repository public"),
-# which means the repository's plan cannot expose branch rules at all, on
-# GitHub or GitHub Enterprise Server - not that this script failed to read
-# them, and not that the token lacks a permission. Such a repository has no
-# active ruleset rule of any kind. Any other failure (auth, rate limit,
-# network, a 404, an unrelated 403) is not this and stays unreadable.
-github_branch_rules_unavailable_on_plan() {
-  case "$1" in
-    *"Upgrade to GitHub Pro or make this repository public"*) return 0 ;;
-  esac
-  return 1
-}
-
 # Read the effective merge-queue method for the observed base branch. The four
 # situations the refusal has to keep apart - no queue rule, a rules response
 # that could not be read, several rules that disagree, and a rule whose method
@@ -1529,6 +1519,12 @@ require_recorded_pr_identity() {
 # digest against the one the decision was recorded with, so a caller cannot
 # substitute either side.
 FM_PR_PROTECTION_SCOPE=
+# The evidence verdict's own record of a gate relaxation, empty when the
+# protection gate was enforced normally. A plan-unavailable repository carries
+# "unavailable-by-plan" here, and it is what the durable merge outcome reports
+# upward, so the captain sees why a merge passed without a branch-protection
+# gate instead of having to infer it.
+FM_PR_GATE_RELAXATION=
 reverify_branch_protection() {
   local out
   [ "$PROVIDER" = github ] || return 0
@@ -1536,7 +1532,13 @@ reverify_branch_protection() {
     printf 'error: merge refused - branch protection could not be re-verified before merging: %s\n' "$out" >&2
     return 1
   }
-  printf '%s' "$out" | jq -e '.status == "PASS" and .protection == true' >/dev/null 2>&1 && return 0
+  # A plan-unavailable repository has no protection to re-verify, and the
+  # collector reports that as its own recorded source rather than as a missing
+  # gate; requiring protection:true here would refuse a repository the evidence
+  # gate already resolved.
+  printf '%s' "$out" | jq -e \
+    '.status == "PASS" and (.protection == true or .protection_source == "unavailable-by-plan")' \
+    >/dev/null 2>&1 && return 0
   printf 'error: merge refused - branch protection re-verification failed: %s\n' "$out" >&2
   return 1
 }
@@ -1771,6 +1773,7 @@ case "$PROVIDER" in
     fi
     enforce_recorded_merge_decision || exit 1
     FM_PR_PROTECTION_SCOPE=$(printf '%s' "$evidence_json" | jq -r '.protection_scope // ""' 2>/dev/null) || FM_PR_PROTECTION_SCOPE=''
+    FM_PR_GATE_RELAXATION=$(printf '%s' "$evidence_json" | jq -r '.protection_source // ""' 2>/dev/null) || FM_PR_GATE_RELAXATION=''
     # The away record is locked first, so this last presence and authority read
     # and the forge command below share one live-owner critical section.
     hold_away_record_for_merge || exit 1
@@ -1951,7 +1954,7 @@ esac
 # outcome while its existing poll remains armed.
 outcome_rc=0
 fm_merge_outcome_report "$FM_HOME" "$STATE" "$ID" "$URL" self \
-  "${FM_PR_MERGE_AUTHORITY:-}" || outcome_rc=$?
+  "${FM_PR_MERGE_AUTHORITY:-}" "${FM_PR_GATE_RELAXATION:-}" || outcome_rc=$?
 case "$outcome_rc" in
   0) ;;
   3)

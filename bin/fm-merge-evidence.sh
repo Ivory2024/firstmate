@@ -10,6 +10,18 @@
 # before the forge command and refuse when protection was removed or weakened
 # after collection; `branch-protection` is that re-verification.
 #
+# A repository whose plan cannot expose branch protection or branch rules at all
+# (GitHub's "Upgrade to GitHub Pro or make this repository public" 403, matched
+# by bin/fm-pr-lib.sh's github_branch_rules_unavailable_on_plan) answers that same
+# refusal on both endpoints, which proves its required set is empty rather than
+# unreadable. That case is resolved as "no enforceable required check" instead of
+# held, and the PASS verdict then carries `protection_source:
+# "unavailable-by-plan"` beside `protection: false` and the same evidence digest,
+# so the relaxation is recorded on the verdict rather than inferred from an empty
+# source. Every other 403, a 5xx, a permission refusal, an unreadable read, and
+# any repository that does carry protection keep the ordinary gate and still
+# hold.
+#
 # --waived-check is the attended single-check waiver carried from
 # bin/fm-pr-merge.sh's own --allow-red as an argument bound to this one call, so
 # no ambient environment or file can stand in for it. It removes exactly that
@@ -163,14 +175,28 @@ gitlab_required_checks_ok() {
 # A branch protected only by a ruleset has no classic branch protection, so the
 # classic endpoint answers 404. That is an empty classic source rather than an
 # unreadable one: the applicable rulesets are what enforce its required checks.
-# Any other failure still holds, and a non-object payload is still incomplete.
+# A repository whose plan cannot expose branch protection or branch rules at all
+# (GitHub's plan-gated 403, recognised by the shared
+# github_branch_rules_unavailable_on_plan) answers that same 403 on both
+# endpoints, and each one resolves to an empty source there, because such a
+# repository has no protection and no ruleset rule to enforce: the plan cannot
+# expose them, this collector did not fail to read them. Any other failure still
+# holds, and a non-object payload is still incomplete.
+# The two plan refusals are additionally recorded together in
+# GH_PROTECTION_PLAN_UNAVAILABLE, which is true only when BOTH endpoints answered
+# that exact plan refusal. Only then does the caller know the required set is
+# provably empty because no source can express one; one endpoint answering it
+# while the other still reads is an ordinary evidence read, not that proof.
 # stderr is captured to its own file rather than merged into the payload, so a
 # forge that writes anything to stderr cannot corrupt an otherwise valid read.
+GH_PROTECTION_PLAN_UNAVAILABLE=false
 read_github_branch_protection() {  # <owner> <repo> <base-encoded>
   local owner=$1 repo=$2 base_encoded=$3 protection_err
+  local rulesets_json rulesets_err rulesets_err_text protection_plan_403=false
   GH_PROTECTION_JSON=
   GH_RULESETS_JSON=
   GH_PROTECTION_HOLD=
+  GH_PROTECTION_PLAN_UNAVAILABLE=false
   protection_err=$(mktemp "${TMPDIR:-/tmp}/fm-merge-evidence-protection.XXXXXX") || {
     GH_PROTECTION_HOLD='branch-protection-unreadable'
     return 1
@@ -178,6 +204,9 @@ read_github_branch_protection() {  # <owner> <repo> <base-encoded>
   if ! GH_PROTECTION_JSON=$(gh api "repos/$owner/$repo/branches/$base_encoded/protection" 2>"$protection_err"); then
     if grep -q 'HTTP 404' "$protection_err"; then
       GH_PROTECTION_JSON='{}'
+    elif github_branch_rules_unavailable_on_plan "$(cat "$protection_err" 2>/dev/null)"; then
+      GH_PROTECTION_JSON='{}'
+      protection_plan_403=true
     else
       rm -f "$protection_err"
       GH_PROTECTION_HOLD='branch-protection-unreadable'
@@ -189,11 +218,29 @@ read_github_branch_protection() {  # <owner> <repo> <base-encoded>
     GH_PROTECTION_HOLD='branch-protection-incomplete'
     return 1
   }
-  local rulesets_json
-  rulesets_json=$(gh api --paginate --slurp "repos/$owner/$repo/rules/branches/$base_encoded" 2>/dev/null) || {
+  rulesets_err=$(mktemp "${TMPDIR:-/tmp}/fm-merge-evidence-rulesets.XXXXXX") || {
     GH_PROTECTION_HOLD='rulesets-unreadable'
     return 1
   }
+  if rulesets_json=$(gh api --paginate --slurp "repos/$owner/$repo/rules/branches/$base_encoded" 2>"$rulesets_err"); then
+    rm -f "$rulesets_err"
+  else
+    rulesets_err_text=$(cat "$rulesets_err" 2>/dev/null)
+    rm -f "$rulesets_err"
+    # A repository whose plan cannot expose branch rules cannot have a rule of
+    # any kind, so this specific refusal resolves to an empty source exactly as
+    # the merge boundary already resolves it; every other failure stays
+    # unreadable. With the classic source also refused by that same plan message,
+    # nothing this repository's plan can express is left to enforce, and the read
+    # records that so the caller resolves an empty required set instead of
+    # holding a source it never failed to read.
+    github_branch_rules_unavailable_on_plan "$rulesets_err_text" || {
+      GH_PROTECTION_HOLD='rulesets-unreadable'
+      return 1
+    }
+    rulesets_json='[]'
+    [ "$protection_plan_403" = true ] && GH_PROTECTION_PLAN_UNAVAILABLE=true
+  fi
   GH_RULESETS_JSON=$(printf '%s' "$rulesets_json" | jq -ce 'if type == "array" and all(.[]; type == "array" and all(.[]; type == "object")) then [.[][]] else error("invalid branch rules") end') || {
     GH_PROTECTION_HOLD='rulesets-invalid'
     return 1
@@ -242,6 +289,21 @@ reverify_github_branch_protection() {  # <pr-url> <expected-protection-scope>
     hold_protection "$GH_PROTECTION_HOLD"
     return 0
   }
+  # A plan-unavailable repository has no protection and no branch rule the plan
+  # could express, so there is no gate whose weakening this re-verification could
+  # catch; the decision's own digest is still the binding, so protection that
+  # appeared since (a plan change, or a repository made public) digests
+  # differently and holds as changed rather than riding on the earlier verdict.
+  if [ "$GH_PROTECTION_PLAN_UNAVAILABLE" = true ]; then
+    scope=$(github_protection_scope "$GH_PROTECTION_JSON" "$GH_RULESETS_JSON") || {
+      hold_protection branch-protection-incomplete
+      return 0
+    }
+    [ "$scope" = "$expected" ] || { hold_protection branch-protection-changed; return 0; }
+    jq -cn --arg scope "$scope" \
+      '{status:"PASS",protection:false,protection_scope:$scope,protection_source:"unavailable-by-plan",reasons:[]}'
+    return 0
+  fi
   protected=$(github_branch_protected "$GH_PROTECTION_JSON" "$GH_RULESETS_JSON") || {
     hold_protection branch-protection-incomplete
     return 0
@@ -277,24 +339,39 @@ collect_github() {
   read_github_branch_protection "$owner" "$repo" "$base_encoded" || { hold "$GH_PROTECTION_HOLD"; return 0; }
   protection=$GH_PROTECTION_JSON
   rulesets=$GH_RULESETS_JSON
-  local protection_scope protected
-  protected=$(github_branch_protected "$protection" "$rulesets") || { hold branch-protection-incomplete; return 0; }
-  # A base branch with no protection at all is named as its own gap rather than
-  # folded into the unconfigured-required-check refusal, because the two mean
-  # different things to an operator: one has no gate, the other has a gate with
-  # nothing in it.
-  [ "$protected" = true ] || { hold branch-protection-missing; return 0; }
-  protection_scope=$(github_protection_scope "$protection" "$rulesets") || { hold branch-protection-incomplete; return 0; }
-  check_runs_json=$(gh api --paginate --slurp "repos/$owner/$repo/commits/$LIVE_HEAD/check-runs?per_page=100" 2>/dev/null) \
-    || { hold required-checks-unreadable; return 0; }
-  check_runs=$(printf '%s' "$check_runs_json" | jq -ce '[.[] | .check_runs[]?]') \
-    || { hold required-checks-invalid; return 0; }
-  statuses_json=$(gh api --paginate --slurp "repos/$owner/$repo/commits/$LIVE_HEAD/statuses?per_page=100" 2>/dev/null) \
-    || { hold required-statuses-unreadable; return 0; }
-  statuses=$(printf '%s' "$statuses_json" | jq -ce '[.[] | .[]?]') \
-    || { hold required-statuses-invalid; return 0; }
-  github_required_checks_ok "$protection" "$rulesets" "$check_runs" "$statuses" "$LIVE_HEAD" "$WAIVED_CHECK" \
-    || { hold required-checks-not-green-or-unconfigured; return 0; }
+  local protection_scope protected protection_source=''
+  # A repository whose plan cannot expose branch protection or branch rules at
+  # all has no classic protection and no ruleset rule, so its required set is
+  # provably empty: there is nothing to enforce and nothing to re-verify. That is
+  # resolved as "no enforceable required check" rather than held as a missing
+  # gate - exactly as bin/fm-pr-merge.sh already resolves the same plan-gated 403
+  # for its own required-context and merge-queue reads - and the verdict records
+  # protection_source so the relaxation is traceable instead of being inferred
+  # from an empty source. Only the plan refusal reaches this branch: every other
+  # unreadable read, and every repository that does carry protection, falls to
+  # the ordinary gate below and still holds.
+  if [ "$GH_PROTECTION_PLAN_UNAVAILABLE" = true ]; then
+    protection_source='unavailable-by-plan'
+    protection_scope=$(github_protection_scope "$protection" "$rulesets") || { hold branch-protection-incomplete; return 0; }
+  else
+    protected=$(github_branch_protected "$protection" "$rulesets") || { hold branch-protection-incomplete; return 0; }
+    # A base branch with no protection at all is named as its own gap rather than
+    # folded into the unconfigured-required-check refusal, because the two mean
+    # different things to an operator: one has no gate, the other has a gate with
+    # nothing in it.
+    [ "$protected" = true ] || { hold branch-protection-missing; return 0; }
+    protection_scope=$(github_protection_scope "$protection" "$rulesets") || { hold branch-protection-incomplete; return 0; }
+    check_runs_json=$(gh api --paginate --slurp "repos/$owner/$repo/commits/$LIVE_HEAD/check-runs?per_page=100" 2>/dev/null) \
+      || { hold required-checks-unreadable; return 0; }
+    check_runs=$(printf '%s' "$check_runs_json" | jq -ce '[.[] | .check_runs[]?]') \
+      || { hold required-checks-invalid; return 0; }
+    statuses_json=$(gh api --paginate --slurp "repos/$owner/$repo/commits/$LIVE_HEAD/statuses?per_page=100" 2>/dev/null) \
+      || { hold required-statuses-unreadable; return 0; }
+    statuses=$(printf '%s' "$statuses_json" | jq -ce '[.[] | .[]?]') \
+      || { hold required-statuses-invalid; return 0; }
+    github_required_checks_ok "$protection" "$rulesets" "$check_runs" "$statuses" "$LIVE_HEAD" "$WAIVED_CHECK" \
+      || { hold required-checks-not-green-or-unconfigured; return 0; }
+  fi
   reviews=$(gh api --paginate --slurp "repos/$owner/$repo/pulls/$number/reviews" 2>/dev/null) \
     || { hold forge-reviews-unreadable; return 0; }
   reviews=$(printf '%s' "$reviews" | jq -ce '[.[][]?] | if all(.[]; type == "object") then . else error("invalid review pages") end') \
@@ -355,8 +432,9 @@ collect_github() {
     [ "$approval_ok" = true ] || { hold high-risk-captain-approval-missing-or-stale; return 0; }
   fi
   jq -cn --arg head "$LIVE_HEAD" --arg risk "$risk" --arg scope "$scope" \
-    --arg protection_scope "$protection_scope" \
-    '{status:"PASS",head_sha:$head,risk:$risk,scope:$scope,protection:true,protection_scope:$protection_scope,reasons:[]}'
+    --arg protection_scope "$protection_scope" --arg protection_source "$protection_source" \
+    '{status:"PASS",head_sha:$head,risk:$risk,scope:$scope,protection:($protection_source == ""),protection_scope:$protection_scope,reasons:[]}
+     + (if $protection_source == "" then {} else {protection_source:$protection_source} end)'
 }
 
 collect_gitlab() {
