@@ -492,5 +492,314 @@ class EndpointProbeTest(DashboardTestCase):
                              {"a": "alive", "b": "missing"})
 
 
+class ToonParseTest(unittest.TestCase):
+    """The parser is pinned to `tasks-axi list`'s real TOON output shape."""
+
+    # Verbatim output of
+    #   bin/fm-tasks-axi.sh list --state held --limit 3 --fields priority,hold_reason,hold_until
+    # (three rows, trimmed to two for the fixture), plus one row from the real
+    # in_flight listing whose quoted title carries commas and the CLI's inline
+    # `\n... (truncated, N chars total ...)` marker.
+    MEASURED_HELD_TOON = (
+        "count: 2 of 8 total\n"
+        "tasks[2]{id,state,kind,repo,title,priority,hold_reason,hold_until}:\n"
+        "  imac-voice-boundary-review-20260923,queued,scout,IMAC,Review voice interface status-only boundary,"
+        "\"-\",캡틴 지시로 보류 2026-10-07 - 음성 인터페이스 경계 검토. 재개는 캡틴 지시 시.,2027-04-10\n"
+        "  firstmate-ci-flake-watcher-lock-hup-20261007,queued,ship,firstmate,"
+        "\"tests/fm-watcher-lock.test.sh times out\\n... (truncated, 318 chars total - use show "
+        "firstmate-ci-flake-watcher-lock-hup-20261007 --full to see complete text)\",3,"
+        "\"3회 실패 후 건너뜀 macOS Bash HUP 타임아웃 미해결\",\"-\"\n"
+        "help[1]:\n"
+        "  - Run `tasks-axi show <id>` for full notes on a task\n"
+    )
+    MEASURED_IN_FLIGHT_TOON = (
+        "count: 1 of 9 total\n"
+        "tasks[1]{id,state,kind,repo,title,priority}:\n"
+        "  skill-usage-review-canonical-guard-20261013,in_flight,task,IMAC,"
+        "\"skill-usage-review canonical 가드 실행 거부 수정 https://github.com/Ivory2024/IMAC/pull/\\n"
+        "... (truncated, 83 chars total - use show skill-usage-review-canonical-guard-20261013 "
+        "--full to see complete text)\",\"-\"\n"
+    )
+
+    def test_held_rows_parse_with_their_own_field_names(self):
+        rows, total = DASH.parse_task_list(self.MEASURED_HELD_TOON)
+        self.assertEqual(total, 8, "the CLI's own match count wins over the row cap")
+        self.assertEqual(len(rows), 2)
+        first = rows[0]
+        self.assertEqual(first["id"], "imac-voice-boundary-review-20260923")
+        self.assertEqual(first["repo"], "IMAC")
+        self.assertEqual(first["priority"], "-", "a quoted dash must lose its quotes")
+        self.assertEqual(first["hold_until"], "2027-04-10")
+        self.assertIn("캡틴 지시로 보류", first["hold_reason"])
+        # the CLI quotes this one, so its commas must not split the row
+        self.assertIn("macOS Bash HUP 타임아웃 미해결", rows[1]["hold_reason"])
+        self.assertEqual(rows[1]["priority"], "3")
+
+    def test_a_quoted_value_keeps_its_commas_and_truncation_marker(self):
+        rows, total = DASH.parse_task_list(self.MEASURED_IN_FLIGHT_TOON)
+        self.assertEqual(total, 9)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["priority"], "-")
+        self.assertIn("truncated, 83 chars total", rows[0]["title"])
+        self.assertIn("Ivory2024/IMAC/pull/", rows[0]["title"])
+
+    def test_help_lines_are_not_rows(self):
+        rows, _ = DASH.parse_task_list(self.MEASURED_HELD_TOON)
+        self.assertNotIn("help[1]:", [r.get("id") for r in rows])
+
+    def test_empty_list_has_no_rows_and_a_zero_count(self):
+        rows, total = DASH.parse_task_list(
+            "count: 0\ntasks: 0 done repo=no-such-repo-xyz tasks in this backlog\n")
+        self.assertEqual((rows, total), ([], 0))
+
+    def test_a_count_without_a_total_is_the_total(self):
+        _, total = DASH.parse_task_list("count: 100\ntasks[1]{id}:\n  a-1\n")
+        self.assertEqual(total, 100)
+
+    def test_garbage_and_none_are_not_rows(self):
+        self.assertEqual(DASH.parse_task_list(""), ([], 0))
+        self.assertEqual(DASH.parse_task_list(None), ([], 0))
+        self.assertEqual(DASH.parse_task_list("error: boom\n")[0], [])
+
+
+class QueueBoardTest(DashboardTestCase):
+    """The board's section split, its row cap, and its freshness contract."""
+
+    QUEUED = [
+        {"id": "q-1", "title": "Queued plain", "repo": "firstmate", "priority": "1",
+         "held": "no", "blocked": "no", "blocked_by": "none"},
+        {"id": "q-2", "title": "Queued held", "repo": "firstmate", "priority": "2",
+         "held": "yes", "blocked": "no", "blocked_by": "none"},
+        {"id": "q-3", "title": "Queued blocked", "repo": "IMAC", "priority": "2",
+         "held": "no", "blocked": "yes", "blocked_by": "q-9"},
+    ]
+    BLOCKED = [{"id": "q-3", "title": "Queued blocked", "repo": "IMAC", "priority": "2",
+                "blocked_by": "q-9"}]
+    HELD = [{"id": "q-2", "title": "Queued held", "repo": "firstmate", "priority": "2",
+             "hold_reason": "캡틴 지시로 보류", "hold_until": "2027-04-10"}]
+
+    def setUp(self):
+        super().setUp()
+        self.saved_queue = (dict(DASH._QUEUE), DASH.QUEUE_TTL, DASH.QUEUE_SHOWN,
+                            DASH.tasks_axi_list)
+        DASH._QUEUE.update({"board": None, "ok": False, "error": "", "computed_at": 0.0,
+                            "checked_at": 0.0, "refreshing": False})
+        self.reads = []
+        self.args = []
+
+    def tearDown(self):
+        (queue, DASH.QUEUE_TTL, DASH.QUEUE_SHOWN, DASH.tasks_axi_list) = self.saved_queue
+        DASH._QUEUE.update(queue)
+        super().tearDown()
+
+    def fake_axi(self, totals=None):
+        totals = totals or {}
+        board = {"queued": self.QUEUED, "blocked": self.BLOCKED, "held": self.HELD}
+
+        def run(args, timeout=30):
+            section = "queued"
+            for i, arg in enumerate(args):
+                if arg == "--blocked":
+                    section = "blocked"
+                elif arg == "--state" and args[i + 1] in ("held", "queued"):
+                    section = args[i + 1]
+            self.reads.append(section)
+            self.args.append(list(args))
+            rows = board[section]
+            return [dict(r) for r in rows], totals.get(section, len(rows))
+
+        DASH.tasks_axi_list = run
+
+    def test_no_field_outside_tasks_axis_own_extra_list_is_requested(self):
+        # `repo` is a base column the CLI always prints, and asking for it in
+        # --fields is refused with `Unknown field(s): repo` - one such name
+        # takes the whole board down. The extras list is the CLI's own:
+        # blocked, blocked_by, held, hold_kind, hold_reason, hold_until,
+        # priority, and friends (see `list --help`).
+        self.fake_axi()
+        DASH._queue_board()
+        requested = set()
+        for args in self.args:
+            requested.update(args[args.index("--fields") + 1].split(","))
+        self.assertEqual(requested - {"priority", "held", "blocked", "blocked_by",
+                                     "hold_reason", "hold_until"}, set(),
+                         "only fields the CLI advertises as extras may be requested")
+
+    def test_held_and_blocked_rows_are_not_progress_planned(self):
+        self.fake_axi()
+        board = DASH._queue_board()
+        self.assertEqual([t["id"] for t in board["queued"]["items"]], ["q-1"],
+                         "a held or blocked row belongs to its own section, not this one")
+        self.assertEqual(board["queued"]["count"], 1)
+        self.assertEqual([t["id"] for t in board["blocked"]["items"]], ["q-3"])
+        self.assertEqual([t["id"] for t in board["held"]["items"]], ["q-2"])
+
+    def test_sections_carry_the_fields_the_panel_renders(self):
+        self.fake_axi()
+        board = DASH._queue_board()
+        self.assertEqual(set(board["held"]["items"][0]),
+                         {"id", "title", "repo", "priority", "hold_reason", "hold_until"})
+        self.assertEqual(board["blocked"]["items"][0]["blocked_by"], "q-9")
+        self.assertEqual(board["held"]["items"][0]["hold_reason"], "캡틴 지시로 보류")
+        self.assertEqual(set(board["queued"]["items"][0]), {"id", "title", "repo", "priority"})
+
+    def test_the_row_cap_keeps_the_rest_as_a_count(self):
+        DASH.QUEUE_SHOWN = 2
+        self.QUEUED = [
+            {"id": "q-1", "title": "One", "repo": "firstmate", "priority": "1",
+             "held": "no", "blocked": "no", "blocked_by": "none"},
+            {"id": "q-4", "title": "Two", "repo": "firstmate", "priority": "1",
+             "held": "no", "blocked": "no", "blocked_by": "none"},
+            {"id": "q-5", "title": "Three", "repo": "firstmate", "priority": "1",
+             "held": "no", "blocked": "no", "blocked_by": "none"},
+        ]
+        self.fake_axi(totals={"queued": 7, "blocked": 1, "held": 1})
+        board = DASH._queue_board()
+        self.assertEqual([t["id"] for t in board["queued"]["items"]], ["q-1", "q-4"],
+                         "the cap is the rendered row count")
+        self.assertEqual(board["queued"]["count"], 3, "the count still sees every row read")
+        self.assertEqual(board["queued"]["total"], 7)
+        self.assertTrue(board["queued"]["capped"], "the CLI cap hid rows; say so")
+
+    def test_section_counts_displayed_and_capped(self):
+        section = DASH._section([{"id": "a"}, {"id": "b"}], 9, "id")
+        self.assertEqual(section["count"], 2)
+        self.assertEqual(section["total"], 9)
+        self.assertTrue(section["capped"])
+
+    def test_the_clis_truncation_trailer_becomes_a_cut_mark(self):
+        row = {"id": "x-1", "priority": "2",
+               "title": "Some long title cut here\\n... (truncated, 318 chars total - use show "
+                        "x-1 --full to see complete text)"}
+        section = DASH._section([row], 1, "id", "title", "priority")
+        self.assertEqual(section["items"][0]["title"], "Some long title cut here\u2026")
+        self.assertEqual(section["items"][0]["priority"], "2")
+
+    def test_an_ordinary_value_is_left_alone(self):
+        self.assertEqual(DASH._clean("plain title, with a comma"), "plain title, with a comma")
+        self.assertEqual(DASH._clean(None), "")
+        self.assertEqual(DASH._clean("ends with (truncated) but no marker"), 
+                         "ends with (truncated) but no marker")
+
+    def test_board_read_is_cached_and_single_flight(self):
+        self.fake_axi()
+        first, meta1 = DASH.queue()
+        second, meta2 = DASH.queue()
+        self.assertEqual(len(self.reads), 3, "one refresh reads the three sections once")
+        self.assertEqual(meta1["status"], "fresh")
+        self.assertEqual(meta2["status"], "fresh")
+        self.assertEqual(first, second)
+        DASH._QUEUE["checked_at"] -= DASH.QUEUE_TTL + 1
+        DASH.queue()
+        self.assertEqual(len(self.reads), 6, "an expired TTL reads again")
+        self.assertEqual(DASH.queue()[1]["ttl"], DASH.QUEUE_TTL)
+
+    def test_a_failed_read_serves_the_last_good_board_and_says_so(self):
+        self.fake_axi()
+        good, _ = DASH.queue()
+
+        def boom(args, timeout=30):
+            raise RuntimeError("fm-tasks-axi.sh: exit 2")
+
+        DASH.tasks_axi_list = boom
+        DASH._QUEUE["checked_at"] -= DASH.QUEUE_TTL + 1
+        board, meta = DASH.queue()
+        self.assertEqual(meta["status"], "error")
+        self.assertIn("exit 2", meta["error"])
+        self.assertEqual(board, good, "the last good board is still served")
+        self.assertGreaterEqual(meta["age"], 0.0, "and it is never presented as current")
+
+    def test_failure_before_any_success_serves_no_board(self):
+        DASH.tasks_axi_list = mock.Mock(side_effect=OSError("no CLI"))
+        board, meta = DASH.queue()
+        self.assertEqual(board, {})
+        self.assertEqual(meta["status"], "error")
+        self.assertEqual(meta["age"], -1.0)
+
+
+class BoardRouteTest(QueueBoardTest):
+    """/board over HTTP: read-only payload, freshness headers, live lanes."""
+
+    def setUp(self):
+        super().setUp()
+        self.write_meta("alpha-1")
+        self.fake_axi()
+        self.lane_reads = []
+
+        def lanes():
+            self.lane_reads.append(time.time())
+            return [{"id": "alpha-1", "liveness": DASH.LIVE, "title": "First task",
+                     "state": "state: working \u00b7 source: pane", "last": "working: step 2",
+                     "harness": "opencode", "window": "default:w1:p1"},
+                    {"id": "beta-2", "liveness": DASH.DEAD, "title": "Gone task",
+                     "state": "", "last": "", "harness": "codex", "window": ""}]
+
+        DASH._refresh_lanes = lanes
+
+    def test_a_cold_board_never_pays_the_lane_read(self):
+        # The lane read peeks every pane and measured 68s on a real 11-lane
+        # home, so the panel must not trigger it; it says "not computed yet".
+        port = self.start_server()
+        started = time.time()
+        status, headers, body = self.get(port, "/board")
+        elapsed = time.time() - started
+        self.assertEqual(status, 200)
+        self.assertEqual(self.lane_reads, [], "the board must not start the lane read")
+        self.assertLess(elapsed, 10.0, f"the board must answer promptly, took {elapsed:.1f}s")
+        data = json.loads(body)
+        self.assertFalse(data["lanes_ready"])
+        self.assertEqual(data["in_flight"], [])
+        self.assertEqual(data["counts"]["queued"], 1, "the backlog half is still complete")
+
+    def test_board_payload_and_headers(self):
+        DASH.snap()  # what the page's own poll leaves behind
+        self.assertEqual(len(self.lane_reads), 1)
+        port = self.start_server()
+        status, headers, body = self.get(port, "/board")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["X-Queue-Status"], "fresh")
+        self.assertEqual(headers["X-Queue-Ttl"], "15.000")
+        self.assertGreaterEqual(float(headers["X-Queue-Age"]), 0.0)
+        self.assertNotIn("X-Snap-Status", headers,
+                         "no lane header on a route that does not compute lanes")
+        self.assertEqual(len(self.lane_reads), 1, "the board reuses the page's snapshot")
+        data = json.loads(body)
+        self.assertTrue(data["readonly"], "the board must declare itself read-only")
+        self.assertTrue(data["lanes_ready"])
+        self.assertEqual(data["counts"],
+                         {"queued": 1, "blocked": 1, "held": 1, "in_flight": 1})
+        self.assertEqual([t["id"] for t in data["in_flight"]], ["alpha-1"],
+                         "only a live session is in flight; a gone record is not")
+        self.assertEqual(data["in_flight"][0]["harness"], "OPENCODE")
+        self.assertEqual(data["in_flight"][0]["last"], "working: step 2")
+        self.assertEqual([t["id"] for t in data["queued"]["items"]], ["q-1"])
+        self.assertEqual(data["held"]["items"][0]["hold_until"], "2027-04-10")
+        self.assertGreater(data["computed_at"], 0)
+
+    def test_board_survives_a_cli_refusal_with_the_last_good_board(self):
+        port = self.start_server()
+        self.get(port, "/board")
+
+        def boom(args, timeout=30):
+            raise RuntimeError("fm-tasks-axi.sh: exit 2")
+
+        DASH.tasks_axi_list = boom
+        DASH._QUEUE["checked_at"] -= DASH.QUEUE_TTL + 1
+        status, headers, body = self.get(port, "/board")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["X-Queue-Status"], "error")
+        self.assertIn("exit 2", headers["X-Queue-Error"])
+        self.assertEqual(len(json.loads(body)["queued"]["items"]), 1)
+
+    def test_existing_routes_still_answer(self):
+        port = self.start_server()
+        for path in ("/", "/data", "/tasks"):
+            status, _headers, body = self.get(port, path)
+            self.assertEqual(status, 200, path)
+            self.assertTrue(body, path)
+        self.assertIn(b"\xec\x9e\x91\xec\x97\x85 \xed\x98\x84\xed\x99\xa9",  # 작업 현황
+                      self.get(port, "/")[2], "the panel must be in the page")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
