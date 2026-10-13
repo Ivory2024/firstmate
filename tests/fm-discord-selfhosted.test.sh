@@ -70,6 +70,43 @@ wake_rows() {
   awk -F '\t' '$3 == "check"' "$1/.wake-queue" 2>/dev/null || true
 }
 
+node_free_path() {
+  local destination=$1 directory entry name
+  local -a path_entries
+  mkdir -p "$destination"
+  IFS=: read -r -a path_entries <<< "$BASE_PATH"
+  for directory in "${path_entries[@]}"; do
+    [ -d "$directory" ] || continue
+    for entry in "$directory"/*; do
+      [ -x "$entry" ] || continue
+      name=${entry##*/}
+      case "$name" in
+        node|nodejs) continue ;;
+      esac
+      [ -e "$destination/$name" ] || ln -s "$entry" "$destination/$name"
+    done
+  done
+}
+
+test_missing_runtime_enqueues_durable_wake() {
+  local home out rc rows path
+  home="$TMP_ROOT/missing-runtime"
+  path="$home/node-free-bin"
+  mkdir -p "$home/state"
+  node_free_path "$path"
+  [ -z "$(PATH="$path" command -v node 2>/dev/null || true)" ] || fail "missing-runtime PATH must not contain node"
+
+  out=$(PATH="$path" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-test-token "$ROOT/bin/fm-discord-poll.sh"); rc=$?
+  expect_code 0 "$rc" "missing runtime leaves the ingress successful"
+  assert_equals "x-mode-error missing node for self-hosted Discord" "$out" "missing runtime diagnostic still prints"
+  rows=$(wake_rows "$home/state")
+  assert_contains "$rows" "discord-ingress-error" "missing runtime diagnostic is queued durably"
+  assert_contains "$rows" "x-mode-error missing node for self-hosted Discord" "queued wake carries missing runtime diagnostic"
+  assert_absent "$home/state/x-inbox" "missing runtime writes no inbox record"
+  pass "missing Discord runtime queues a durable diagnostic wake"
+}
+
 # One captured captain mention, shaped like the messages this home really
 # captures from Discord's channel-messages endpoint: the bot is addressed by an
 # explicit user mention and the Message object carries no guild_id.
@@ -612,6 +649,7 @@ test_dry_run_reaction_suppression() {
 }
 
 test_poll_no_token_is_hard_noop
+test_missing_runtime_enqueues_durable_wake
 test_ingestion_payload_shape_and_wake
 test_reaction_failure_does_not_fail_ingress
 test_consumer_and_terminal_reactions_follow_durable_transitions

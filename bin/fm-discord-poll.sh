@@ -35,8 +35,6 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 fm_discord_load_config
 [ -n "${FM_DISCORD_TOKEN:-}" ] || exit 0
 
-command -v node >/dev/null 2>&1 || { printf 'x-mode-error missing node for self-hosted Discord\n'; exit 0; }
-
 export FM_HOME FM_ROOT FM_STATE_OVERRIDE="$STATE"
 export FM_DISCORD_BOT_TOKEN="$FM_DISCORD_TOKEN"
 export FM_DISCORD_CHANNELS="${FM_DISCORD_CHANNELS:-}"
@@ -56,8 +54,13 @@ FM_ROOT_OVERRIDE="$FM_ROOT" FM_HOME="$FM_HOME" STATE="$STATE" . "$FM_ROOT/bin/fm
 
 OUT_FILE=$(mktemp "${TMPDIR:-/tmp}/fm-discord-poll.XXXXXX") || exit 1
 trap 'rm -f "$OUT_FILE"' EXIT
-node "$SCRIPT_DIR/fm-discord-poll.js" > "$OUT_FILE"
-poll_rc=$?
+if ! command -v node >/dev/null 2>&1; then
+  printf 'x-mode-error missing node for self-hosted Discord\n' > "$OUT_FILE"
+  poll_rc=0
+else
+  node "$SCRIPT_DIR/fm-discord-poll.js" > "$OUT_FILE"
+  poll_rc=$?
+fi
 cat "$OUT_FILE"
 while IFS= read -r line || [ -n "$line" ]; do
   case "$line" in
