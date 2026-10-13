@@ -1,0 +1,5 @@
+########## S5: orphan inventory is read-only ##########
+  ORPHAN marker: /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.3KuIeQ/s5/state/.subsuper-seen-status-ghost-task (task: ghost-task)
+  UNREFERENCED worktree: /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.3KuIeQ/treehouse/firstmate-pool//orphan-wt/
+orphan marker still present: yes
+quarantine dir created: no

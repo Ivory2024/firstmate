@@ -1,0 +1,53 @@
+LAB=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.JwjtMf
+================ A1: fail-closed lifecycle registry ================
+A1 task-done READY->DONE rc=0 step=DONE
+A1 repeat task-done on DONE rc=1 step=DONE stderr=[Invalid transition for a1-ready: DONE -> DONE]
+A1 task-hold DONE->WAITING_EXTERNAL rc=1 step=DONE
+A1 task-done without --evidence rc=1 step=READY
+A1 unknown command rc=1
+
+================ A2: lane dispatch, dependency gating, idempotency ================
+A2 blocked: step=WAITING_EXTERNAL reason=failed_dependency:a2-faildep
+A2 no-brief: step=WAITING_EXTERNAL reason=missing_brief:brief
+A2 ready: step=ASSIGNED next=worker_started key=lane-dispatch:a2-ready:old
+A2 spawn calls=1
+A2 spawn log: a2-ready /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.JwjtMf/project --mode local-only --yolo off --branch-prefix fm/ --base-branch main
+A2 spawn calls after repeat=1  (must stay 1)
+
+================ A3: task-done drops the ONLY lane-queue entry ================
+A3 rc=0 step=DONE
+A3 queue after=[] (must be empty)
+A3 leftover .tmp=no
+
+================ A4: task-done drops only its own shared-queue entry ================
+A4 rc=0 step=DONE
+A4 queue after=[a4-one,a4-two,] (must be a4-one,a4-two,)
+A4 leftover .tmp=no
+A4 adjacent entries still READY: READY/READY
+A4 adversarial: task-done for a task absent from a pre-existing queue
+A4 absent rc=0 queue after=[a4-one,a4-two,] tmp=no
+
+================ A5: auto-resume bounded backoff, WAITING_QUOTA, ESCALATED ================
+A5 quota task step=WAITING_QUOTA
+A5 quota retry=attempt=1,last_error=quota_exhausted,last_retry=1791856440
+A5 quota evidence: Auto-resume attempt 1/3 (quota_exhausted). Backoff: 29s.
+A5 exhausted task step=ESCALATED
+A5 exhausted evidence: Auto-resume exhausted after 3 attempts for process_crash
+A5 control log: 
+
+================ A6: STALLED detection ================
+A6 step=RECOVERY_HOLD
+A6 evidence: STALLED detected: all observables exceed threshold. State: unknown, Detail: no external result
+A6 wake queue: 1791856442	1	stale	firstmate:fm-a6-stall	stale: a6-stall (STALLED: all observables exceed 1s threshold)
+
+================ A7: orphan inventory is read-only ================
+=== Orphan Inventory ===
+  ORPHAN marker: /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.JwjtMf/state/.subsuper-seen-status-ghost-task (task: ghost-task)
+=== Treehouse Pool Inventory ===
+  UNREFERENCED worktree: /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.JwjtMf/treehouse/firstmate-pool//orphan-wt/
+=== Reconcile complete 2026-10-13T01:54:03Z ===
+A7 orphan marker still present=yes
+A7 quarantine created=no
+
+TEARDOWN
+DONE

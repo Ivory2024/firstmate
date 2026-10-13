@@ -1,0 +1,15 @@
+########## S6: inactive scan invokes reconcile under one bounded deadline ##########
+--- startup scan forwards --startup ---
+rc=0
+reconcile --startup
+--- regular scan ---
+rc=0
+reconcile
+--- reconcile exit 1 must not abort the scan ---
+scan rc=0 stdout+stderr=[]
+reconcile invoked: reconcile
+--- reconcile that outlives the budget must not abort the scan ---
+scan rc=0 elapsed=1s stdout+stderr=[]
+--- a poll whose shared deadline is already spent defers reconcile ---
+rc=0
+reconcile invocations: []

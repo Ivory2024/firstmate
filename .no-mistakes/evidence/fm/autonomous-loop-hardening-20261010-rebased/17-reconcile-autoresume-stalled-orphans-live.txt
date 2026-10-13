@@ -1,0 +1,27 @@
+SCENARIO: reconcile syncs terminal states, bounds auto-resume, preserves WAITING_QUOTA/APPROVAL, detects STALLED, keeps orphan inventory read-only, and honors TREEHOUSE_ROOT
+HOME: isolated marked lab; real bin/fm-autonomous-loop.sh; external crew-state/control stubbed (reconcile logic is the product under test)
+
+--- reconcile ---
+=== Reconcile start 2026-10-13T01:33:54Z ===
+=== Syncing lifecycle states with external states ===
+=== Orphan Inventory ===
+  ORPHAN marker: /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.U8MN0a/ev2/state/.subsuper-seen-status-ghost-task (task: ghost-task)
+=== Treehouse Pool Inventory ===
+  UNREFERENCED worktree: /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.U8MN0a/th2/firstmate-pool//unref-wt/
+=== Reconcile complete 2026-10-13T01:33:55Z ===
+reconcile rc=0
+ship-done -> current_step=DONE retry_state=attempt=0,last_error=,last_retry=0
+scout-failed -> current_step=FAILED retry_state=attempt=0,last_error=,last_retry=0
+resume-task -> current_step=RECOVERY_HOLD retry_state=attempt=1,last_error=unknown,last_retry=1791855235
+q-parked-quota -> current_step=WAITING_QUOTA retry_state=attempt=0,last_error=,last_retry=0
+x-parked-approval -> current_step=WAITING_APPROVAL retry_state=attempt=0,last_error=,last_retry=0
+control log: resume-task relaunch --note Auto-resume attempt 1 after unknown. Previous state: ASSIGNED.
+orphan marker still present: yes
+quarantine dir created: no
+
+--- STALLED detection (threshold 1s, aged status) ---
+scan-stalled rc=0
+stalled-task -> current_step=RECOVERY_HOLD
+evidence: [2026-10-13T01:33:56Z] STALLED detected: all observables exceed threshold. State: unknown, Detail: no external result
+[2026-10-13T01:33:56Z] STALLED: heartbeat healthy but no progress for 1s across all observables
+wake queue: 1791855236	1	stale	firstmate:fm-stalled-task	stale: stalled-task (STALLED: all observables exceed 1s threshold)

@@ -1,0 +1,7 @@
+########## S3: auto-resume bounded retries + WAITING_QUOTA ##########
+quota task: current_step=WAITING_QUOTA
+quota evidence: evidence=[2026-10-13T01:04:35Z] Auto-resume attempt 1/3 (quota_exhausted). Backoff: 35s.
+exhausted task: current_step=ESCALATED
+exhausted evidence: evidence=[2026-10-13T01:04:34Z] Auto-resume exhausted (process_crash). Escalating to captain.
+exhausted retry_state: retry_state=attempt=3,last_error=,last_retry=0
+control log: 

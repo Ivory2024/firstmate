@@ -1,0 +1,9 @@
+########## S2: lane dispatch, dependency gating, idempotency ##########
+blocked: current_step=WAITING_EXTERNAL / blocking_reason=failed_dependency:dep-fail
+no-brief: current_step=WAITING_EXTERNAL / blocking_reason=missing_brief:brief
+ready: current_step=ASSIGNED / next_action=worker_started
+dispatch_key: dispatch_key=lane-dispatch:ready:old
+spawn calls: 1
+spawn log: ready /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.3KuIeQ/s2/project --mode local-only --yolo off --branch-prefix fm/ --base-branch main
+--- second lane-next must not re-spawn ---
+spawn calls after repeat: 1

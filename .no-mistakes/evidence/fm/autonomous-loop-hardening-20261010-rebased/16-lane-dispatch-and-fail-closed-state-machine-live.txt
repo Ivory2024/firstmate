@@ -1,0 +1,18 @@
+SCENARIO: lane dispatcher gates dependencies, refuses missing briefs, dispatches once, and the lifecycle registry is fail-closed
+HOME: isolated marked lab; real bin/fm-autonomous-loop.sh; external harness fm-spawn stubbed (product-under-test is the dispatcher/state machine)
+
+--- lane-next lane-a ---
+blocked-task: current_step=WAITING_EXTERNAL blocking_reason=failed_dependency:failed-dep
+missing-brief: current_step=WAITING_EXTERNAL blocking_reason=missing_brief:brief
+ready-task: current_step=ASSIGNED blocking_reason=
+ready-task dispatch_key = lane-dispatch:ready-task:old
+spawn calls = 1
+spawn log: ready-task /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.U8MN0a/ev1/project --mode local-only --yolo off --branch-prefix fm/ --base-branch main
+--- repeat lane-next (idempotency) ---
+spawn calls after repeat = 1
+
+--- fail-closed transitions on a READY task (s1a) ---
+task-done READY->DONE: rc=1 current_step=DONE
+task-done DONE->DONE refused: rc=1 current_step=DONE
+task-hold DONE->WAITING_EXTERNAL refused: rc=1 current_step=DONE
+unknown command refused: rc=1

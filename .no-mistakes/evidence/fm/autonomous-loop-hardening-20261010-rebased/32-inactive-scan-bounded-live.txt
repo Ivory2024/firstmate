@@ -1,0 +1,12 @@
+LAB=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.qY52eR
+================ C1: startup scan forwards --startup to the real scanner path ================
+rc=0  reconcile log=[reconcile --startup]  output=[]
+================ C2: regular scan invokes a plain reconcile; a reconcile exit 1 does not abort ================
+rc=0  reconcile log=[reconcile]  output=[]
+================ C3: a reconcile outliving the shared budget is cut off without aborting the scan ================
+rc=0  elapsed=2s  (budget 2s, reconcile would take 5s)  reconcile log=[reconcile]  output=[]
+================ C4: a poll whose shared deadline is already spent defers reconcile ================
+rc=0  reconcile invocations=[]  (must be empty)
+
+TEARDOWN
+DONE

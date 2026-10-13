@@ -1,0 +1,14 @@
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done pr=https://example.test/owner/repo/pull/1
+ok - main direct terminal presentation has a durable receipt
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done pr=https://example.test/owner/repo/pull/1
+ok - a branch-actor acknowledgement retires the inactive-outcome receipt and later scans stay quiet
+ok - unpushed CI-ready ship done: is not published upstream
+not ok - a poll after delivery re-ran the git gate: -C /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-inactive-reconcile.7p6CUb/gate-once/mate/projects/child symbolic-ref --quiet --short HEAD
+rev-parse --show-toplevel
+rev-parse --git-common-dir
+-C /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-inactive-reconcile.7p6CUb/gate-once/mate/projects/child symbolic-ref --quiet --short HEAD
+rev-parse --show-toplevel
+rev-parse --git-common-dir
+-C /private/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T/fm-inactive-reconcile.7p6CUb/gate-once/mate/projects/child symbolic-ref --quiet --short HEAD
+rev-parse --show-toplevel
+rev-parse --git-common-dir

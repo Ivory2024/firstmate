@@ -1,0 +1,7 @@
+SCENARIO: delivered-outcome skip is bounded to the exact task incarnation (a predecessor receipt must not settle a respawned task)
+HOME: isolated marked lab; real bin/fm-autonomous-loop.sh; task id 'child-done' so the logging crew-state stub reports done
+
+adversarial: predecessor receipt (incA) must not suppress classification of the current incarnation (incB)
+receipt incarnation=incA, meta spawn_gen=incB -> classify calls=1  current_step=DONE
+positive: receipt matching the current incarnation (incB) suppresses classification
+receipt incarnation=incB, meta spawn_gen=incB -> classify calls=0  current_step=DONE

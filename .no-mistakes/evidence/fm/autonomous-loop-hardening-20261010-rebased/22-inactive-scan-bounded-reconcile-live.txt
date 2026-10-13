@@ -1,0 +1,22 @@
+SCENARIO: the inactive scan invokes fm-autonomous-loop.sh reconcile under the scan's own bounded deadline; a reconcile timeout or failure never aborts the watcher poll or startup scan
+HOME: isolated marked lab; real bin/fm-inactive-reconcile.sh (product under test); the external reconcile is a stub honoring FM_AUTONOMOUS_SLEEP/FM_AUTONOMOUS_RC so timeout/failure are simulated deterministically
+
+=== a) startup scan forwards --startup context ===
+$ run_scan scan --startup
+rc=0  reconcile log=[reconcile --startup]  scan stdout+stderr=[]
+
+=== b) regular scan invokes plain reconcile ===
+$ run_scan scan
+rc=0  reconcile log=[reconcile]  scan stdout+stderr=[]
+
+=== c) reconcile exit 1 must not abort the scan ===
+$ FM_AUTONOMOUS_RC=1 run_scan scan
+rc=0  reconcile log=[reconcile]  scan stdout+stderr=[]
+
+=== d) reconcile that outlives the shared budget must not abort the scan ===
+$ FM_AUTONOMOUS_SLEEP=4 run_scan scan   (FM_INACTIVE_RECONCILE_BUDGET_SECS=1)
+rc=0  elapsed=1s  reconcile log=[reconcile]  scan stdout+stderr=[]
+
+=== e) a poll whose shared deadline is already spent defers reconcile to the next poll ===
+$ fm-inactive-reconcile.sh _scan-locked 0 $(( $(date +%s) - 5 ))
+rc=0  reconcile invocations=[]

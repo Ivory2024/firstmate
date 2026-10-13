@@ -1,0 +1,12 @@
+STUB reconcile (no new reconcile call) second-poll git calls:
+after first poll: git.log lines=3
+after second poll: git.log lines=0
+--- mate.status child-outcome count: 1 ---
+
+REAL reconcile (change as-is) second-poll git calls:
+after first poll: git.log lines=12
+after second poll: git.log lines=9
+-C /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-repro.G3W6NX/world/mate/projects/child symbolic-ref --quiet --short HEAD
+-C /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-repro.G3W6NX/world/mate/projects/child symbolic-ref --quiet --short HEAD
+-C /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-repro.G3W6NX/world/mate/projects/child symbolic-ref --quiet --short HEAD
+--- mate.status child-outcome count: 1 ---

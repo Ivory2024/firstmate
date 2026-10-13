@@ -1,0 +1,8 @@
+== scan with BUDGET=1 and an undelivered second child ==
+scan rc=0
+== git calls during budget-scarce poll ==
+0
+== scan marker survived (poll did not abort) ==
+scan marker present
+== any lifecycle created for child2? (reconcile may or may not have run) ==
+child.lifecycle

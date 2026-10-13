@@ -1,0 +1,14 @@
+FM_TEST_BEGIN 2026-10-13T01:36:02Z tests/fm-autonomous-loop.test.sh family=unclassified expected_gate_skip=none
+ok - fm-autonomous-loop
+FM_TEST_END 2026-10-13T01:36:20Z tests/fm-autonomous-loop.test.sh exit=0 duration_ms=17481 gate_skip=false
+FM_TEST_BEGIN 2026-10-13T01:36:20Z tests/fm-autonomous-loop-secondmate.test.sh family=unclassified expected_gate_skip=none
+ok - fm-autonomous-loop-secondmate
+FM_TEST_END 2026-10-13T01:36:23Z tests/fm-autonomous-loop-secondmate.test.sh exit=0 duration_ms=2846 gate_skip=false
+FM_TEST_BEGIN 2026-10-13T01:36:23Z tests/fm-inactive-autonomous-loop.test.sh family=unclassified expected_gate_skip=none
+ok - fm-inactive-autonomous-loop
+FM_TEST_END 2026-10-13T01:36:25Z tests/fm-inactive-autonomous-loop.test.sh exit=0 duration_ms=2469 gate_skip=false
+FM_TEST_SUMMARY total=3 failed=0 skipped_gate=0 duration_ms=22940
+FM_TEST_SUMMARY_FAMILY family=unclassified count=3 duration_ms=22796 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-autonomous-loop.test.sh duration_ms=17481
+FM_TEST_SLOWEST rank=2 script=tests/fm-autonomous-loop-secondmate.test.sh duration_ms=2846
+FM_TEST_SLOWEST rank=3 script=tests/fm-inactive-autonomous-loop.test.sh duration_ms=2469

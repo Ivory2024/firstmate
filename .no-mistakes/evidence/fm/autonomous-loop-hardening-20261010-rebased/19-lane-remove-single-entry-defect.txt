@@ -1,0 +1,17 @@
+DEFECT: lane_remove leaves the only queued task in place, leaves a .tmp file, and makes a successful task-done exit 1
+HOME: isolated marked lab; real bin/fm-autonomous-loop.sh
+
+--- case A: the task is the ONLY line in its lane queue ---
+queue before: [solo,]
+task-done rc=1
+lifecycle current_step=DONE
+queue after: [solo,]  (expected empty)
+leftover .tmp: yes
+
+--- case B: the task shares its lane queue with other entries ---
+queue before: [other-a,multi,other-b,]
+task-done rc=0
+queue after: [other-a,other-b,]
+leftover .tmp: no
+
+root cause: lane_remove does 'grep -Fxv "$id" "$file" > "$file.tmp" && mv ...'; grep exits 1 when the filtered output is empty, so the mv (and the removal) is skipped.

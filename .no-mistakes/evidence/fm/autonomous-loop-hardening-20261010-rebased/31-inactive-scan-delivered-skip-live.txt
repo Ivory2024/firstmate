@@ -1,0 +1,28 @@
+LAB=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.5qWxBe
+================ B1: scan drives the REAL reconcile; second poll does not re-gate ================
+poll 1 scan rc=0  git calls=0
+lifecycle after poll 1 = DONE
+reported receipts = 1
+parent delivery lines = 1
+poll 2 scan rc=0  git calls=0  (must be 0)
+parent delivery lines after poll 2 (must stay 1) = 1
+
+================ B2: incarnation-bound delivered skip (direct reconcile) ================
+receipt file = e289a0ac9643b83cafb571fde82bf8f5.reported  incarnation=incC  state=done
+-- B2a: lifecycle ASSIGNED + receipt MATCHES the current incarnation (must skip) --
+rc=0  git calls=0  (must be 0)
+lifecycle after = DONE
+-- B2b: lifecycle ASSIGNED + receipt from a PREDECESSOR incarnation (must classify) --
+rc=0  git calls=9  (must be > 0)
+-C /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.5qWxBe/projects/child symbolic-ref --quiet --short HEAD
+rev-parse --show-toplevel
+rev-parse --git-common-dir
+-- B3: lifecycle DONE (is_terminal) with a MATCHING receipt (must skip) --
+rc=0  git calls=0  (must be 0)
+-- B4: a task with NO delivered receipt and a non-terminal step is still classified --
+rc=0  git calls=9  (must be > 0)
+control log: child relaunch --note Auto-resume attempt 1 after provider_503. Previous state: ASSIGNED. Checkpoint: 
+child relaunch --note Auto-resume attempt 1 after provider_503. Previous state: ASSIGNED. Checkpoint: 
+
+TEARDOWN
+DONE

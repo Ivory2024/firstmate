@@ -1,0 +1,18 @@
+== poll 1 (startup scan) on MATE home ==
+scan rc=0
+== git gate calls on poll 1 (want non-zero) ==
+3
+== delivered receipts ==
+b0729176a3f76c0296ba615ef39d54c9.reported
+== parent channel got the done line (count) ==
+1
+== autonomous reconcile created lifecycle and synced child to DONE ==
+current_step=DONE
+== poll 2 (later plain scan) ==
+scan rc=0
+== git gate calls on poll 2 (want 0: ledger path AND reconcile skip) ==
+0
+== parent channel still exactly one done line ==
+1
+== lifecycle still DONE ==
+current_step=DONE

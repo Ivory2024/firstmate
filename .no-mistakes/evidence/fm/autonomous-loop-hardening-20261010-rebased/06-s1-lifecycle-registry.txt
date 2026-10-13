@@ -1,0 +1,34 @@
+=== Reconcile start 2026-10-13T01:04:32Z ===
+=== Syncing lifecycle states with external states ===
+=== Orphan Inventory ===
+=== Treehouse Pool Inventory ===
+=== Reconcile complete 2026-10-13T01:04:33Z ===
+--- s1a lifecycle after reconcile ---
+owner=
+lane=lane-a
+priority=
+dependencies=
+acceptance_criteria=
+current_step=WAITING_EXTERNAL
+last_progress=1791853472
+next_action=awaiting_dispatch
+retry_state=attempt=0,last_error=,last_retry=0
+evidence=
+[2026-10-13T01:04:32Z] Missing dispatch data: brief
+resume_checkpoint=
+state_version=2
+created_epoch=1791853472
+updated_epoch=1791853472
+state_machine_version=2
+blocking_reason=missing_brief:brief
+--- advance s1a to DONE ---
+current_step=DONE
+--- adversarial: repeat DONE transition (DONE->DONE must be refused) ---
+Invalid transition for s1a: DONE -> DONE
+repeat task-done rc=1
+current_step=DONE
+--- adversarial: DONE -> WAITING_EXTERNAL must be refused ---
+Invalid transition for s1a: DONE -> WAITING_EXTERNAL
+fm-captain-hold: --title is required to create task s1a
+task-hold rc=1
+current_step=DONE

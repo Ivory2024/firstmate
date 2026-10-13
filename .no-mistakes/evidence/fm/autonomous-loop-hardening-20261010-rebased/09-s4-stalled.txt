@@ -1,0 +1,5 @@
+########## S4: STALLED detection ##########
+s1 state: current_step=RECOVERY_HOLD
+s1 evidence: evidence=[2026-10-13T01:04:35Z] STALLED detected: all observables exceed threshold. State: unknown, Detail: no external result
+--- wake queue stale row ---
+1791853475	1	stale	firstmate:fm-s1	stale: s1 (STALLED: all observables exceed 1s threshold)

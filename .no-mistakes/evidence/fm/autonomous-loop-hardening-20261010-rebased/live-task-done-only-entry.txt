@@ -1,0 +1,10 @@
+== queue before ==
+t1
+== run: FM_HOME=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.XDeh5G bin/fm-autonomous-loop.sh task-done t1 --evidence 'live lab done' ==
+rc=0
+== lifecycle after ==
+current_step=DONE
+== queue after, bytes ==
+0
+== queue dir contents ==
+lane-a.queue

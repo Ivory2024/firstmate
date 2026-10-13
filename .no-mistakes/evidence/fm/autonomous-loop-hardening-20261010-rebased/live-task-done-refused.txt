@@ -1,0 +1,5 @@
+== run again: task-done on already-DONE t1 ==
+Invalid transition for t1: DONE -> DONE
+rc=1
+== lifecycle still ==
+current_step=DONE

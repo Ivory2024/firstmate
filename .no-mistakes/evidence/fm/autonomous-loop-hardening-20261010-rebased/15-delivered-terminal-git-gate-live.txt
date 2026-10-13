@@ -1,0 +1,18 @@
+SCENARIO: delivered terminal task must not re-run fm-crew-state's git reachability gate on a later poll
+HOME: isolated secondmate lab, real bin/fm-inactive-reconcile.sh + real bin/fm-autonomous-loop.sh + real bin/fm-crew-state.sh + real git (logger wrapper)
+
+--- poll 1: FIRST delivery (real git reachability gate expected) ---
+scan rc=0
+git calls after poll 1 = 3
+-C /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.U8MN0a/mate/projects/child rev-parse --git-dir
+-C /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.U8MN0a/mate/projects/child rev-parse --verify HEAD
+-C /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.U8MN0a/mate/projects/child for-each-ref --format=%(refname) --contains=1023f04ccf8d2af378d9ea4eff9f1430959988ea --count=1 refs/remotes
+lifecycle current_step = DONE
+parent delivery lines: 1
+
+--- poll 2: SAME delivered outcome (no git gate allowed) ---
+scan rc=0
+git calls after poll 2 = 0
+git.log contents: []
+lifecycle current_step = DONE
+parent delivery lines (must stay 1) = 1
