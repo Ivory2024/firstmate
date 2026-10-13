@@ -231,10 +231,12 @@ The away return brief treats a still-open handling episode as a wake in progress
 ### Announcement
 
 An unacknowledged downtime generation is announced at most once.
-The first recovery marks that generation announced, and later empty-queue arms leave it announced until durable work or interrupted handling makes recovery pending again.
+The first recovery marks that generation announced, and later arms leave it announced until a new episode opens.
 A non-successor watcher start checks the durable queue and recovery marker under their locks.
-If an announced-but-unacknowledged episode has an empty queue, the arm leaves that generation announced, making repeated empty-queue arms idempotent while a long-poll source is merely alive.
-If a durable row arrived after the announcement, the arm opens a fresh pending downtime generation so buried work still resurfaces once.
+An announced-but-unacknowledged episode with an empty queue is left announced, making repeated empty-queue arms idempotent while a long-poll source is merely alive.
+An announced episode that still has queued work is reopened at most once: the reopen mints a fresh pending generation and records it as reopen-born, so a later arm start that finds that same reopen-born generation announced refuses to reopen it again.
+The bound is what keeps a queued row from being re-announced forever - the resurface wake is not itself a queue row, so nothing can acknowledge it away, and an unbounded reopen cycles a watcher that exits before it can consume anything.
+New work opens a new lineage whose first arm start may reopen again.
 A Codex foreground checkpoint skips the announced-episode reopen transition, so an already-announced generation stays announced while the checkpoint continues its bounded supervision.
 Its ordinary arm check still announces a never-announced generation, including one made pending by a durable queue append during the checkpoint.
 
@@ -470,6 +472,7 @@ They also prove that a legacy or handoff-phase watcher marker from an absent rep
 - The self-healing moved-generation acknowledgement that consumes its handled rows and names its remedy.
 - The already-acknowledged confirmation no-op for a matching generation, with its mismatched-generation, dead-pid, and lock-mismatch rejections preserved.
 - The manual-restart generation churn that makes a confirmation for the churned generation report a mismatch, which an arm check without a reopen leaves in place.
+- The bounded reopen: one reopened announced episode per lineage, and a second arm start that finds that same reopen-born generation announced supervises instead of re-announcing.
 - A take-over that stays quiet after a confirmed TERM, still surfaces queued work and self-exit downtime, and attaches without stopping a cycle the named arm does not own.
 - The disposable-checkout arm refusal.
 - The home-gone and state-gone watcher exits.
