@@ -655,6 +655,202 @@ make_forgejo_case() {
   printf '%s\n' "$case_dir"
 }
 
+# tea mock recording every invocation, so a test can prove the login and
+# --repo slug used. "login list" answers from a fixture logins file; a plain
+# read of /repos/.../pulls/<n> answers from pr.json (or pr-post.json once a
+# merge has been recorded, mirroring add_glab_mock's post-merge switch);
+# /repos/.../commits/<sha>/status answers its first page from tea-status.json
+# and page <n> from tea-status-page<n>.json, an empty page once that file is
+# absent, so a case can put a failing context past the first page; a POST to
+# .../pulls/<n>/merge is the one path that can actually record a merge. The
+# repository read /repos/{owner}/{repo} answers from tea-repo.json, or a
+# default_merge_style of merge when that file is absent.
+# Verified against a real Forgejo instance that "tea api" reports an
+# HTTP-level failure with exit status 0 and the error only in the body
+# (docs/forgejo-tea-integration.md), so every branch here exits 0 too - a test
+# that wants a merge refused writes tea-merge-fails and expects fm-pr-merge.sh
+# to detect it only through the follow-up confirm read, never through this
+# mock's own exit status.
+add_tea_mock() {
+  local case_dir=$1
+  cat > "$case_dir/fakebin/tea" <<'SH'
+#!/usr/bin/env bash
+set -u
+log_dir=$(dirname "$FM_TEST_TEA_LOG")
+printf '%s\n' "$*" >> "$FM_TEST_TEA_LOG"
+
+if [ "${1:-} ${2:-}" = "login list" ]; then
+  cat "$log_dir/tea-logins.json"
+  exit 0
+fi
+
+[ "${1:-}" = api ] || exit 0
+shift
+endpoint= do_value= head_commit_id=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -X) shift 2 ;;
+    --login|--repo) shift 2 ;;
+    -f)
+      case "$2" in
+        Do=*) do_value=${2#Do=} ;;
+        head_commit_id=*) head_commit_id=${2#head_commit_id=} ;;
+      esac
+      shift 2
+      ;;
+    /repos/*) endpoint=$1; shift ;;
+    *) shift ;;
+  esac
+done
+case "$endpoint" in
+  */status|*/status\?*)
+    [ ! -e "$log_dir/tea-status-fails" ] || exit 1
+    page=1
+    case "$endpoint" in
+      *page=*) page=${endpoint##*page=}; page=${page%%&*} ;;
+    esac
+    if [ "$page" = 1 ]; then
+      cat "$log_dir/tea-status.json"
+    elif [ -e "$log_dir/tea-status-page$page.json" ]; then
+      cat "$log_dir/tea-status-page$page.json"
+    else
+      printf '{"state":"","total_count":0,"statuses":[]}\n'
+    fi
+    ;;
+  "/repos/{owner}/{repo}")
+    [ ! -e "$log_dir/tea-repo-fails" ] || exit 1
+    if [ -e "$log_dir/tea-repo.json" ]; then
+      cat "$log_dir/tea-repo.json"
+    else
+      printf '{"default_merge_style":"merge"}\n'
+    fi
+    ;;
+  */merge)
+    if [ -e "$log_dir/tea-merge-fails" ]; then
+      printf '{"message":"merge failed"}\n'
+    elif [ -e "$log_dir/tea-expected-head" ] \
+      && [ "$head_commit_id" != "$(cat "$log_dir/tea-expected-head")" ]; then
+      printf '{"message":"head out of date"}\n'
+    else
+      : > "$log_dir/tea-merge-called"
+      printf '%s\n' "$do_value" > "$log_dir/tea-merge-do"
+      : > "$log_dir/tea-merged"
+      printf '{}\n'
+    fi
+    ;;
+  *)
+    [ ! -e "$log_dir/tea-view-fails" ] || exit 1
+    if [ -e "$log_dir/tea-merged" ] && [ -s "$log_dir/tea-post-merge-view-failures" ]; then
+      left=$(cat "$log_dir/tea-post-merge-view-failures")
+      if [ "$left" -gt 0 ]; then
+        printf '%s\n' "$((left - 1))" > "$log_dir/tea-post-merge-view-failures"
+        exit 1
+      fi
+    fi
+    if [ -e "$log_dir/tea-merged" ]; then
+      cat "$log_dir/pr-post.json"
+    else
+      cat "$log_dir/pr.json"
+    fi
+    ;;
+esac
+exit 0
+SH
+  chmod +x "$case_dir/fakebin/tea"
+  ln -sf "$JQ_BIN" "$case_dir/fakebin/jq"
+}
+
+# write_forgejo_pr_json <file> [<field>=<value> ...]
+# A pull request payload that satisfies every pre-merge condition by default,
+# with named fields overridden so one case drives exactly one condition.
+write_forgejo_pr_json() {
+  local file=$1 kv key value
+  local state=open mergeable=true merged=false draft=false head=$FJ_HEAD
+  shift
+  for kv in "$@"; do
+    key=${kv%%=*}
+    value=${kv#*=}
+    case "$key" in
+      state) state=$value ;;
+      mergeable) mergeable=$value ;;
+      merged) merged=$value ;;
+      draft) draft=$value ;;
+      head) head=$value ;;
+      *) fail "write_forgejo_pr_json: unknown field '$key'" ;;
+    esac
+  done
+  printf '{"state":"%s","mergeable":%s,"merged":%s,"draft":%s,"head":{"sha":"%s"}}\n' \
+    "$state" "$mergeable" "$merged" "$draft" "$head" > "$file"
+}
+
+# write_forgejo_status_json <file> [state=<value>] [total_count=<n>]
+# Defaults to a successful combined status; total_count=0 renders the
+# unconfigured-CI shape verified against a real instance (empty state, zero
+# count), regardless of any state= override.
+write_forgejo_status_json() {
+  local file=$1 kv key value
+  local state=success total=1
+  shift
+  for kv in "$@"; do
+    key=${kv%%=*}
+    value=${kv#*=}
+    case "$key" in
+      state) state=$value ;;
+      total_count) total=$value ;;
+      *) fail "write_forgejo_status_json: unknown field '$key'" ;;
+    esac
+  done
+  if [ "$total" = 0 ]; then
+    printf '{"state":"","total_count":0,"statuses":[]}\n' > "$file"
+  else
+    printf '{"state":"%s","total_count":%s,"statuses":[%s]}\n' "$state" "$total" \
+      "$(seq "$total" | sed "s/.*/{\"context\":\"ci-&\",\"status\":\"$state\"}/" | paste -sd, -)" \
+      > "$file"
+  fi
+}
+
+# write_tea_logins_json <file> <name> <url> [<name> <url> ...]
+# Reproduces the multi-line pretty-printed shape of a real
+# `tea login list --output json` (docs/forgejo-tea-integration.md). The login
+# match parses it as JSON, so tests/fm-pr-check-security.test.sh pins the
+# compact single-line shapes separately.
+write_tea_logins_json() {
+  local file=$1 name url first=1
+  shift
+  : > "$file"
+  printf '[\n' >> "$file"
+  while [ "$#" -gt 0 ]; do
+    name=$1
+    url=$2
+    shift 2
+    [ "$first" = 1 ] || printf ',\n' >> "$file"
+    first=0
+    printf '  {\n    "name": "%s",\n    "url": "%s",\n    "ssh_host": "",\n    "user": "",\n    "default": "false"\n  }' \
+      "$name" "$url" >> "$file"
+  done
+  printf '\n]\n' >> "$file"
+}
+
+# make_forgejo_case <name> [<pr-field>=<value> ...]: a case dir with the tea
+# mock, a matching login fixture, a pull request payload, and a successful
+# combined status. Echoes the case dir.
+make_forgejo_case() {
+  local name=$1 case_dir
+  shift
+  case_dir=$(make_case "$name")
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+  add_tea_mock "$case_dir"
+  : > "$case_dir/gh-axi.log"
+  : > "$case_dir/tea.log"
+  write_tea_logins_json "$case_dir/tea-logins.json" "$FJ_LOGIN" "https://$FJ_HOST"
+  write_forgejo_pr_json "$case_dir/pr.json" "$@"
+  write_forgejo_pr_json "$case_dir/pr-post.json" state=closed mergeable=false merged=true head="$FJ_HEAD"
+  write_forgejo_status_json "$case_dir/tea-status.json"
+  printf '%s\n' "$FJ_HEAD" > "$case_dir/tea-expected-head"
+  printf '%s\n' "$case_dir"
+}
+
 # make_gitlab_case <name> [<field>=<value> ...]: a case dir with both forge
 # mocks and a merge request payload. Echoes the case dir.
 make_gitlab_case() {
