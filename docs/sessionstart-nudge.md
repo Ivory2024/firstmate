@@ -318,7 +318,7 @@ Headless `opencode run` is intentionally fail-open, because the process can exit
 That early exit is also why OpenCode cannot use the run tier.
 
 The OpenCode nudge runs only on `session.created`.
-The turn-end plugin runs later on `session.idle`; the watcher-arm plugin accepts normalized `QUIESCENT` signals, including OpenCode 2 execution terminal events.
+The turn-end plugin runs on legacy `session.idle` or the OpenCode 2 execution-terminal boundary (`session.execution.succeeded`, `.failed`, `.interrupted`; v2.0.27 emits no `session.idle`); the watcher-arm plugin accepts normalized `QUIESCENT` signals from the same terminals.
 For legacy `session.idle`, the guard lets the watcher coordinator act first so the plugins do not race for one lifecycle event.
 The OpenCode lifecycle mapping is documented in the [harness reference](../.agents/skills/harness-adapters/references/harness/opencode.md#primary-integration).
 

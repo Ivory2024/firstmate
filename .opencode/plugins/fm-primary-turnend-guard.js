@@ -2,10 +2,20 @@ import { spawn } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
+import { OpenCodeLifecycleAdapter, QUIESCENT } from "./lib/fm-opencode-lifecycle-adapter.js";
 
 const COORDINATOR_KEY = "__firstmateOpenCodeWatchArm";
 
-let skipNextIdle = false;
+// One skip per session: the follow-up turn this plugin forces must not re-block
+// itself on its own terminal event, and a second session on the same server must
+// not have its guard run swallowed by the first session's follow-up.
+const skipSessions = new Set();
+
+// v2.0.27 emits no `session.idle` (verified live 2026-10-13): the turn boundary
+// is `session.execution.succeeded|failed|interrupted`. Normalize those terminals
+// to QUIESCENT exactly like fm-primary-watch-arm.js, and keep legacy
+// `session.idle` for pre-v2 runtimes.
+const lifecycle = new OpenCodeLifecycleAdapter();
 
 function runProcess(command, args, input = "") {
   return new Promise((resolve) => {
@@ -58,16 +68,22 @@ export const FmPrimaryTurnendGuard = async ({ client, directory, worktree }) => 
   const root = worktree ? resolvePath(worktree) : await resolveRoot(directory);
 
   return {
-    event: async ({ event }) => {
-      if (event.type !== "session.idle") return;
+    event: async ({ event, signal }) => {
+      // setup() always passes the normalized signal; a direct caller (legacy
+      // unit path) may pass only the event, so derive the signal from it.
+      const effective = signal ?? lifecycle.normalize(event);
+      if (!effective) return;
+      const isIdle = event.type === "session.idle";
+      const isQuiescent = effective.type === QUIESCENT;
+      if (!isIdle && !isQuiescent) return;
 
-      if (skipNextIdle) {
-        skipNextIdle = false;
+      const sessionID = isIdle ? event.properties?.sessionID : effective.sessionID;
+      if (!sessionID) return;
+
+      if (skipSessions.has(sessionID)) {
+        skipSessions.delete(sessionID);
         return;
       }
-
-      const sessionID = event.properties?.sessionID;
-      if (!sessionID) return;
 
       if (await letWatchArmRun(sessionID, client)) return;
 
@@ -88,9 +104,9 @@ export const FmPrimaryTurnendGuard = async ({ client, directory, worktree }) => 
             parts: [{ type: "text", text }],
           },
         });
-        skipNextIdle = true;
+        skipSessions.add(sessionID);
       } catch {
-        skipNextIdle = false;
+        skipSessions.delete(sessionID);
       }
     },
   };
@@ -115,7 +131,7 @@ export default {
     const controller = new AbortController();
     const eventTask = (async () => {
       for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
-        await hooks.event({ event: { ...event, properties: event.data } });
+        await hooks.event({ event: { ...event, properties: event.data }, signal: lifecycle.normalize(event) });
       }
     })().catch(() => {});
     return async () => {

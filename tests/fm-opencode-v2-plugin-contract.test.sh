@@ -193,6 +193,57 @@ try {
     await stopTurn();
   }
 
+  // OpenCode v2.0.27 emits no `session.idle`: the turn boundary is the
+  // execution-terminal event (verified live 2026-10-13: two consecutive turns
+  // produced only session.execution.started/succeeded, never session.idle).
+  // The guard must fire on the normalized QUIESCENT terminal exactly like the
+  // watch-arm, while intermediate step events stay silent.
+  const terminalArmed = [];
+  globalThis.__firstmateOpenCodeWatchArm = { ensureArmed: async (sessionID) => { terminalArmed.push(sessionID); return "armed"; } };
+  const v2TurnEvents = [
+    { type: "session.execution.started", id: "start-v2-turn", data: { sessionID: "exec-turn-v2" } },
+    { type: "session.step.ended", data: { sessionID: "exec-turn-v2" } },
+    { type: "session.execution.succeeded", id: "term-v2-turn", data: { sessionID: "exec-turn-v2" } },
+  ];
+  const v2TurnCtx = eventContext(fixture, v2TurnEvents, []);
+  const v2TurnMod = await import(pathToFileURL(`${root}/.opencode/plugins/fm-primary-turnend-guard.js`).href + `?v2turn=${Date.now()}`);
+  if (v2TurnMod.default?.setup) {
+    const stopV2Turn = await v2TurnMod.default.setup(v2TurnCtx);
+    await waitFor(() => terminalArmed.length >= 1);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.deepEqual(terminalArmed, ["exec-turn-v2"], "turn-end guard fires on the v2 execution terminal and not on intermediate step events");
+    await stopV2Turn();
+  }
+
+  // The guard's one-bounded follow-up is scoped per session: a blocked v2
+  // terminal injects exactly one prompt, its own follow-up terminal is skipped,
+  // and a DIFFERENT session's next terminal is guarded again.
+  {
+    const prompts = [];
+    const fakeGuardFixture = join(fixture, "guard-block");
+    mkdirSync(join(fakeGuardFixture, "bin"), { recursive: true });
+    const pendingGuard = join(fakeGuardFixture, "guard-pending");
+    writeFileSync(join(fakeGuardFixture, "bin", "fm-turnend-guard.sh"), `#!/bin/sh\n[ -f '${pendingGuard}' ] && exit 2\ncat > '${pendingGuard}' <<'X'\n2\nX\nexit 2\n`);
+    chmodSync(join(fakeGuardFixture, "bin", "fm-turnend-guard.sh"), 0o755);
+    globalThis.__firstmateOpenCodeWatchArm = { ensureArmed: async () => "not-needed" };
+    const blockEvents = [
+      { type: "session.execution.started", id: "s1-start", data: { sessionID: "s1" } },
+      { type: "session.execution.succeeded", id: "s1-term-1", data: { sessionID: "s1" } },
+      { type: "session.execution.succeeded", id: "s1-term-2", data: { sessionID: "s1" } },
+      { type: "session.execution.started", id: "s2-start", data: { sessionID: "s2" } },
+      { type: "session.execution.succeeded", id: "s2-term", data: { sessionID: "s2" } },
+    ];
+    // The fixture root carries the guard script; plugin root resolves via git.
+    const blockCtx = eventContext(fakeGuardFixture, blockEvents, prompts);
+    const blockMod = await import(pathToFileURL(`${root}/.opencode/plugins/fm-primary-turnend-guard.js`).href + `?block=${Date.now()}`);
+    const stopBlock = await blockMod.default.setup(blockCtx);
+    await waitFor(() => prompts.length === 2);
+    assert.equal(prompts.length, 2, "each blocked v2 terminal injects one bounded follow-up; a follow-up turn is never self-blocked across sessions");
+    assert.equal(prompts[0].sessionID, "s1", "first blocked terminal prompts its session");
+    assert.equal(prompts[1].sessionID, "s2", "a second session's terminal is still guarded after the first session's follow-up");
+    await stopBlock();
+  }
+
   // Watch-arm consumes the adapter's normalized signal from the v2 execution lifecycle.
   writeFileSync(join(fixture, "config", "x-mode.env"), "\n");
   // The shared supervision predicate counts an X-mode relay shim as a need, so
