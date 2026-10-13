@@ -104,6 +104,22 @@ FM_HOME="$home" FM_ROOT_OVERRIDE="$root" FM_DISPATCH_LOG="$TMP_ROOT/spawn.log" \
 assert_equals 1 "$(wc -l < "$TMP_ROOT/spawn.log" | tr -d '[:space:]')" \
   "a duplicate lane reconciliation spawned the task twice"
 
+# task-done must drop the finished task even when it is the only entry in its
+# lane queue, report success, and leave no queue .tmp litter behind.
+write_task solo-lane lane-solo READY
+mkdir -p "$home/state/lane-queues"
+printf 'solo-lane\n' > "$home/state/lane-queues/lane-solo.queue"
+output=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" \
+  "$root/bin/fm-autonomous-loop.sh" task-done solo-lane --evidence "lane queue test" 2>&1)
+rc=$?
+assert_equals 0 "$rc" "task-done on the only queued task did not report success"
+assert_equals DONE "$(sed -n 's/^current_step=//p' "$home/state/task-lifecycle/solo-lane.lifecycle")" \
+  "task-done did not close the only queued task"
+assert_equals "" "$(tr -d '\n' < "$home/state/lane-queues/lane-solo.queue")" \
+  "task-done did not remove the only entry from its lane queue"
+assert_absent "$home/state/lane-queues/lane-solo.queue.tmp" \
+  "task-done left lane queue .tmp litter behind"
+
 for lifecycle_state in READY ASSIGNED RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD ESCALATED; do
   for external_state in "done" failed; do
     id="${lifecycle_state,,}-$external_state"

@@ -544,7 +544,17 @@ lane_remove() {  # <lane> <task-id>
   id=$2
   file=$(lane_queue_path "$lane")
   [ -f "$file" ] || return 0
-  grep -Fxv "$id" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+  # grep exits 1 (not an error) when the filtered output is empty, e.g. the
+  # task is the only entry, so the filtered result must still replace the
+  # queue. A genuine grep failure (exit >= 2) leaves the queue untouched.
+  if grep -Fxv "$id" "$file" > "$file.tmp"; then
+    mv "$file.tmp" "$file"
+  elif [ ! -s "$file.tmp" ]; then
+    mv "$file.tmp" "$file"
+  else
+    rm -f "$file.tmp"
+    return 1
+  fi
 }
 
 lane_list() {  # <lane> -> prints all task-ids
