@@ -68,7 +68,10 @@ case "$1 ${2:-}" in
         # two always agree on file count.
         if [ -n "${FM_TEST_FILES_JSON:-}" ]; then cat "$FM_TEST_FILES_JSON"
         else jq -c '[.files | map({filename: .path})]' "$FM_TEST_PR_JSON"; fi;;
-      *rules/branches/*) [ "${FM_TEST_FAIL_RULES:-}" != yes ] || exit 1; cat "$FM_TEST_RULESETS_JSON";;
+      *rules/branches/*)
+        [ "${FM_TEST_FAIL_RULES:-}" != yes ] || exit 1
+        [ -z "${FM_TEST_RULES_ERR:-}" ] || { printf '%s\n' "$FM_TEST_RULES_ERR" >&2; exit 1; }
+        cat "$FM_TEST_RULESETS_JSON";;
       *) exit 2;;
     esac
     ;;
@@ -81,6 +84,7 @@ case "$1 ${2:-}" in
           exit 1
         fi
         [ "${FM_TEST_FAIL_PROTECTION:-}" != yes ] || exit 1
+        [ -z "${FM_TEST_PROTECTION_ERR:-}" ] || { printf '%s\n' "$FM_TEST_PROTECTION_ERR" >&2; exit 1; }
         cat "$FM_TEST_PROTECTION_JSON";;
       *) exit 2;;
     esac
@@ -231,6 +235,39 @@ cat > "$TMP/protection.json" <<'JSON'
 JSON
 env "${evidence_env[@]}" "$EVIDENCE" branch-protection "$PR" nothex >/dev/null 2>&1
 eq "re-verification rejects a malformed scope" "$?" 2
+
+# --- plan-gated protection reads ---
+# A repository whose GitHub plan cannot expose branch protection or branch rules
+# at all answers 403 "Upgrade to GitHub Pro or make this repository public" on
+# both endpoints. bin/fm-pr-merge.sh already resolves that exact 403 to "no rule
+# of any kind" rather than to an error, so the collector must resolve each source
+# the same way - to an empty source - instead of inventing an unreadable one.
+# Only that plan refusal proves the source cannot exist, so every other 403 and
+# every 5xx must still hold as unreadable.
+PLAN_403_ERR='gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)'
+UNRELATED_403_ERR='gh: Resource not accessible by integration (HTTP 403)'
+SERVER_500_ERR='gh: Internal Server Error (HTTP 500)'
+out=$(env "${evidence_env[@]}" FM_TEST_PROTECTION_ERR="$PLAN_403_ERR" FM_TEST_RULES_ERR="$PLAN_403_ERR" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "plan-gated 403 on both protection sources is not an unreadable read" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" branch-protection-missing
+out=$(env "${evidence_env[@]}" FM_TEST_PROTECTION_ERR="$PLAN_403_ERR" FM_TEST_RULES_ERR="$PLAN_403_ERR" "$EVIDENCE" branch-protection "$PR" "$prot_scope")
+eq "re-verification resolves a plan-gated 403 to an empty source, not an unreadable one" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" branch-protection-missing
+out=$(env "${evidence_env[@]}" FM_TEST_RULES_ERR="$PLAN_403_ERR" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "plan-gated 403 on branch rules alone leaves the classic source in force" \
+  "$(printf '%s' "$out" | jq -r '.status + ":" + (.reasons | join(","))')" "PASS:"
+out=$(env "${evidence_env[@]}" FM_TEST_PROTECTION_ERR="$UNRELATED_403_ERR" FM_TEST_RULES_ERR="$UNRELATED_403_ERR" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "an unrelated 403 still holds an unreadable protection read" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" branch-protection-unreadable
+out=$(env "${evidence_env[@]}" FM_TEST_PROTECTION_ERR="$SERVER_500_ERR" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "a 5xx still holds an unreadable protection read" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" branch-protection-unreadable
+out=$(env "${evidence_env[@]}" FM_TEST_RULES_ERR="$UNRELATED_403_ERR" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "an unrelated 403 still holds an unreadable branch-rules read" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" rulesets-unreadable
+out=$(env "${evidence_env[@]}" FM_TEST_RULES_ERR="$SERVER_500_ERR" "$EVIDENCE" collect "$TASK" "$PR" "$HEAD")
+eq "a 5xx still holds an unreadable branch-rules read" \
+  "$(printf '%s' "$out" | jq -r .reasons[0])" rulesets-unreadable
 
 # The waiver arrives as an argument bound to one call, never from an environment
 # variable or a file. It removes exactly the named check from the enforced set:

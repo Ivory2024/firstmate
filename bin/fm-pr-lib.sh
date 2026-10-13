@@ -945,6 +945,21 @@ fm_pr_poll_retirement_receipt_valid() {
   FM_PR_RETIRE_RECEIPT_IDENTITY=$(fm_pr_file_identity "$receipt") || return 1
 }
 
+# Whether a failed branch-protection or branch-rules read (the gh stderr given)
+# is GitHub's plan-gated 403 ("Upgrade to GitHub Pro or make this repository
+# public"), which means the repository's plan cannot expose branch protection or
+# branch rules at all, on GitHub or GitHub Enterprise Server - not that this
+# script failed to read them, and not that the token lacks a permission. Such a
+# repository has no active ruleset rule of any kind, so this is the single owner
+# of that narrow plan-unavailable exception: any other failure (auth, rate limit,
+# network, a 404, an unrelated 403) is not this and stays unreadable.
+github_branch_rules_unavailable_on_plan() {
+  case "$1" in
+    *"Upgrade to GitHub Pro or make this repository public"*) return 0 ;;
+  esac
+  return 1
+}
+
 fm_pr_github_read_record_with_gh() {  # <owner> <repo> <number>
   local owner=$1 repo=$2 number=$3 fields line total=0 named=0
   local state='' merged=''

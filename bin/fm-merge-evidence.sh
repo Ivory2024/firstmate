@@ -163,11 +163,18 @@ gitlab_required_checks_ok() {
 # A branch protected only by a ruleset has no classic branch protection, so the
 # classic endpoint answers 404. That is an empty classic source rather than an
 # unreadable one: the applicable rulesets are what enforce its required checks.
-# Any other failure still holds, and a non-object payload is still incomplete.
+# A repository whose plan cannot expose branch protection or branch rules at all
+# (GitHub's plan-gated 403, recognised by the shared
+# github_branch_rules_unavailable_on_plan) answers that same 403 on both
+# endpoints, and each one resolves to an empty source there, because such a
+# repository has no protection and no ruleset rule to enforce: the plan cannot
+# expose them, this collector did not fail to read them. Any other failure still
+# holds, and a non-object payload is still incomplete.
 # stderr is captured to its own file rather than merged into the payload, so a
 # forge that writes anything to stderr cannot corrupt an otherwise valid read.
 read_github_branch_protection() {  # <owner> <repo> <base-encoded>
   local owner=$1 repo=$2 base_encoded=$3 protection_err
+  local rulesets_json rulesets_err rulesets_err_text
   GH_PROTECTION_JSON=
   GH_RULESETS_JSON=
   GH_PROTECTION_HOLD=
@@ -177,6 +184,8 @@ read_github_branch_protection() {  # <owner> <repo> <base-encoded>
   }
   if ! GH_PROTECTION_JSON=$(gh api "repos/$owner/$repo/branches/$base_encoded/protection" 2>"$protection_err"); then
     if grep -q 'HTTP 404' "$protection_err"; then
+      GH_PROTECTION_JSON='{}'
+    elif github_branch_rules_unavailable_on_plan "$(cat "$protection_err" 2>/dev/null)"; then
       GH_PROTECTION_JSON='{}'
     else
       rm -f "$protection_err"
@@ -189,11 +198,25 @@ read_github_branch_protection() {  # <owner> <repo> <base-encoded>
     GH_PROTECTION_HOLD='branch-protection-incomplete'
     return 1
   }
-  local rulesets_json
-  rulesets_json=$(gh api --paginate --slurp "repos/$owner/$repo/rules/branches/$base_encoded" 2>/dev/null) || {
+  rulesets_err=$(mktemp "${TMPDIR:-/tmp}/fm-merge-evidence-rulesets.XXXXXX") || {
     GH_PROTECTION_HOLD='rulesets-unreadable'
     return 1
   }
+  if rulesets_json=$(gh api --paginate --slurp "repos/$owner/$repo/rules/branches/$base_encoded" 2>"$rulesets_err"); then
+    rm -f "$rulesets_err"
+  else
+    rulesets_err_text=$(cat "$rulesets_err" 2>/dev/null)
+    rm -f "$rulesets_err"
+    # A repository whose plan cannot expose branch rules cannot have a rule of
+    # any kind, so this specific refusal resolves to an empty source exactly as
+    # the merge boundary already resolves it; every other failure stays
+    # unreadable.
+    github_branch_rules_unavailable_on_plan "$rulesets_err_text" || {
+      GH_PROTECTION_HOLD='rulesets-unreadable'
+      return 1
+    }
+    rulesets_json='[]'
+  fi
   GH_RULESETS_JSON=$(printf '%s' "$rulesets_json" | jq -ce 'if type == "array" and all(.[]; type == "array" and all(.[]; type == "object")) then [.[][]] else error("invalid branch rules") end') || {
     GH_PROTECTION_HOLD='rulesets-invalid'
     return 1

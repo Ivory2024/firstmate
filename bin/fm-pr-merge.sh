@@ -39,8 +39,8 @@
 # An unreadable producer read still refuses.
 # Successfully read requirements remain checked even if another
 # source fails, so known missing checks and all read errors are reported together.
-# github_branch_rules_unavailable_on_plan owns the narrow plan-unavailable
-# exception; every other unreadable required source refuses.
+# github_branch_rules_unavailable_on_plan (bin/fm-pr-lib.sh) owns the narrow
+# plan-unavailable exception; every other unreadable required source refuses.
 # Every failing condition is reported, not just the first.
 # The verified head is then passed to gh as
 # --match-head-commit, so a push that lands between that read and the merge
@@ -1260,20 +1260,6 @@ github_urlencode_path_segment() {
     esac
   done
   printf '%s' "$encoded"
-}
-
-# Whether a failed branch-rules read (the gh stderr given) is GitHub's
-# plan-gated 403 ("Upgrade to GitHub Pro or make this repository public"),
-# which means the repository's plan cannot expose branch rules at all, on
-# GitHub or GitHub Enterprise Server - not that this script failed to read
-# them, and not that the token lacks a permission. Such a repository has no
-# active ruleset rule of any kind. Any other failure (auth, rate limit,
-# network, a 404, an unrelated 403) is not this and stays unreadable.
-github_branch_rules_unavailable_on_plan() {
-  case "$1" in
-    *"Upgrade to GitHub Pro or make this repository public"*) return 0 ;;
-  esac
-  return 1
 }
 
 # Read the effective merge-queue method for the observed base branch. The four
