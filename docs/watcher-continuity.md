@@ -34,8 +34,11 @@ On a non-Pi primary, a home that runs the supervision host also changes what the
 
 ### Watcher liveness alert
 
-On macOS, bootstrap installs an alert-only 60-second LaunchAgent when Discord reporting is configured; it classifies the consumer as healthy, stale-heartbeat, or no-consumer, and raises a HIGH alert when a durable wake is pending without a healthy consumer.
+On macOS, bootstrap installs a 60-second LaunchAgent when Discord reporting is configured; it classifies the consumer as healthy, stale-heartbeat, or no-consumer, and raises a HIGH alert when a durable wake is pending without a healthy consumer.
+The same tick can re-arm a one-shot watcher when its newest cycle record proves the chain ended without a successor, supervision is still needed, and neither an identity-matched healthy watcher nor any live lock owner exists.
+Re-arm stays inert during away or quiet posture, maintenance HOLD (`state/.watch-hold`), intentional stops, and cycles whose recorded arm or watcher is still alive; it starts only the approved plain arm path and records success once a fresh watcher or the arm's own started/attached line is observed, so a watcher cycle that surfaced a durable wake and exited is never mistaken for a failed re-arm.
 The alert uses the durable Discord report outbox, suppresses repeats during its cooldown, and reports recovery after a delivered HIGH alert when an identity-matched consumer returns.
+The detailed LaunchAgent and re-arm configuration is owned by [`configuration.md`](configuration.md#watcher-liveness-alert-and-automatic-re-arm).
 
 ### Pi, omp, and OpenCode adapters
 
@@ -49,6 +52,11 @@ Each adapter:
 
 Pi treats an arm child whose process is already gone as an empty slot even while its close event is still pending, so a repair call or a scheduled retry starts a fresh arm instead of answering unchanged.
 A failed follow-up never cancels continuity restoration.
+OpenCode's adapter additionally re-arms from a durable signal, because its session lifecycle is not guaranteed to publish a quiescent boundary at all: a session that stays busy can run for hours without reaching one, which is how one home's watcher stayed dead for 10h25m with 1,259 wakes queued.
+So besides the event-driven arm, `.opencode/plugins/fm-primary-watch-arm.js` polls `bin/fm-supervision-lib.sh` for the state directory: `fm_supervision_needed` is the launch gate and the single owner of what counts as a supervision need (in-flight task metadata, an X-mode relay poll, a registered process-to-event source, or a registered custom check), and `fm_supervision_unhealthy` adds the fresh `state/.last-watcher-beat` check, so the plugin re-arms only while this home needs a watcher and none holds a fresh beacon.
+That poll is idempotent - one child or one scheduled retry at a time - and `bin/fm-watch-arm.sh` attaches to a healthy live cycle instead of starting a second one, so a healthy cycle is never disturbed and repeated re-arms are harmless.
+The two signals stay independent: the lifecycle signal keeps its own quiescent-event path, and the durable-wake liveness guard keeps reading the same beacon without either depending on the other.
+Regression coverage: `tests/fm-opencode-watch-arm-rearm.test.sh`.
 
 ### Pi session replacement
 
@@ -468,6 +476,7 @@ They also prove that a legacy or handoff-phase watcher marker from an absent rep
 - The test reaper that stops a watcher armed for a temporary home.
 
 `tests/fm-watcher-liveness-alert.test.sh` covers LaunchAgent installation, consumer classifications, durable HIGH alert delivery, cooldown, recovery, and preserving pending wakes without re-arming on delivery failure.
+`tests/fm-watcher-liveness-rearm.test.sh` covers safe re-arm gates, healthy and live-owner protection, active-session and no-idle recovery, atomic single-flight, bounded failure backoff and alerting, and pending-instruction preservation.
 
 `tests/fm-watch-recovery-loop.test.sh` covers:
 
@@ -488,7 +497,6 @@ It checks that a newly appended keyed decision is classified without rereading e
 - A SIGSTOP counterfactual that distinguishes a live PID from a stale beacon before classifying termination.
 
 ### Claude auto-arm and turn-end guard
-
 `tests/fm-subagent-pretool-check.test.sh` proves Claude retains only the non-status Bash seatbelts.
 
 `tests/fm-claude-stop-autoarm.test.sh` covers:

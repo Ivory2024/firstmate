@@ -147,7 +147,9 @@
 # recorded family-level coupling still expands to the whole family.
 # tests/lib.sh, tests/fixtures.sh, tests/*-helpers.sh and tests/*-fixture.sh are
 # shared files that map to the suites naming them; a fixture under
-# tests/fixtures/<dir>/ is mapped by that directory instead. Curated family arms
+# tests/fixtures/<dir>/ is mapped by that directory instead. A tests/*.test.py
+# case file is mapped to the sibling *.test.sh wrapper that drives it, since
+# that wrapper is the suite the runner actually executes. Curated family arms
 # above those also name individual tests/ files explicitly.
 set -eu
 
@@ -308,7 +310,7 @@ family_for_basename() {
       printf '%s\n' pure-contract-unit
       ;;
     fm-daemon.test.sh|fm-guard-stale-banner.test.sh|fm-pi-watch-extension.test.sh|\
-    fm-watcher-liveness-alert.test.sh|\
+    fm-watcher-liveness-alert.test.sh|fm-watcher-liveness-rearm.test.sh|\
     fm-session-lock-ancestry.test.sh|fm-cursor-primary.test.sh|\
     fm-parent-channel-scan-exclusion.test.sh|\
     fm-supervision-events.test.sh|fm-turnend-guard.test.sh|fm-wake-daemon-lifecycle-e2e.test.sh|\
@@ -698,6 +700,8 @@ tests/fm-afk-return.test.sh 47380
 tests/fm-agy-harness.test.sh 50959
 tests/fm-agy-signals-live-e2e.test.sh 53
 tests/fm-ask-user-authority.test.sh 171
+tests/fm-autonomous-loop-secondmate.test.sh 2257
+tests/fm-autonomous-loop.test.sh 19692
 tests/fm-backend-cmux-smoke.test.sh 34
 tests/fm-backend-cmux.test.sh 3754
 tests/fm-backend-orca.test.sh 27102
@@ -771,6 +775,7 @@ tests/fm-herdr-version-floor-live-e2e.test.sh 50
 tests/fm-home-summary-refresh.test.sh 37057
 tests/fm-host-mirror-live-e2e.test.sh 79
 tests/fm-host-mirror.test.sh 11587
+tests/fm-inactive-autonomous-loop.test.sh 2110
 tests/fm-inactive-reconcile.test.sh 60823
 tests/fm-inbox.test.sh 6062
 tests/fm-jev-mem-guard.test.sh 336
@@ -1416,7 +1421,7 @@ families_for_unmapped_bin() {
 # Conservative path → family map. Over-selects rather than under-selects.
 # Never expands to the complete suite.
 families_for_changed_path() {
-  local path=$1 fixture_ref
+  local path=$1 fixture_ref wrapper
   case "$path" in
     tests/fm-backend-herdr-eventwait.test.py)
       printf '%s\n' real-herdr-gated
@@ -1727,6 +1732,20 @@ families_for_changed_path() {
       # make every retirement branch unable to select its changed tests.
       if [ -e "$path" ]; then
         families_for_unmapped_bin "$path" \
+          || printf '%s\n' "__unmapped__:$path"
+      fi
+      ;;
+    tests/*.test.py)
+      # A python case file is driven by its sibling *.test.sh wrapper, which is
+      # the suite the runner actually executes, so editing either half selects
+      # that one suite. A python case with no wrapper has no runnable suite to
+      # select and resolves through the same reference scan as any other test
+      # file, failing closed when nothing names it.
+      wrapper="tests/$(basename "${path%.py}.sh")"
+      if [ -e "$wrapper" ]; then
+        printf '%s\n' "__script__:$(basename "$wrapper")"
+      else
+        families_for_test_reference "$(basename "$path")" \
           || printf '%s\n' "__unmapped__:$path"
       fi
       ;;

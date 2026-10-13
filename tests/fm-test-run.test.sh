@@ -126,6 +126,14 @@ init_changed_fixture_repo() {
   done
   : >"$repo/tests/lib.sh"
   : >"$repo/tests/fm-backend-herdr-eventwait.test.py"
+  # A python case file driven by its sibling *.test.sh wrapper, and an orphan
+  # python case file nothing drives. Editing the first must select the one
+  # suite the runner executes; the second has no runnable suite and must still
+  # fail closed.
+  : >"$repo/tests/fm-probe-python.test.py"
+  printf '#!/usr/bin/env bash\n' >"$repo/tests/fm-probe-python.test.sh"
+  chmod +x "$repo/tests/fm-probe-python.test.sh"
+  : >"$repo/tests/fm-probe-python-orphan.test.py"
   : >"$repo/bin/fm-supervisor-target-lib.sh"
   : >"$repo/bin/fm-control-lib.sh"
   : >"$repo/bin/fm-timeout-lib.sh"
@@ -334,6 +342,25 @@ test_changed_dependency_selection_and_unmapped_failure() {
   git -C "$repo" add tests/fm-backend-herdr-eventwait.test.py
   git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm eventwait-change
 
+  # A python case file maps to its sibling wrapper, the one suite the runner
+  # executes. An orphan python case has no wrapper and no consumer, so it keeps
+  # failing closed instead of selecting nothing; its baseline copy is restored
+  # so later cases in this function see a clean tree.
+  printf '\n' >>"$repo/tests/fm-probe-python.test.py"
+  listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD)
+  assert_contains "$listed" "tests/fm-probe-python.test.sh" \
+    "python case file selects the wrapper suite that drives it"
+  git -C "$repo" add tests/fm-probe-python.test.py
+  git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm python-case-change
+
+  printf '\n' >>"$repo/tests/fm-probe-python-orphan.test.py"
+  rc=0
+  (cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD) >"$tmp/out" 2>"$tmp/err" || rc=$?
+  [ "$rc" -eq 2 ] || fail "an orphan python case must fail with exit 2, got $rc"
+  grep -Fq 'no changed-test mapping for source path: tests/fm-probe-python-orphan.test.py' "$tmp/err" \
+    || fail "orphan python case failure is not actionable: $(cat "$tmp/err")"
+  git -C "$repo" checkout -- tests/fm-probe-python-orphan.test.py
+
   printf '\n' >>"$repo/bin/fm-supervisor-target-lib.sh"
   listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD)
   assert_contains "$listed" "tests/fm-daemon.test.sh" "supervisor target selects daemon coverage"
@@ -425,7 +452,7 @@ test_changed_dependency_selection_and_unmapped_failure() {
   listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD)
   [ -z "$listed" ] || fail "a retired unmapped source without consumers selected tests: $listed"
   rm -rf "$tmp"
-  pass "changed selection covers dependents, fails closed for live unmapped source, and accepts retired unconsumed source"
+  pass "changed selection covers dependents, maps a python case to its wrapper, and fails closed for live unmapped source and an orphan python case"
 }
 
 test_changed_review_evidence_does_not_require_test_mapping() {

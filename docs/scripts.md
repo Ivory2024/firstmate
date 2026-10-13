@@ -22,6 +22,8 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `fm-agenttrail-kitchen.sh` | Add currently supervised worktrees to the Agenttrail Kitchen dashboard on demand |
 | `fm-bearings-board.sh`   | Build and arm the stable interactive `/bearings lavish` fleet board                  |
 | `fm-bearings-metrics.mjs` | Collect read-only local telemetry (Claude quota, cache/tool-error transcript stats) for the bearings board |
+| `fm-crew-dashboard.py`   | Serve the read-only localhost crew monitor: lanes with liveness (live / dead / unknown), open backlog tasks, and an explicitly labelled snapshot freshness per response |
+| `fm-originals-index.py`  | Read-only index of every retro and stow original on this host: explicit allowlist plus bounded worktree discovery, realpath de-dup, provenance, duplicates, and the candidate-marker record contract (schema `fm-originals-index/v1`) |
 | `fm-secondmate-reconcile.sh` | Queue Bearings reconcile requests for later supervision delivery and ask each mismatched home through its durable inbox with a per-home cooldown |
 | `fm-update.sh`           | Guarded self-update of firstmate and local or remote secondmate homes, reconciling redundant divergence and classifying every live mate left on the target commit for restart or fallback nudge |
 | `fm-secondmate-restart.sh` | Persist open conversational work, then restart eligible second mates or report the fallback outcome |
@@ -98,6 +100,7 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `fm-procevent-when.sh`   | Fire a trust-bound deterministic action at most once when its registered condition holds, then wake with the outcome |
 | `fm-gate-refuse-lib.sh`  | Shared gate-context lifecycle boundary for real and lab homes                      |
 | `fm-watch-arm.sh`        | Verified home-scoped watcher arm wrapper with loud cycle endings and bounded lifecycle ledger |
+| `fm-watcher-liveness-alert.sh` | Classify watcher liveness, deliver durable alerts, and safely re-arm ended watcher chains from its launchd tick |
 | `fm-watch-checkpoint.sh` | Run one bounded foreground watcher checkpoint for Codex-style supervision            |
 | `fm-watch.sh`            | Singleton-safe watcher: absorb benign wakes, detect stalled local-secondmate wake queues, and exit on actionable ones |
 | `fm-known-regression.sh` | Register or retire a known CI finding answer and apply matching answers to in-flight gates |

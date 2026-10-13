@@ -52,6 +52,8 @@ data/                personal fleet records; LOCAL, gitignored as a whole
   secondmates.md      local and remote secondmate routing table; firstmate-private, maintained by the secondmate seed helpers (section 6)
   <id>/brief.md      per-task crewmate brief, or per-secondmate charter brief when kind=secondmate
   <id>/report.md     scout task deliverable, written by the crewmate; survives teardown
+  recovery-archive/  data/recovery-archive/: archived recovery records and ledgers, one directory per retired fingerprint plus one per evidence-preserving rollback; written only by bin/fm-recovery.sh and deliberately outside state/ so removing the capability cannot touch it (docs/recovery-state-machine.md)
+  recovery-playbooks.tsv  data/recovery-playbooks.tsv: the recovery playbook, one tab-separated fingerprint, class, status, alternative, scope, verified-at, and evidence entry per line, whose effective status reads stale once its recorded scope no longer matches; written only by bin/fm-recovery.sh (docs/recovery-state-machine.md)
 projects/            cloned repos; gitignored; read-only except under hard rule 1's concrete captain-approved project operation exception
 state/               runtime records and signals; gitignored
   <id>.status        appended by crewmates: "<state>: <note>" wake-event lines, not current-state truth
@@ -91,6 +93,7 @@ state/               runtime records and signals; gitignored
   decision-bindings/ private records marking a captured-answer source as feeding the keyed-answer intake, with a legacy origin on pre-collapse records; written only by bin/fm-captain-hold.sh bind, dropped by unbind and by source retirement (section 13; docs/captain-hold-lifecycle.md)
   reconcile-requests/ private open obligations to re-check a captain call whose board selection was `reconcile`; written only by bin/fm-captain-hold.sh, retired by its verify-then-decide outcomes or a normal answer that settles the call (section 13; docs/captain-hold-lifecycle.md)
   when/              private condition->action watch specs, their trust bindings, and single-fire markers; written only by bin/fm-procevent-when.sh (section 13's process-event-sources trigger)
+  recovery/          per-failure recovery records, their append-only attempt ledgers, and the short-lived claim locks that make two concurrent recoveries of one failure impossible; written only by bin/fm-recovery.sh, which also owns the evidence-preserving archive (`retire` and `archive-all`), while the state machine, the bounds, and the authority table are owned by bin/fm-recovery-lib.sh (docs/recovery-state-machine.md)
   inbox/             captain notes captured out of band by bin/fm-inbox.sh, including the voice handover's queued requests; each note appends one `check` wake and stays pending until acknowledged with `bin/fm-inbox.sh drain --ack <id>`, which moves it to inbox/handled/ (docs/voice-relay.md)
   x-inbox/           generated Relay pending mention payloads; fmx-respond drains it (section 14)
   x-context/         generated Relay durable per-request reply context and one-wake offer markers, keyed by request_id; survives inbox cleanup and expires within seven days (section 14; bin/fm-x-lib.sh)
@@ -107,6 +110,7 @@ state/               runtime records and signals; gitignored
   .afk               durable away/quiet-mode daemon flag on the harnesses that still launch the daemon (never on Pi); present = sub-supervisor may inject escalations, first line `away` (default, set by /afk, cleared on user return) or `quiet` (set by /quiet, cleared only on explicit /quiet off) per the single owner fm_afk_mode() in bin/fm-wake-lib.sh
   .lock-session      trusted session-lock identity sidecar (session id, harness, anchor birth token); written only by bin/fm-lock.sh; never touch
   .watch.lock .wake-queue.lock watcher singleton and queue serialization locks
+  .watch-rearm.lock .watch-rearm-state .watch-hold   the liveness-alert job's atomic re-arm guard, its bounded re-arm backoff/failure record, and the operator's maintenance-HOLD marker that suppresses automatic re-arm; bin/fm-watcher-liveness-alert.sh owns all three
   .claude-autoarm.lock .claude-autoarm-epoch .claude-autoarm-failure-notified .claude-autoarm-failure-alarmed .turnend-claude-blocks .turnend-claude-blocks.lock   Claude Stop auto-arm single-flight, epoch, failure-episode, attended-alarm, guard-budget, and budget-lock records; never touch
   .cursor-park-owner .cursor-park-owner.lock .turnend-cursor-blocks   Cursor stop-hook owner record, publication and commit lock, and bounded repair-nag budget; never touch
   .hash-* .count-* .stale-* .stale-since-* .churn-since-* .paused-* .wedge-escalations-* .dead-reported-* .writing-* .waiting-* .seen-* .hb-surfaced-* .last-* .heartbeat-streak   watcher internals; never touch

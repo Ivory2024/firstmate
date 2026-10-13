@@ -2114,7 +2114,9 @@ One terminal outcome is then durably captured and published as a wake, which rem
 The (condition, action) spec is stored privately under `state/when/` and hash-bound by a trust record the same way `bin/fm-check-register.sh` binds a custom check, while the spec separately binds the resolved action executable's bytes; a mutated or unregistered spec or a changed action executable is refused before the action runs, and that binding is reloaded from disk immediately before each fire rather than trusted from when polling started.
 A repo update that fast-forwards an in-repo action's bytes in place would otherwise desync every already-armed watch's trust binding with no tampering involved; `bin/fm-procevent-when.sh rebind-all` re-hashes and republishes the binding for every registered watch whose action lives under `FM_ROOT`, including one already polling, so it keeps firing across such an update instead of being refused on its next fire.
 
-Every failure path - a mutated spec or action executable, a condition error past its budget, an expired deadline, a failed action, or an earlier fire whose outcome was never captured - produces a terminal captured outcome that wakes firstmate rather than a silent retry, and a durable single-fire marker claimed before the action makes restarts and re-polls unable to fire it twice.
+Every failure path - a mutated spec or action executable, a condition error, an expired deadline, a failed action, or an earlier fire whose outcome was never captured - produces a terminal captured outcome that wakes firstmate rather than a silent retry, and a durable single-fire marker claimed before the action makes restarts and re-polls unable to fire it twice.
+The condition's exit status is the whole contract: 0 is a true, 1 is a clean false that keeps waiting, 2 is a permanent error that wakes firstmate on its first observation, and any other exit or a per-poll timeout is a transient error that keeps polling with bounded backoff until `--error-budget` consecutive transient errors have accumulated.
+A failure is therefore never read as a condition that is merely not met: a permanent break and an exhausted transient budget both end in one terminal `condition-error` outcome that never runs the action, and the watch is left for firstmate to decide on rather than re-armed on its own.
 The adapter automates only the exact deterministic subset: anything needing judgment, and anything destructive, irreversible, or security-sensitive, keeps the ordinary check-fires-then-firstmate-decides flow, and the adapter's header and `--help` own its commands, flags, and outcome document.
 
 **Capture and publish results**
@@ -2437,6 +2439,14 @@ The two read files use different parsing rules:
 
 `FM_VOICE_RELAY` and `FM_VOICE_PYTHON` belong to the laptop rather than to a home, so they have no config file: `bin/fm-voice-client.py` requires the relay path as a flag or that variable and carries no default path.
 
+## Watcher liveness alert and automatic re-arm
+
+`bin/fm-watcher-liveness-alert.sh check` is the launchd entry point (see `bin/fm-watcher-liveness-alert.sh render` for the exact agent contract).
+It alerts on an unhealthy watcher consumer exactly as before, and then re-arms the one-shot watcher from the tick alone, so continuity no longer depends on a harness event such as an idle session.
+Automatic re-arm only runs when the chain provably ended with no successor, no healthy watcher and no live lock owner is present, supervision is needed, and neither away posture nor a maintenance HOLD applies.
+Place `state/.watch-hold` (its first line is your reason) to suppress automatic re-arm deliberately, for example during a maintenance window; remove it to allow recovery again.
+A deliberate stop recorded as `arm-interrupted` is never re-armed either.
+
 ## Environment variables
 
 Runtime tuning via environment variables (defaults shown):
@@ -2485,7 +2495,14 @@ FM_BEARINGS_CLAUDE_PROJECTS=   # alternate ~/.claude/projects root fm-bearings-m
 FM_HEARTBEAT=600        # base seconds between heartbeat scans; no-change heartbeats are absorbed while idle
 FM_HEARTBEAT_MAX=7200   # heartbeat backoff cap
 FM_INACTIVE_RECONCILE_SECS=900  # 60..1800-second watcher cadence and inactivity threshold; locked session start also requests an immediate scan in the deferred worker
-FM_INACTIVE_RECONCILE_BUDGET_SECS=10  # 1..30-second scan deadline; wedged-scan kill backstop follows one second later
+FM_INACTIVE_RECONCILE_BUDGET_SECS=10  # 1..30-second deadline shared by one locked scan pass and the bin/fm-autonomous-loop.sh reconcile that follows it, which gets only the time the scan left; a pass out of time defers the reconcile to the next poll, and the wedged-scan kill backstop follows one second later
+FM_RECOVERY_MAX_ALTERNATIVES=3   # recovery alternatives tried before the state machine escalates (docs/recovery-state-machine.md)
+FM_RECOVERY_MAX_SAME_CAUSE_RETRIES=2   # identical retries of one failure cause before it is refused and forced into diagnosis
+FM_RECOVERY_DIAGNOSIS_SECS=900   # diagnosis window; a diagnosis that outlives it asks for the supervisor
+FM_RECOVERY_TOTAL_SECS=1800   # whole-recovery window; outliving it escalates with the original work preserved
+FM_RECOVERY_MAX_CONCURRENT=4   # live recoveries allowed at once; the existing execution slot cap is retained, never raised
+FM_RECOVERY_LEASE_TTL_SECS=300   # recovery lease heartbeat window; a stale lease is a checkpoint restore, not a stuck recovery
+FM_RECOVERY_EXEC_CLASS=isolated   # execution class recorded on a new recovery; only simulation and isolated are recordable here, production is assigned by the separately approved control plane that activates the capability
 FM_CHECK_INTERVAL=300   # seconds between slow checks (authenticated merge polls, custom checks, or Relay dispatch)
 FM_TASK_INBOX_GRACE_SECS=90   # seconds an unhandled steering-inbox message may sit before the watcher attempts doorbell delivery on an idle pane; also the minimum spacing between attempts
 FM_TASK_INBOX_RING_MAX=3      # watcher delivery attempts without an acknowledgement before the task surfaces as a stale wake for recovery
@@ -2538,6 +2555,7 @@ FM_CLAUDE_TURNEND_BLOCK_BUDGET=3   # consecutive --claude guard re-blocks before
 FM_ARM_CONFIRM_TIMEOUT=10   # seconds fm-watch-arm waits to confirm a fresh watcher before reporting FAILED; default 30 on Git Bash/MSYS
 FM_ARM_ATTACH_POLL=0.5  # seconds between checks while fm-watch-arm follows an attached watcher cycle (bin/fm-watch-arm.sh header)
 FM_OPENCODE_ARM_READY_TIMEOUT_MS=12000   # milliseconds the OpenCode primary watcher plugin waits for an arm attempt to report started, healthy, wake, or failure; default 35000 on Windows to stay above the MSYS confirm budget
+FM_OPENCODE_REARM_POLL_MS=60000   # milliseconds between the OpenCode watch-arm plugin's durable-signal re-arm polls; the poll re-arms only while the home still needs a watcher and no watcher holds a fresh state/.last-watcher-beat, so a busy session that never reaches a quiescent boundary is still supervised and a healthy cycle is left alone (docs/supervision-protocols/opencode.md step 2)
 FM_PI_ARM_READY_TIMEOUT_MS=12000   # milliseconds the Pi watcher extension waits for a successor arm to report started or attached; default 35000 on Windows to stay above the MSYS confirm budget
 FM_WATCH_ARM_RETIRE_TIMEOUT_MS=1000   # milliseconds Pi/OpenCode wait for an unready successor arm to exit before abandoning retries
 FM_WATCH_REARM_RETRY_BASE_MS=250   # Pi/OpenCode adapter base delay for continuity restoration retries
@@ -2548,6 +2566,11 @@ FM_WATCH_CYCLE_LOG_KEEP_LINES=1000   # newest complete lifecycle rows considered
 FM_WATCH_EXTENSION_LOG_KEEP_LINES=0   # opt-in Pi extension diagnostic log (state/.watch-extension.log); unset, empty, non-numeric, zero, or negative disables logging, a positive value keeps that many newest rows; logging never changes supervision behavior
 FM_WATCHER_STALE_GRACE=300   # defaults to FM_GUARD_GRACE if set, else the poll-derived grace (docs/turnend-guard.md "Guard grace and the poll cadence"); seconds before a fresh arm refuses a live holder's stale beacon (attached arms: FM_WATCHER_STALL_BOUND)
 FM_WATCHER_STALL_BOUND=       # live-holder stall bound; default and arm/re-arm behavior: docs/turnend-guard.md "Guard grace and the poll cadence"
+FM_WATCH_REARM_CONFIRM_TIMEOUT=30   # seconds bin/fm-watcher-liveness-alert.sh check waits for a re-armed watcher to publish a live lock with a fresh beacon, or for the arm's own started/attached line; keep it below the launchd StartInterval so the tick stays bounded
+FM_WATCH_REARM_BACKOFF_BASE=60   # base seconds of the bounded exponential backoff after a failed automatic watcher re-arm
+FM_WATCH_REARM_BACKOFF_MAX=1800   # cap in seconds on that re-arm backoff, so a persistent failure never becomes a restart loop
+FM_WATCH_REARM_ALERT_AFTER=3   # consecutive failed automatic re-arms before one Discord alert is emitted for the failure episode
+FM_WATCH_ARM_BIN=   # optional override of the arm binary the liveness-alert job invokes; defaults to <code-root>/bin/fm-watch-arm.sh, and is only set by tests
 FM_SIGNAL_GRACE=30      # seconds to coalesce nearby status and turn-end signals into one wake
 FM_WATCHER_CLEANUP_LOCK_BOUND=   # optional watcher EXIT marker-lock wait; default and validation: docs/watcher-continuity.md
 FM_TURNEND_CHURN_ABSORB_SECS=900   # longest one endpoint's bare turn-ends may be deferred on pane-churn evidence alone; only consulted when config/turnend-churn-absorb is present

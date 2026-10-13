@@ -8,7 +8,9 @@
 # guarantees: the action fires exactly once on a stable true, never on a flap,
 # never twice across a restart, never from a mutated spec, and every failure
 # path ends in a captured terminal outcome that reaches the durable wake queue
-# instead of a silent retry.
+# instead of a silent retry. It also pins the condition's own outcome contract:
+# a clean false keeps waiting, a transient error waits with backoff, and a
+# permanent error wakes at once, so a failure is never read as "not yet".
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -645,5 +647,177 @@ assert_grep 'status: fired' "$RESULT" \
   "the reload must wait past the torn spec/trust window, not reject a legitimate rebind mid-publish"
 assert_grep 'v2 ran against' "$RESULT" "the fired action ran the rebound (v2) bytes, not a rejection from a torn read"
 pass "the fire-time reload never observes rebind_one's spec/trust publish mid-rename"
+
+# --- condition outcomes: clean false, transient error, permanent error -------
+#
+# The incident this covers is a real failure read as an ordinary "not yet": a
+# transient window burned the error budget and retired the watch, while a
+# permanent break could hide as an ordinary wait. Each case below injects ONE
+# outcome into a real condition process and asserts the durable result, never a
+# code path.
+
+# A clean-false-dominant condition is the stall-monitor shape: it answers "not
+# stalled" for as long as a worker keeps making progress. That must keep polling
+# and end only at the deadline - never as a condition error.
+H="$TMP_ROOT/h-cleanfalse"; new_home "$H"
+CFLOG="$TMP_ROOT/cleanfalse-act"
+CFPOLLS="$TMP_ROOT/cleanfalse-polls"
+CFFALSE="$TMP_ROOT/cleanfalse.sh"
+cat > "$CFFALSE" <<'SH'
+#!/usr/bin/env bash
+echo x >> "$1"
+exit 1
+SH
+chmod +x "$CFFALSE"
+when "$H" arm cleanfalse --interval 0.2 --stable 1 --deadline 5 \
+  --condition "$CFFALSE" "$CFPOLLS" \
+  --action "$ACT" "$CFLOG" >/dev/null
+pe "$H" reconcile >/dev/null
+wait_for_result "$H" when-cleanfalse || fail "a clean-false condition never reached its deadline"
+RESULT=$(first_result "$H" when-cleanfalse)
+assert_grep 'status: never-true' "$RESULT" "a clean false ends at the deadline, not as an error"
+assert_no_grep 'status: condition-error' "$RESULT" "a clean false must never be recorded as a condition error"
+[ "$(count_lines "$CFPOLLS")" -ge 3 ] || fail "a clean false must keep polling until the deadline"
+assert_absent "$CFLOG" "a clean false never reaches the action"
+pass "a clean-false condition (the stall-monitor shape) never errors and never fires"
+
+# A transient error inside the budget is a wait, not a retirement: the watch
+# keeps polling, the condition recovers, and the stable true still fires.
+H="$TMP_ROOT/h-transient-retry"; new_home "$H"
+TRLOG="$TMP_ROOT/transient-act"
+TRCOUNT="$TMP_ROOT/transient-count"
+TRETRY="$TMP_ROOT/transient-then-true.sh"
+cat > "$TRETRY" <<'SH'
+#!/usr/bin/env bash
+n=$(cat "$1" 2>/dev/null || echo 0)
+n=$((n + 1)); printf '%s\n' "$n" > "$1"
+if [ "$n" -le 2 ]; then
+  echo "upstream read failed" >&2
+  exit 3
+fi
+exit 0
+SH
+chmod +x "$TRETRY"
+when "$H" arm transientretry --interval 0.1 --stable 1 --error-budget 5 \
+  --condition "$TRETRY" "$TRCOUNT" \
+  --action "$ACT" "$TRLOG" >/dev/null
+pe "$H" reconcile >/dev/null
+wait_for_result "$H" when-transientretry || fail "a transient error must be retried, not retired"
+RESULT=$(first_result "$H" when-transientretry)
+assert_grep 'status: fired' "$RESULT" "a transient error inside the budget is waited out, then the true fires"
+assert_contains "$(count_lines "$TRLOG")" 1 "the action ran exactly once after the transient window"
+assert_no_grep 'status: condition-error' "$RESULT" "a transient error inside the budget is not a wake"
+pass "a transient condition error is retried and never mistaken for a false"
+
+# A transient error below the budget must not wake, and the clean false that
+# follows it must not be mistaken for a permanent break either.
+H="$TMP_ROOT/h-transient-quiet"; new_home "$H"
+TQLOG="$TMP_ROOT/transient-quiet-act"
+TQCOUNT="$TMP_ROOT/transient-once-count"
+TQ="$TMP_ROOT/transient-once.sh"
+cat > "$TQ" <<'SH'
+#!/usr/bin/env bash
+n=$(cat "$1" 2>/dev/null || echo 0)
+n=$((n + 1)); printf '%s\n' "$n" > "$1"
+if [ "$n" -le 1 ]; then
+  echo "one transient read failure" >&2
+  exit 3
+fi
+exit 1
+SH
+chmod +x "$TQ"
+when "$H" arm transientquiet --interval 0.2 --stable 1 --error-budget 3 --deadline 5 \
+  --condition "$TQ" "$TQCOUNT" \
+  --action "$ACT" "$TQLOG" >/dev/null
+pe "$H" reconcile >/dev/null
+wait_for_result "$H" when-transientquiet || fail "the watch never reached its deadline"
+RESULT=$(first_result "$H" when-transientquiet)
+assert_grep 'status: never-true' "$RESULT" "a transient error below the budget waits; the clean false ends at the deadline"
+assert_no_grep 'status: condition-error' "$RESULT" "a transient error below the budget must not wake"
+assert_absent "$TQLOG" "the action never runs without a stable true"
+pass "a transient error below the budget waits instead of waking"
+
+# A permanent break must wake on its FIRST observation, never be hidden as a
+# wait, and never be read as a clean false - even with a large error budget.
+H="$TMP_ROOT/h-permanent"; new_home "$H"
+PLOG="$TMP_ROOT/permanent-act"
+PERM="$TMP_ROOT/permanent.sh"
+cat > "$PERM" <<'SH'
+#!/usr/bin/env bash
+echo "worktree missing at /nonexistent" >&2
+exit 2
+SH
+chmod +x "$PERM"
+when "$H" arm permanent --interval 0.2 --stable 1 --error-budget 5 \
+  --condition "$PERM" \
+  --action "$ACT" "$PLOG" >/dev/null
+pe "$H" reconcile >/dev/null
+wait_for_result "$H" when-permanent || fail "a permanent condition failure must wake on its first poll"
+RESULT=$(first_result "$H" when-permanent)
+assert_grep 'status: condition-error' "$RESULT" "a permanent failure wakes"
+assert_grep 'condition_polls: 1' "$RESULT" "a permanent failure wakes on its FIRST poll, not after the transient budget"
+assert_grep 'permanent failure (exit 2)' "$RESULT" "the outcome names the permanent failure"
+assert_grep 'worktree missing at /nonexistent' "$RESULT" "the outcome carries the condition's own diagnostics"
+assert_absent "$PLOG" "a permanent failure never reaches the action"
+assert_contains "$(when "$H" classify "$RESULT")" condition-error "classify reports the terminal condition error"
+pass "a permanent condition failure wakes on its first poll despite a large error budget"
+
+# Consecutive transient errors back off before the budget wakes: with a 1s
+# cadence and a budget of 3, the two waits before the third poll must exceed the
+# un-backed-off 2s by a wide margin, so a sustained outage is not polled at the
+# healthy cadence.
+H="$TMP_ROOT/h-backoff"; new_home "$H"
+BLOG="$TMP_ROOT/backoff-act"
+BROKEN="$TMP_ROOT/always-error.sh"
+cat > "$BROKEN" <<'SH'
+#!/usr/bin/env bash
+echo "service unreachable" >&2
+exit 3
+SH
+chmod +x "$BROKEN"
+when "$H" arm backoff --interval 1 --stable 1 --error-budget 3 \
+  --condition "$BROKEN" \
+  --action "$ACT" "$BLOG" >/dev/null
+pe "$H" reconcile >/dev/null
+BACKOFF_STARTED=$(perl -MTime::HiRes=time -e 'printf "%.3f", time')
+wait_for_result "$H" when-backoff 400 || fail "the erroring condition never reached its budget"
+BACKOFF_ELAPSED=$(perl -MTime::HiRes=time -e 'printf "%.3f", time - $ARGV[0]' "$BACKOFF_STARTED")
+awk -v e="$BACKOFF_ELAPSED" 'BEGIN { exit !(e >= 2.5) }' \
+  || fail "consecutive transient errors must back off (elapsed ${BACKOFF_ELAPSED}s; interval 1 x budget 3 without backoff is 2s)"
+RESULT=$(first_result "$H" when-backoff)
+assert_grep 'status: condition-error' "$RESULT" "the exhausted transient budget wakes"
+assert_grep 'condition_polls: 3' "$RESULT" "the transient budget is counted in polls"
+pass "consecutive transient errors back off before the budget wakes"
+
+# The watcher interaction: a healthy when-watch must be confirmed, not reported
+# as a failed launch, must not be relaunched while its runner is live, and must
+# be retired by its own terminal outcome so the next cycle stops relaunching it.
+H="$TMP_ROOT/h-watcher"; new_home "$H"
+WLOG="$TMP_ROOT/watcher-act"
+when "$H" arm watchreg --interval 0.2 --stable 1 --deadline 5 \
+  --condition false \
+  --action "$ACT" "$WLOG" >/dev/null
+FIRST=$(pe "$H" reconcile)
+assert_contains "$FIRST" 'failed=0' "a healthy when-watch must not be reported as a failed launch"
+assert_contains "$FIRST" 'started=1' "the watcher cycle must start the watch's runner"
+assert_contains "$(pe "$H" list)" 'when-watchreg' "the watch is registered"
+assert_contains "$(pe "$H" list)" 'live' "the watch's runner is confirmed live"
+SECOND=$(pe "$H" reconcile)
+assert_contains "$SECOND" 'failed=0' "a second watcher cycle must not report a failed launch for a healthy watch"
+assert_contains "$SECOND" 'started=0' "a watch whose runner is live is not relaunched"
+wait_for_result "$H" when-watchreg || fail "the watch never reached its deadline"
+assert_grep 'status: never-true' "$(first_result "$H" when-watchreg)" "the deadline outcome is captured"
+RETIRED=0
+for _ in $(seq 1 100); do
+  if ! pe "$H" list | grep -q 'when-watchreg'; then
+    RETIRED=1
+    break
+  fi
+  sleep 0.1
+done
+[ "$RETIRED" -eq 1 ] || fail "a terminal outcome must retire the watch so the watcher stops relaunching it"
+THIRD=$(pe "$H" reconcile)
+assert_contains "$THIRD" 'failed=0' "the retired watch is not reported as a failed launch"
+pass "the watcher cycle confirms a healthy when-watch and retires it after its terminal outcome"
 
 printf 'all fm-procevent-when tests passed\n'
