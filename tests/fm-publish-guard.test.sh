@@ -321,6 +321,26 @@ test_legitimate_large_scoped_recovery_change_passes() {
   pass "a 120-path scoped recovery change passes explicit byte budgets"
 }
 
+test_gh_axi_help_suffix_is_tolerated() {
+  local out status
+  new_case gh-axi-help-suffix
+  write_scope 'recovery/*.txt' 1000 5000
+  mkdir -p "$TEST_REPO/recovery"
+  printf 'task change\n' > "$TEST_REPO/recovery/fix.txt"
+  commit_all scoped-fix
+  # gh-axi 0.1.34 appends a help[N]: suggestion block after the envelope.
+  printf 'count: 0\npull_requests: []\nhelp[2]:\n  Run `gh-axi pr view <number> -R Ivory2024/firstmate` to view details\n  Run `gh-axi pr create --title "..." --body-file <path> -R Ivory2024/firstmate` to create\n' > "$TEST_PR_LIST"
+  out=$(run_guard); status=$?
+  expect_code 0 "$status" "a gh-axi help suffix must not fail the envelope parse"$'\n'"$out"
+  # A real conflict behind a help suffix must still refuse for the right reason.
+  printf 'count: 1 of 1 total\npull_requests[1]{number,title,state,author,draft,review}:\n  42,"Existing PR",open,Ivory2024,no,none\nhelp[2]:\n  Run `gh-axi pr view <number> -R Ivory2024/firstmate` to view details\n' > "$TEST_PR_LIST"
+  out=$(run_guard); status=$?
+  [ "$status" -ne 0 ] || fail "a conflicting open PR passed because the help suffix ate the rows"
+  assert_contains "$out" 'conflicting open PR invariant failed' \
+    "the conflict refusal did not survive a help-suffixed gh-axi envelope"
+  pass "a gh-axi help suffix keeps envelope parsing and conflict detection intact"
+}
+
 test_bare_zero_count_with_empty_list_passes() {
   local out status
   new_case bare-zero-count
@@ -377,6 +397,7 @@ test_existing_open_pr_for_task_branch_is_rejected
 test_malformed_pr_count_fails_closed
 test_legitimate_large_scoped_recovery_change_passes
 test_bare_zero_count_with_empty_list_passes
+test_gh_axi_help_suffix_is_tolerated
 test_malformed_pr_list_envelope_fails_closed
 test_malformed_pr_row_fails_closed
 

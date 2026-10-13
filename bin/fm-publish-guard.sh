@@ -201,6 +201,8 @@ publish_check() { #
     }
     {
       if ($1 == "count:") next
+      if (substr($0, 1, 5) == "help[") { in_help = 1; next }
+      if (in_help) next
       if ($0 == "pull_requests: []" || $0 == "pull_requests[]: []") {
         envelope++
         empty_list = 1
