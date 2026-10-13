@@ -173,7 +173,7 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `fm-discord-report.sh`   | Send the bounded fleet snapshot to Discord when quiet mode is active and the captain asks for a report |
 | `fm-discord-notify-status.sh` | Map a yolo-off PR-ready or done status line to a Discord decision notification or plain report; blocked/failed status is not sent |
 | `fm-discord-notify.js`   | Persist and deliver self-hosted Discord decision notifications through the REST API  |
-| `fm-discord-poll.sh`     | Invoke the bounded self-hosted Discord poll for mentions and authorized decision replies |
+| `fm-discord-poll.sh`     | Invoke the bounded self-hosted Discord poll for mentions and authorized decision replies, and queue ingress diagnostics |
 | `fm-discord-poll.js`     | Poll Discord messages, capture authorized decision replies, and emit inbox wakes     |
 | `fm-discord-reaction.sh` | Add a best-effort lifecycle reaction to a durably captured self-hosted Discord request |
 | `fm-discord-reaction.js` | Persist and apply idempotent self-hosted Discord request lifecycle reactions           |
