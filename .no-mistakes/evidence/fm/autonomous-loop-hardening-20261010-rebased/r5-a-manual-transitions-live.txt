@@ -1,0 +1,15 @@
+LAB=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.Op9bB3
+HEAD=ee38b7e4150d322a1e9639e758bf31e31c86317c
+
+================ A: guarded manual lifecycle transitions on terminal tasks ================
+A.resume[DONE] rc=1 step=DONE ctrl_calls=0 stderr=[Invalid transition for r5-resume-done: DONE -> RECOVERY_HOLD]
+A.reassign[DONE] rc=1 step=DONE ctrl_calls=0 stderr=[Invalid transition for r5-reassign-done: DONE -> RECOVERY_HOLD]
+A.hold[DONE] rc=1 step=DONE hold_calls=0 stderr=[Invalid transition for r5-hold-done: DONE -> WAITING_EXTERNAL]
+A.resume[FAILED] rc=1 step=FAILED ctrl_calls=0 stderr=[Invalid transition for r5-resume-failed: FAILED -> RECOVERY_HOLD]
+A.reassign[FAILED] rc=1 step=FAILED ctrl_calls=0 stderr=[Invalid transition for r5-reassign-failed: FAILED -> RECOVERY_HOLD]
+A.hold[FAILED] rc=1 step=FAILED hold_calls=0 stderr=[Invalid transition for r5-hold-failed: FAILED -> WAITING_EXTERNAL]
+
+--- A-happy: ordinary (non-terminal) manual commands still work and reach their side effect ---
+A.happy.resume rc=0 step=RECOVERY_HOLD ctrl=[r5-resumable relaunch --note ordinary resume] stderr=[]
+A.happy.reassign rc=0 step=RECOVERY_HOLD ctrl=[r5-reassignable relaunch --harness codex --note ordinary reassign] stderr=[]
+A.happy.hold rc=0 step=WAITING_EXTERNAL hold=[hold r5-holdable --reason ordinary hold] stderr=[]

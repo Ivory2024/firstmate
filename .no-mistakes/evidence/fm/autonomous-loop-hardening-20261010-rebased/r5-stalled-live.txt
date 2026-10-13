@@ -1,0 +1,4 @@
+step after scan-stalled = RECOVERY_HOLD
+evidence line:
+STALLED detected: all observables exceed threshold. State: working, Detail: silent no progress
+wake queue row:

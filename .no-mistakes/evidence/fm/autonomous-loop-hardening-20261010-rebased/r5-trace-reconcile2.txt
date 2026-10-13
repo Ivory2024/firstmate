@@ -1,0 +1,22 @@
+### reconcile 1 ###
+after r1: next=ASSIGNED marker_exists=yes
+### reconcile 2 ###
+after r2: next=RECOVERY_HOLD marker_exists=yes
+### trace ###
+CREW-STATE id=r5-parked-next st=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.mqnJBq/state
+CREW-STATE id=r5-parked st=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.mqnJBq/state
+CREW-STATE id=r5-parked st=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.mqnJBq/state
+SPAWN r5-parked-next /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.mqnJBq/project --mode local-only --yolo off --branch-prefix fm/ --base-branch main
+SPAWN marker=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.mqnJBq/state/.ext-r5-parked-next
+CREW-STATE id=r5-parked-next st=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.mqnJBq/state
+CREW-STATE id=r5-parked st=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.mqnJBq/state
+CREW-STATE id=r5-parked-next st=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.mqnJBq/state
+CREW-STATE id=r5-parked st=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.mqnJBq/state
+CREW-STATE id=r5-parked st=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.mqnJBq/state
+CREW-STATE id=r5-parked-next st=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.mqnJBq/state
+CREW-STATE id=r5-parked-next st=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.mqnJBq/state
+CREW-STATE id=r5-parked-next st=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.mqnJBq/state
+CREW-STATE id=r5-parked st=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.mqnJBq/state
+--- with a live active_steps working detail ---
+r1: next=ASSIGNED spawns=1
+r2: next=RUNNING spawns=1 controls=0

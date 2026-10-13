@@ -1,0 +1,30 @@
+LAB=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.7u1ewM  HEAD=ee38b7e4150d322a1e9639e758bf31e31c86317c
+
+================ B1: counterfactual - guard REMOVED must reach fm-control on refused resume ================
+UNGUARDED resume on DONE task: rc=1 ctrl_calls=0 step=DONE stderr=[Invalid transition for ug-resume: DONE -> RECOVERY_HOLD]
+GUARDED   resume on DONE task: rc=1 ctrl_calls=0 step=DONE stderr=[Invalid transition for ug-resume: DONE -> RECOVERY_HOLD]
+
+================ B2: fail-closed repeat task-done (round-3 guard) ================
+task-done on DONE: rc=1 step=DONE stderr=[Invalid transition for r5-done: DONE -> DONE]
+
+================ B3: task-done drops the ONLY lane-queue entry (round-2 fix) ================
+task-done solo entry: rc=0 step=DONE queue_bytes=0 tmp_left=no stderr=[]
+
+================ B4: lane dispatch, dependency gating, idempotency ================
+blocked: step=WAITING_EXTERNAL reason=failed_dependency:r5-depfail
+ready: step=ASSIGNED next=worker_started key=lane-dispatch:r5-ready:old
+spawn calls=1 log=[r5-ready /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.7u1ewM/project --mode local-only --yolo off --branch-prefix fm/ --base-branch main]
+spawn calls after repeat=0 (must stay 0)
+
+================ B5: reconcile sync + delivered-terminal skip (no external read) ================
+reconcile rc=0
+sync-done step=DONE (want DONE via external read)
+sync-failed step=FAILED (want FAILED via delivered receipt)
+crew-state calls: [crew-state called for r5-blocked,crew-state called for r5-ready,crew-state called for r5-sync-done,crew-state called for r5-blocked,crew-state called for r5-ready,crew-state called for r5-ready,] (sync-failed must be absent: skip)
+
+================ B6: parked work releases lane; next READY dispatched ================
+parked step=WAITING_QUOTA (want WAITING_QUOTA)
+next step=RECOVERY_HOLD (want ASSIGNED)
+spawn calls=1 log=[r5-parked-next /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.7u1ewM/project --mode local-only --yolo off --branch-prefix fm/ --base-branch main]
+
+TEARDOWN DONE
