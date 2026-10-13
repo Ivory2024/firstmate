@@ -1476,8 +1476,10 @@ cmd_task_done() {  # <task-id> --evidence <text>
     case "$1" in --evidence) evidence=$2; shift 2 ;; *) shift ;; esac
   done
   [ -n "$evidence" ] || die "--evidence required"
-  # Evidence-based transition to DONE
-  lifecycle_transition "$id" "DONE" "DONE: $evidence"
+  # Evidence-based transition to DONE. A refused transition (for example
+  # DONE -> DONE by a repeated task-done) must surface as failure instead of
+  # being masked by the lane-queue removal that follows.
+  lifecycle_transition "$id" "DONE" "DONE: $evidence" || return 1
   local lane
   lane=$(lifecycle_read "$id" lane)
   lane_remove "$lane" "$id"

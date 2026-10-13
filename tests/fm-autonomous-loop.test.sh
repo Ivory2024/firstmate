@@ -120,6 +120,19 @@ assert_equals "" "$(tr -d '\n' < "$home/state/lane-queues/lane-solo.queue")" \
 assert_absent "$home/state/lane-queues/lane-solo.queue.tmp" \
   "task-done left lane queue .tmp litter behind"
 
+# A refused transition must surface as failure: task-done on a task that is
+# already DONE is refused by the fail-closed state machine, so the command
+# must not report success.
+write_task double-done lane-double DONE
+output=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" \
+  "$root/bin/fm-autonomous-loop.sh" task-done double-done --evidence "again" 2>&1)
+rc=$?
+assert_equals 1 "$rc" "task-done on an already DONE task reported success"
+assert_contains "$output" "Invalid transition" \
+  "the refused DONE->DONE transition was not surfaced"
+assert_equals DONE "$(sed -n 's/^current_step=//p' "$home/state/task-lifecycle/double-done.lifecycle")" \
+  "the refused transition still moved the task"
+
 for lifecycle_state in READY ASSIGNED RUNNING TESTING REVIEWING FIXING RETESTING READY_FOR_MERGE MERGE_VERIFIED DEPLOYMENT_GATE WAITING_QUOTA WAITING_APPROVAL WAITING_EXTERNAL RECOVERY_HOLD ESCALATED; do
   for external_state in "done" failed; do
     id="${lifecycle_state,,}-$external_state"
