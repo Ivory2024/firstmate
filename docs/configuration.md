@@ -1219,7 +1219,7 @@ See [`docs/examples/crew-dispatch.json`](examples/crew-dispatch.json) for a star
 
 An OpenCode spawn with a resolved model fails before launch if `opencode models` cannot be read or does not list that exact ID; refresh the catalog with `opencode models` and choose a listed ID.
 An explicitly designated per-task model overrides the configured profile model and is checked against that live catalog before launch.
-OpenCode dispatch also requires every pricing field in the model metadata to be zero; the [OpenCode harness reference](../.agents/skills/harness-adapters/references/harness/opencode.md#free-model-selection) documents data-retention limits.
+OpenCode dispatch requires every pricing field in the model metadata to be zero by default, and a free-model health-catalog entry; a captain-approved paid model named by its exact id in `FM_OPENCODE_PAID_MODELS` or in `config/opencode-paid-models` (both one id per line, with `#` comments and surrounding whitespace ignored) is exempt from both gates, while a tracked catalog entry still runs every other check; the [OpenCode harness reference](../.agents/skills/harness-adapters/references/harness/opencode.md#free-model-selection) documents data-retention limits.
 
 **Validation and diagnostics**
 
@@ -2555,6 +2555,7 @@ FM_CLAUDE_TURNEND_BLOCK_BUDGET=3   # consecutive --claude guard re-blocks before
 FM_ARM_CONFIRM_TIMEOUT=10   # seconds fm-watch-arm waits to confirm a fresh watcher before reporting FAILED; default 30 on Git Bash/MSYS
 FM_ARM_ATTACH_POLL=0.5  # seconds between checks while fm-watch-arm follows an attached watcher cycle (bin/fm-watch-arm.sh header)
 FM_OPENCODE_ARM_READY_TIMEOUT_MS=12000   # milliseconds the OpenCode primary watcher plugin waits for an arm attempt to report started, healthy, wake, or failure; default 35000 on Windows to stay above the MSYS confirm budget
+FM_OPENCODE_PAID_MODELS=   # captain-approved paid OpenCode model ids, one exact id per line, exempt from the free-only zero-cost pricing gate and from an absent free-model health-catalog entry; config/opencode-paid-models supplies the same list (docs/configuration.md "Crew dispatch profiles")
 FM_OPENCODE_REARM_POLL_MS=60000   # milliseconds between the OpenCode watch-arm plugin's durable-signal re-arm polls; the poll re-arms only while the home still needs a watcher and no watcher holds a fresh state/.last-watcher-beat, so a busy session that never reaches a quiescent boundary is still supervised and a healthy cycle is left alone (docs/supervision-protocols/opencode.md step 2)
 FM_PI_ARM_READY_TIMEOUT_MS=12000   # milliseconds the Pi watcher extension waits for a successor arm to report started or attached; default 35000 on Windows to stay above the MSYS confirm budget
 FM_WATCH_ARM_RETIRE_TIMEOUT_MS=1000   # milliseconds Pi/OpenCode wait for an unready successor arm to exit before abandoning retries

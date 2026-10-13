@@ -59,8 +59,10 @@ It canonicalizes OpenCode dispatch identities `opencode/<model>` and
 `opencode-go/<model>` to the catalog identity `opencode-free/<model>`.
 That canonicalization is only the health-catalog lookup key, not a tier decision:
 it does not make a paid `opencode-go/*` model rotating/unvetted.
-Separately, today `bin/fm-spawn.sh --harness opencode` accepts only models classified free by models.dev, so dispatching a paid `opencode-go/*` pin through that path is refused until that free-pricing gate changes (a separate, tracked code change, not part of this docs-only update).
-Missing, unreadable, duplicate, or untracked health entries fail closed.
+Separately, `bin/fm-spawn.sh --harness opencode` admits a paid
+`opencode-go/*` pin only when that exact id is named in the paid-id allowlist
+below; without an allowlist entry the free-pricing gate still refuses it.
+Missing, unreadable, duplicate, or untracked health entries fail closed, except that a captain-approved paid id named in `FM_OPENCODE_PAID_MODELS` or `config/opencode-paid-models` skips both the zero-cost pricing gate and an untracked-entry refusal, while any entry the catalog does track for it still runs every check below.
 An inactive status or `early_termination_detected: true` also refuses
 dispatch. Treat `is_expiring_soon: true` as a signal to narrow the brief or
 prefer the domain's recommended default.

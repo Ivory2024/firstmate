@@ -97,6 +97,13 @@
 #   build agent's variant, keyed to the resolved model, inside the
 #   OPENCODE_CONFIG_CONTENT JSON its launch already carries (config schema
 #   verified on opencode 1.18.32); without a model the axis is recorded but omitted.
+#   OpenCode dispatch is free-only. A model whose models.dev cost is not zero is
+#   refused, as is one the free-model health catalog does not track. A
+#   captain-approved paid model is exempted from exactly those two gates by
+#   naming its exact id in FM_OPENCODE_PAID_MODELS or config/opencode-paid-models
+#   (one id per line, # comments allowed, surrounding whitespace trimmed); the
+#   match is an exact full-id equality, never a prefix, suffix, or wildcard. With
+#   an empty or unreadable allowlist the gate is byte-for-byte the free-only one.
 #   --backend <name> is the explicit runtime session-provider backend for this
 #   exact task only (docs/configuration.md "Runtime backend" owns when that flag
 #   is authorized). Without it, the script resolves FM_BACKEND, then
@@ -2003,6 +2010,31 @@ opencode_health_catalog_identity() { # <dispatch-identity> -> canonical free-mod
   esac
 }
 
+# The normalized captain-approved paid allowlist, one exact model id per line,
+# or nothing when no source supplies one. FM_OPENCODE_PAID_MODELS and the
+# $CONFIG/opencode-paid-models file are both read and concatenated, so either
+# source alone is enough. Blank lines and whole-line # comments are dropped, \r
+# is stripped for CRLF files, and a line's surrounding whitespace is trimmed;
+# the id itself is never otherwise rewritten, so an inline trailing comment
+# never turns a prefix into a match.
+opencode_paid_model_allowlist() {
+  {
+    [ -n "${FM_OPENCODE_PAID_MODELS:-}" ] && printf '%s\n' "$FM_OPENCODE_PAID_MODELS"
+    [ -f "$CONFIG/opencode-paid-models" ] && cat "$CONFIG/opencode-paid-models" 2>/dev/null
+    :
+  } | sed -e 's/\r$//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' |
+    grep -v -e '^#' -e '^$' || true
+}
+
+# True only when <dispatch-identity> is one exact allowlisted id.
+opencode_paid_model_allowlisted() { # <dispatch-identity>
+  local allowlist
+  [ -n "$1" ] || return 1
+  allowlist=$(opencode_paid_model_allowlist)
+  [ -n "$allowlist" ] || return 1
+  printf '%s\n' "$allowlist" | grep -F -x -- "$1" >/dev/null
+}
+
 resolve_pi_executable() {
   local candidate dir
   candidate=$(type -P -- "$1" 2>/dev/null) || return 1
@@ -2570,14 +2602,19 @@ if [ "$HARNESS" = opencode ]; then
       echo "error: could not verify OpenCode model '$MODEL' free pricing metadata; refusing dispatch" >&2
       exit 1
     fi
-    if ! printf '%s\n' "$OPENCODE_MODEL_METADATA" | jq -e --arg provider "$OPENCODE_MODEL_PROVIDER" --arg model "$OPENCODE_MODEL_ID" '
+    OPENCODE_PAID_MODEL_ALLOWED=0
+    if opencode_paid_model_allowlisted "$MODEL"; then
+      OPENCODE_PAID_MODEL_ALLOWED=1
+    fi
+    if [ "$OPENCODE_PAID_MODEL_ALLOWED" -eq 0 ] \
+      && ! printf '%s\n' "$OPENCODE_MODEL_METADATA" | jq -e --arg provider "$OPENCODE_MODEL_PROVIDER" --arg model "$OPENCODE_MODEL_ID" '
       .[$provider].models[$model].cost as $cost
       | ($cost | type == "object")
         and ($cost.input == 0)
         and ($cost.output == 0)
         and ([$cost[]] | all(. == 0))
     ' >/dev/null; then
-      echo "error: OpenCode model '$MODEL' is not classified as free by models.dev; choose a zero-cost model" >&2
+      echo "error: OpenCode model '$MODEL' is not classified as free by models.dev; to allow this paid model, add its exact id to FM_OPENCODE_PAID_MODELS or config/opencode-paid-models" >&2
       exit 1
     fi
     OPENCODE_HEALTH_FILE=
@@ -2599,8 +2636,14 @@ if [ "$HARNESS" = opencode ]; then
       ' "$OPENCODE_HEALTH_FILE" 2>/dev/null) || OPENCODE_HEALTH_ENTRY=
     fi
     if [ -z "$OPENCODE_HEALTH_IDENTITY" ] || [ -z "$OPENCODE_HEALTH_FILE" ] || [ -z "$OPENCODE_HEALTH_ENTRY" ] || [ "$OPENCODE_HEALTH_ENTRY" = null ]; then
-      echo "error: cannot verify '$MODEL' against the opencode free-model health catalog (expected '$OPENCODE_HEALTH_IDENTITY'; file missing/unreadable or model not tracked); refusing dispatch" >&2
-      exit 1
+      if [ "$OPENCODE_PAID_MODEL_ALLOWED" -eq 0 ]; then
+        echo "error: cannot verify '$MODEL' against the opencode free-model health catalog (expected '$OPENCODE_HEALTH_IDENTITY'; file missing/unreadable or model not tracked); refusing dispatch" >&2
+        exit 1
+      fi
+      # An allowlisted paid id is absent from the free-model catalog by
+      # definition, so a missing entry is not a health signal for it. A tracked
+      # entry still runs every check below.
+      echo "warning: allowlisted paid model '$MODEL' is not tracked by the opencode free-model health catalog (expected '$OPENCODE_HEALTH_IDENTITY'); skipping its status check" >&2
     else
       OPENCODE_HEALTH_SCANNED_AT=$(jq -r '.scanned_at // empty' "$OPENCODE_HEALTH_FILE" 2>/dev/null) || OPENCODE_HEALTH_SCANNED_AT=
       if [ -n "$OPENCODE_HEALTH_SCANNED_AT" ]; then
