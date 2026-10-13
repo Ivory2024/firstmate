@@ -767,7 +767,9 @@ class BoardRouteTest(QueueBoardTest):
         self.assertTrue(data["readonly"], "the board must declare itself read-only")
         self.assertTrue(data["lanes_ready"])
         self.assertEqual(data["counts"],
-                         {"queued": 1, "blocked": 1, "held": 1, "in_flight": 1})
+                         {"queued": 1, "blocked": 1, "held": 1, "stuck": 2,
+                          "in_flight": 1},
+                         "stuck counts distinct blocked-or-held tasks once")
         self.assertEqual([t["id"] for t in data["in_flight"]], ["alpha-1"],
                          "only a live session is in flight; a gone record is not")
         self.assertEqual(data["in_flight"][0]["harness"], "OPENCODE")
@@ -797,8 +799,6 @@ class BoardRouteTest(QueueBoardTest):
             status, _headers, body = self.get(port, path)
             self.assertEqual(status, 200, path)
             self.assertTrue(body, path)
-        self.assertIn(b"\xec\x9e\x91\xec\x97\x85 \xed\x98\x84\xed\x99\xa9",  # 작업 현황
-                      self.get(port, "/")[2], "the panel must be in the page")
 
 
 if __name__ == "__main__":

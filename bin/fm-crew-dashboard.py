@@ -54,9 +54,7 @@ from pathlib import Path
 FM = os.environ.get("FM_HOME") or str(Path(__file__).resolve().parent.parent)
 STATE = f"{FM}/state"
 BACKLOG = f"{FM}/data/backlog.md"
-# The port seam exists so a second instance can be raised for verification
-# without touching the one an operator is already reading.
-PORT = int(os.environ.get("FM_DASHBOARD_PORT") or 8770)
+PORT = 8770
 
 
 def titles():
@@ -174,7 +172,7 @@ def parse_task_list(text):
 # one refresh happens per interval, or per interval plus one refresh's duration,
 # since the TTL is measured from the last finished read.
 QUEUE_TTL = 15.0
-QUEUE_LIMIT = 100   # tasks-axi's own row cap; a larger --limit returns the same
+QUEUE_LIMIT = 100   # rows read per section; this panel's own cap, not the CLI's
 QUEUE_SHOWN = 30    # rows rendered per section; the rest is reported as a count
 
 # The CLI appends this trailer to a value too long for its row, as one inline
@@ -204,11 +202,13 @@ def tasks_axi_list(args, timeout=30):
     return parse_task_list(done.stdout)
 
 
-def _section(rows, total, *fields):
+def _section(rows, total, *fields, cli_rows=None):
     """One board section: the first QUEUE_SHOWN rows plus honest counts."""
     items = [{k: _clean(row.get(k)) for k in fields} for row in rows]
+    cli_rows = len(rows) if cli_rows is None else cli_rows
+    capped = total > cli_rows
     return {"items": items[:QUEUE_SHOWN], "count": len(items),
-            "total": max(total, len(items)), "capped": total > len(rows)}
+            "total": total if capped else len(items), "capped": capped}
 
 
 def _queue_board():
@@ -233,16 +233,19 @@ def _queue_board():
         return (value or "").strip().lower() == "yes"
 
     blocked_ids = {row.get("id") for row in blocked}
+    held_ids = {row.get("id") for row in held}
     waiting = [row for row in queued
                if not yes(row.get("held")) and not yes(row.get("blocked"))
                and row.get("id") not in blocked_ids]
     sections = {
-        "queued": _section(waiting, queued_total, "id", "title", "repo", "priority"),
+        "queued": _section(waiting, queued_total, "id", "title", "repo", "priority",
+                           cli_rows=len(queued)),
         "blocked": _section(blocked, blocked_total, "id", "title", "repo", "priority", "blocked_by"),
         "held": _section(held, held_total, "id", "title", "repo", "priority", "hold_reason", "hold_until"),
     }
     sections["counts"] = {name: sections[name]["count"]
                           for name in ("queued", "blocked", "held")}
+    sections["counts"]["stuck"] = len(blocked_ids | held_ids)
     return sections
 
 
@@ -667,12 +670,12 @@ async function tickBoard(){try{const r=await fetch('/board',{cache:'no-store'});
  const hasBoard=d.queued!==undefined;
  set('qc-flight',ready?(c.in_flight||0):'…');
  set('qc-queued',hasBoard?(c.queued||0):'?');
- set('qc-stuck',hasBoard?((c.blocked||0)+(c.held||0)):'?');
+ set('qc-stuck',hasBoard?(c.stuck||0):'?');
  let tag='읽기 전용';const qs=r.headers.get('X-Queue-Status')||'?';
  if(d.computed_at)tag+=' · 갱신 '+new Date(d.computed_at*1000).toLocaleTimeString();
  if(qs!=='fresh')tag+=' · '+(qs==='stale'?'이전 값(갱신 중)':'갱신 실패 '+(r.headers.get('X-Queue-Error')||''));
  set('qmeta',tag);
- set('qn-flight','('+(d.in_flight||[]).length+')');
+ set('qn-flight',ready?'('+(d.in_flight||[]).length+')':'…');
  set('qn-queued',hasBoard?'('+(q.count||0)+')':'');
  set('qn-stuck',hasBoard?'차단 '+(b.count||0)+' · 보류 '+(h.count||0):'');
  const empty='<div class=mut>없음</div>';
