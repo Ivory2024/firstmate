@@ -1,0 +1,21 @@
+## Real 'opencode models' listing for the doc's example model
+opencode-go/deepseek-v4-flash
+opencode-go/deepseek-v4-flash-vision-exp
+opencodex/opencode-go/deepseek-v4-flash
+
+## Real models.dev pricing for opencode-go/deepseek-v4-flash (provider=opencode-go, model=deepseek-v4-flash)
+{
+  "input": 0.15,
+  "output": 0.6,
+  "cache_read": 0.003
+}
+
+## fm-spawn.sh free-pricing gate (paid => refuse)
+      .[$provider].models[$model].cost as $cost
+      | ($cost | type == "object")
+        and ($cost.input == 0)
+        and ($cost.output == 0)
+        and ([$cost[]] | all(. == 0))
+    ' >/dev/null; then
+      echo "error: OpenCode model '$MODEL' is not classified as free by models.dev; choose a zero-cost model" >&2
+      exit 1

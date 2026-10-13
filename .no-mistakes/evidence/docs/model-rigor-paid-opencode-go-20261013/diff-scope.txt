@@ -1,0 +1,10 @@
+# branch: HEAD
+# base:   578d7596bae891b8db2a8a0559a64f10d9416ffa
+# target: b7df6d02cd625e98accd73b0345ebc846c2b1e38
+
+## files changed base..target
+ docs/model-dispatch-rigor.md | 13 ++++++++++---
+ 1 file changed, 10 insertions(+), 3 deletions(-)
+
+## bin/fm-spawn.sh changed?
+NO (unchanged)

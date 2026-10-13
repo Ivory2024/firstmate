@@ -1,0 +1,5 @@
+ok - OpenCode refuses catalog-listed models with nonzero pricing metadata
+ok - OpenCode refuses dispatch when free pricing metadata is unavailable
+ok - OpenCode dispatch identity resolves to its canonical free-model health identity
+ok - OpenCode proceeds when the health catalog marks the model active
+# focused opencode tests passed
