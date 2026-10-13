@@ -1594,6 +1594,7 @@ Self-hosted Discord lets firstmate connect directly to Discord's API via a custo
 It produces and consumes the same local inbox and wake contract (`state/x-inbox/<request_id>.json`, `x-mention <request_id>`, and `fmx-respond`) as the hosted Relay.
 It is off unless the firstmate home's gitignored `.env` contains a non-empty `FM_DISCORD_BOT_TOKEN`.
 When enabled, bootstrap writes `state/discord-watch.check.sh` and `config/discord-mode.env` (`FM_CHECK_INTERVAL=30`) so the watcher polls for mentions every 30 seconds.
+The poll also places self-hosted Discord ingress diagnostics, including refused bot tokens and a missing Node.js runtime, on the durable wake queue under the `discord-ingress-error` key.
 Optional configuration variables in `.env`:
 - `FM_DISCORD_CHANNEL_ID` / `FM_DISCORD_ALLOWED_CHANNELS`: comma-separated channel IDs to poll.
 - `FM_DISCORD_EXCLUDE_CHANNELS`: comma-separated channel IDs to ignore (defaults to `1551134713727426570` for collision prevention with gajae-way).
