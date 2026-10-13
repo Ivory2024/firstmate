@@ -457,6 +457,7 @@ fm_dod_block() {  # <mode> <task-id> [branch] [<forge>] [<base>]
   fm_forge_valid_for_mode "$forge" "$mode" fm_dod_block || return 1
   fm_base_branch_valid "$base" "$mode" "$forge" fm_dod_block || return 1
   draft_check="(\`gh-axi pr view <number>\` must print \`draft: no\`, where <number> is the PR number from your PR URL); if it is a draft, mark it ready with \`gh-axi pr ready <number>\`."
+  # shellcheck disable=SC2016 # literal backticks and placeholders in single-quoted prompt text are intentional
   if [ "$forge" = forgejo ]; then
     contract_forge=' forge=forgejo'
     forge_cli=tea
