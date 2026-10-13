@@ -28,6 +28,7 @@ The pre-publication boundary also includes target ownership. `bin/fm-pr-target-g
 | Supervision and presentation | [Pi supervision branch](#pi-supervision-branch), [supervision host](#supervision-host-configsupervision-host), and [Calm preference](#calm-preference-configcalm) |
 | Persistent secondmates | [Secondmate routes](#secondmate-routes-datasecondmatesmd) |
 | Per-run overrides and tuning | [Environment variables](#environment-variables) |
+| Unattended batch fault-recovery runs | [Unattended crew config](#unattended-crew-config-configunattended-crewjson) |
 
 ## FM_HOME
 
@@ -615,6 +616,23 @@ The bound is required rather than cosmetic because churn and pane staleness read
 
 The flag is a home-local supervision-noise preference and is not inherited by secondmate homes, which run their own crew mix.
 [`architecture.md`](architecture.md) owns the triage contract and `bin/fm-watch.sh`'s `signal_turnend_panes_churned` owns the exact evidence and fail-closed boundaries.
+
+## Unattended crew config (config/unattended-crew.json)
+
+The unattended crew orchestrator reads its setting surface from `unattended-crew.json`, resolved in this order: an explicit `--config` or `UC_CONFIG_FILE`, then `$UC_HOME/config/unattended-crew.json` when present, then `<impl>/../config/unattended-crew.json`.
+[`docs/unattended-crew.md`](unattended-crew.md) is the maintainer-architecture owner of the suite: the executor/auditor/judge pipeline, the quota floor, the failover policy, the autoteardown safety bounds, and the E2E gates.
+The script headers own exact key semantics.
+
+| Key | Meaning |
+| --- | --- |
+| `evidence_root` | Root directory for a batch's durable evidence; the per-batch dir is `<root>/<batch>` and default is `$UC_HOME/batches/<batch>/evidence` (`UC_EVIDENCE_ROOT` overrides the file) |
+| `quota.max_concurrent_crews` | Per-window maximum of concurrent crews (integer) |
+| `quota.max_provider_calls` | Per-window maximum of provider calls (integer) |
+| `quota.free_models` | Free-model allow-list (array of model ids) |
+| `quota.allow_paid_models` | Whether paid models may be considered (boolean, default false) |
+
+Quota enforcement activates on `UC_QUOTA_ENFORCE=1` or when a config file exists; without a config the historic uncapped behavior is preserved.
+Other `UC_*` variables that tune the run (implementation directory, wait and timeout windows, real-crew home and project, autoteardown enable) are exact mechanism owned by the script headers and the E2E test headers.
 
 ## Parked-gate wait deferral (config/wedge-defer-parked-gate)
 

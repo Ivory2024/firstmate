@@ -164,6 +164,19 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `fm-parent-channel-lib.sh` | Resolve a secondmate home's parent channel and append a captain-facing outcome line to it at most once |
 | `fm-promote.sh`          | Promote a scout task in place to a protected ship task with an explicit delivery mode, write the ship instructions carrying that mode's definition of done, and supersede the task's brief so a later relaunch cannot revive stale scout delivery text |
 | `fm-teardown.sh`         | Fail-closed teardown: return landed ship worktrees, require completed scout deliverables, retire secondmate homes |
+| `fm-unattended.sh`       | Mounted captain entrypoint for unattended batch drives (`init|run|resume|status|next|handoff|stop`, contract [unattended-crew.md](unattended-crew.md)) |
+| `fm-unattended-coordinator.sh` | Batch coordinator: restart-safe state machine from task contract to judge verdict ([unattended-crew.md](unattended-crew.md)) |
+| `fm-unattended-adapter.sh` | Crew Dispatch Adapter seam between the coordinator and a worker runtime behind a `fake`/`real` backend switch |
+| `fm-unattended-config.sh` | Durable configuration and evidence-root resolver for the unattended orchestrator |
+| `fm-unattended-evidence.sh` | Evidence collector writing durable out-of-workspace evidence for one-shot `run` or real-crew `collect` modes |
+| `fm-unattended-guard.sh`   | Executor evidence guard comparing claimed against canonical values before an auditor crew is spent |
+| `fm-unattended-judge.sh`   | Deterministic judge consuming structured evidence only, one verdict per run |
+| `fm-unattended-quota.sh`   | Per-batch quota and concurrency gate: max crews, max provider calls, free-model allow-list, fail-closed HOLD |
+| `fm-unattended-failover.sh` | Data-only failover policy classifying a failure and picking the next route within a bounded free-first budget |
+| `fm-unattended-autoteardown.sh` | Automatic-teardown eligibility rule, disabled unless `UC_AUTOTEARDOWN_ENABLE=1`; cleanup stays with fm-teardown.sh |
+| `fm-unattended-recovery.sh` | Autonomous recovery policy mapping a failure to a bounded recovery category |
+| `fm-unattended-recovery-state.sh` | Durable per-task recovery metadata outside the coordinator's lifecycle |
+| `fake-auditor.sh`          | Test-mode auditor writing the structured evidence a real auditor writes |
 | `fm-harness.sh`          | Detect the running harness, resolve crew or secondmate harness, model, and effort, and validate the native-only `ultra` effort |
 | `fm-lock.sh`             | Per-home firstmate session lock                                                      |
 | `fm-x-lib.sh`            | Shared Relay config, relay, and reply-threading helpers                              |
