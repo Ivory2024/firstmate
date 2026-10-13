@@ -971,6 +971,29 @@ task_meta_value() {  # <task-id> <field>
   sed -n "s/^$2=//p" "$STATE/$1.meta" | head -1
 }
 
+# The terminal outcome the inactive scan already delivered for this exact
+# incarnation, or non-zero when none has been. A delivered outcome is settled:
+# re-classifying it would re-run fm-crew-state's git reachability gate for a
+# done:/failed: ledger on every poll, which the ledger path deliberately avoids.
+# The scan persists the delivery as an fm-terminal-outcome.v1 .reported receipt;
+# matching the incarnation keeps a re-spawned task from inheriting a
+# predecessor's receipt.
+delivered_terminal_state() {  # <task-id> -> prints done|failed
+  local id=$1 incarnation record state
+  incarnation=$(task_meta_value "$id" spawn_gen)
+  [ -n "$incarnation" ] || return 1
+  for record in "$STATE"/terminal-outcomes/*.reported; do
+    [ -f "$record" ] && [ ! -L "$record" ] || continue
+    [ "$(sed -n 's/^task_id=//p' "$record" | tail -1)" = "$id" ] || continue
+    [ "$(sed -n 's/^incarnation=//p' "$record" | tail -1)" = "$incarnation" ] || continue
+    state=$(sed -n 's/^state=//p' "$record" | tail -1)
+    case "$state" in
+      done|failed) printf '%s\n' "$state"; return 0 ;;
+    esac
+  done
+  return 1
+}
+
 # The reconcile owns the TASK lifecycle registry, and a persistent secondmate is
 # not a backlog task: cmd_scan_stalled already excludes it. Classifying one also
 # costs a remote round trip, which must never ride the single budget the
@@ -1254,6 +1277,16 @@ cmd_reconcile() {  # [--startup]
     is_secondmate_meta "$meta" && continue
     local id
     id=$(basename "$meta" .meta)
+    # A terminal lifecycle step never moves again, and an outcome the inactive
+    # scan already delivered is settled, so neither needs an external read.
+    # Classifying either would re-run fm-crew-state's git reachability gate on
+    # every poll, which the ledger path deliberately avoids.
+    is_terminal "$(lifecycle_read "$id" current_step)" && continue
+    local delivered_state
+    if delivered_state=$(delivered_terminal_state "$id"); then
+      sync_lifecycle_with_external "$id" "$delivered_state"
+      continue
+    fi
     local state
     read_task_state "$id"
     state=$TASK_STATE
@@ -1277,23 +1310,24 @@ cmd_reconcile() {  # [--startup]
     is_secondmate_meta "$meta" && continue
     local id
     id=$(basename "$meta" .meta)
+
+    # Read the lifecycle step before classifying: a terminal or escalated step
+    # is never auto-resumed, so it must not pay for fm-crew-state's git
+    # reachability gate on every poll.
+    local lifecycle_state
+    lifecycle_state=$(lifecycle_read "$id" current_step)
+    case "$lifecycle_state" in
+      DONE|FAILED|ESCALATED) continue ;;
+    esac
+
     local state detail
     read_task_state "$id"
     state=$TASK_STATE
     detail=$TASK_DETAIL
 
-    # Get updated lifecycle state (already synced above)
-    local lifecycle_state
-    lifecycle_state=$(lifecycle_read "$id" current_step)
-
     # Skip if working normally (external state)
     [ "$state" = "working" ] && continue
     [ "$state" = "paused" ] && continue
-
-    # Skip if lifecycle is terminal or in legitimate hold
-    case "$lifecycle_state" in
-      DONE|FAILED|ESCALATED) continue ;;
-    esac
 
     # Skip if legitimate hold (check both lifecycle and external state)
     is_legitimate_hold "$id" "$lifecycle_state" "$detail" && continue
@@ -1314,6 +1348,13 @@ cmd_scan_stalled() {
     local kind
     kind=$(grep '^kind=' "$meta" 2>/dev/null | cut -d= -f2- || echo "ship")
     [ "$kind" = "secondmate" ] && continue
+
+    # Only an actively working lifecycle can be stalled, so a terminal step
+    # must not pay for a classification that would re-run the git gate.
+    case "$(lifecycle_read "$id" current_step)" in
+      RUNNING|TESTING|REVIEWING|FIXING|RETESTING) ;;
+      *) continue ;;
+    esac
 
     local state detail
     read_task_state "$id"
