@@ -2577,8 +2577,8 @@ if [ "$HARNESS" = opencode ]; then
     OPENCODE_HEALTH_ENTRY=
     OPENCODE_HEALTH_IDENTITY=$(opencode_health_catalog_identity "$MODEL") || OPENCODE_HEALTH_IDENTITY=
     if [ -n "$OPENCODE_HEALTH_FILE" ]; then
-      OPENCODE_HEALTH_ENTRY=$(jq -e --arg canonical "$OPENCODE_HEALTH_IDENTITY" '
-        [.models[]? | select(.id == $canonical)] | if length == 1 then .[0] else empty end
+      OPENCODE_HEALTH_ENTRY=$(jq -e --arg provider "$OPENCODE_MODEL_PROVIDER" --arg id "$OPENCODE_MODEL_ID" '
+        [.models[]? | select(.id == $id and .provider == $provider)] | if length == 1 then .[0] else empty end
       ' "$OPENCODE_HEALTH_FILE" 2>/dev/null) || OPENCODE_HEALTH_ENTRY=
     fi
     if [ -z "$OPENCODE_HEALTH_IDENTITY" ] || [ -z "$OPENCODE_HEALTH_FILE" ] || [ -z "$OPENCODE_HEALTH_ENTRY" ] || [ "$OPENCODE_HEALTH_ENTRY" = null ]; then
