@@ -309,7 +309,7 @@ Whenever the digest is incomplete, this approved containment keeps the prefix an
 OpenCode is a nudge-tier harness.
 The `.opencode/plugins/fm-primary-sessionstart-nudge.js` plugin does three things:
 
-- It listens for `session.created`.
+- It listens for a session's first sight: `session.created`, or the first queued user message or execution start for a session the runtime never announced.
 - It runs once per session id.
 - It calls `client.session.promptAsync` only when the wrapper prints a nudge.
 
