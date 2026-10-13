@@ -12,11 +12,14 @@
 #     -> NEXT SAFE TASK / HANDOFF
 #
 # It REUSES firstmate's existing direction: the dispatch stage talks to a Crew
-# Dispatch Adapter (fm-unattended-adapter.sh) whose real backend would call
-# bin/fm-spawn.sh + bin/fm-send.sh + bin/fm-crew-state.sh; the evidence stage
-# reuses the evidence runner; the judgement stage reuses the judge. It NEVER
-# calls a real worker/provider (that is the unapproved integration gate) and
-# never touches a firstmate home, watcher, credential, or GitHub.
+# Dispatch Adapter (fm-unattended-adapter.sh), whose backend switch owns whether
+# a worker is called; the evidence stage reuses the evidence runner; the
+# judgement stage reuses the judge. With the default fake backend
+# (FM_UNATTENDED_ADAPTER unset or "fake") the adapter is file-backed and no
+# worker/provider is ever called. With FM_UNATTENDED_ADAPTER=real the adapter
+# bridges to bin/fm-spawn.sh + bin/fm-send.sh + bin/fm-crew-state.sh against the
+# pinned isolated home (UC_FM_HOME), so the coordinator does drive real crews.
+# Either way the coordinator never touches a watcher, credential, or GitHub.
 #
 # Persistence lives outside every suite workspace, under
 # $UC_HOME/batches/<batch>/: state.jsonl (append-only transitions), tasks/,
