@@ -11,6 +11,11 @@ NODE_DIR=$(command -v node 2>/dev/null) && NODE_DIR=$(dirname "$NODE_DIR") || NO
 [ -n "$JQ_DIR" ] && BASE_PATH="$JQ_DIR:$BASE_PATH"
 [ -n "$NODE_DIR" ] && BASE_PATH="$NODE_DIR:$BASE_PATH"
 
+# The same bare-tools PATH without the Node runtime: a case that verifies the
+# ingress still reports that it cannot poll, rather than failing silently.
+PATH_WITHOUT_NODE=/usr/bin:/bin:/usr/sbin:/sbin
+[ -n "$JQ_DIR" ] && PATH_WITHOUT_NODE="$JQ_DIR:$PATH_WITHOUT_NODE"
+
 TMP_ROOT=$(fm_test_tmproot fm-discord-selfhosted-tests)
 
 test_poll_no_token_is_hard_noop() {
@@ -394,6 +399,49 @@ test_out_of_band_mention_enqueues_durable_wake() {
   pass "an out-of-band Discord poll queues its mention durably, not only on stdout"
 }
 
+# A refused token is how self-hosted Discord stops working without notice: the
+# poll reports success, and the ingress path that has to keep working when the
+# watcher is down (the LaunchAgent wrapper exists to be independent of it) sends
+# stdout to a log file. The diagnostic must reach the durable wake queue itself.
+test_ingress_diagnostic_enqueues_durable_wake() {
+  local home out rc rows
+  home="$TMP_ROOT/ingress-diagnostic"
+  mkdir -p "$home/state" "$home/fake-bin"
+  chmod 700 "$home/state"
+  cat > "$home/fake-bin/node" <<'SH'
+#!/usr/bin/env bash
+printf 'x-mode-error self-hosted Discord HTTP 401\n'
+SH
+  chmod +x "$home/fake-bin/node"
+
+  out=$(PATH="$home/fake-bin:$BASE_PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-test-token "$ROOT/bin/fm-discord-poll.sh"); rc=$?
+  expect_code 0 "$rc" "a refused token leaves the ingress successful"
+  assert_equals "x-mode-error self-hosted Discord HTTP 401" "$out" "the diagnostic still prints for a watcher-run poll"
+  rows=$(wake_rows "$home/state")
+  assert_contains "$rows" "discord-ingress-error" "the diagnostic is queued under one stable key"
+  assert_contains "$rows" "x-mode-error self-hosted Discord HTTP 401" "the queued wake carries the diagnostic the supervisor acts on"
+  assert_absent "$home/state/x-inbox" "a diagnostic capture writes no inbox record"
+  pass "an out-of-band Discord poll queues its auth diagnostic durably, not only on stdout"
+}
+
+# The same silent-success path with no runtime at all: nothing can be polled, so
+# the failure has to be visible somewhere durable.
+test_missing_node_enqueues_durable_wake() {
+  local home out rc rows
+  home="$TMP_ROOT/ingress-missing-node"
+  mkdir -p "$home/state"
+  chmod 700 "$home/state"
+
+  out=$(PATH="$PATH_WITHOUT_NODE" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DISCORD_BOT_TOKEN=fake-test-token "$ROOT/bin/fm-discord-poll.sh"); rc=$?
+  expect_code 0 "$rc" "a missing runtime leaves the ingress successful"
+  assert_equals "x-mode-error missing node for self-hosted Discord" "$out" "a missing runtime is reported"
+  rows=$(wake_rows "$home/state")
+  assert_contains "$rows" "missing node for self-hosted Discord" "the missing runtime is queued durably, not only on stdout"
+  pass "a missing node runtime is queued durably, not only on stdout"
+}
+
 test_bootstrap_activation() {
   local home out shim cadence
   home="$TMP_ROOT/bootstrap-test"
@@ -600,6 +648,8 @@ test_reply_to_bot_message_with_mention
 test_reply_to_member_without_mention_is_ignored
 test_dm_reply_is_polled_with_configured_channel
 test_out_of_band_mention_enqueues_durable_wake
+test_ingress_diagnostic_enqueues_durable_wake
+test_missing_node_enqueues_durable_wake
 test_bootstrap_activation
 test_command_channel_plain_message_is_captured
 test_command_channel_unauthorized_author_is_ignored

@@ -16,6 +16,11 @@
 # That combination captured a captain reply and never woke anyone for it. The
 # enqueue is additive, so the watcher's own validated check dispatch still sees
 # and still forwards the same line.
+#
+# A diagnostic line ("x-mode-error ...") is enqueued the same way and for the
+# same reason: a refused token or a missing runtime leaves this script reporting
+# success, so a line that exists only on the LaunchAgent's log file is an ingress
+# that stopped ingesting with nobody told.
 
 set -u
 
@@ -29,8 +34,6 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 
 fm_discord_load_config
 [ -n "${FM_DISCORD_TOKEN:-}" ] || exit 0
-
-command -v node >/dev/null 2>&1 || { printf 'x-mode-error missing node for self-hosted Discord\n'; exit 0; }
 
 export FM_HOME FM_ROOT FM_STATE_OVERRIDE="$STATE"
 export FM_DISCORD_BOT_TOKEN="$FM_DISCORD_TOKEN"
@@ -49,6 +52,23 @@ fi
 # shellcheck source=/dev/null
 FM_ROOT_OVERRIDE="$FM_ROOT" FM_HOME="$FM_HOME" STATE="$STATE" . "$FM_ROOT/bin/fm-wake-lib.sh"
 
+# Enqueue one diagnostic line as a durable wake. Stdout only reaches a session
+# when the WATCHER ran this script; an out-of-band runner (LaunchAgent, cron, an
+# operator) sends it to a log file instead, so a diagnostic that exists only
+# there is invisible. A stable key keeps a repeating failure to one presented
+# wake while it stays queued; the queue's per-key dedupe absorbs the extra rows.
+enqueue_ingress_diagnostic() {
+  fm_wake_append check "discord-ingress-error" "check: $1" \
+    || printf 'fm-discord-poll: could not enqueue an ingress diagnostic\n' >&2
+}
+
+if ! command -v node >/dev/null 2>&1; then
+  diagnostic='x-mode-error missing node for self-hosted Discord'
+  printf '%s\n' "$diagnostic"
+  enqueue_ingress_diagnostic "$diagnostic"
+  exit 0
+fi
+
 OUT_FILE=$(mktemp "${TMPDIR:-/tmp}/fm-discord-poll.XXXXXX") || exit 1
 trap 'rm -f "$OUT_FILE"' EXIT
 node "$SCRIPT_DIR/fm-discord-poll.js" > "$OUT_FILE"
@@ -57,6 +77,7 @@ cat "$OUT_FILE"
 while IFS= read -r line || [ -n "$line" ]; do
   case "$line" in
     'x-mention '*) ;;
+    'x-mode-error '*) enqueue_ingress_diagnostic "$line"; continue ;;
     *) continue ;;
   esac
   request_id=${line#x-mention }
