@@ -44,12 +44,15 @@
 # task's done. Teardown's landed-work test remains the complete discard gate.
 # The block opens with the fixed machine-readable "Delivery contract: mode=<mode>"
 # line that bin/fm-spawn.sh checks a ship brief against; a forge=gerrit block
-# appends " forge=gerrit shape=squash" to that line. The "Ship branch: <branch>"
+# appends " forge=gerrit shape=squash" to that line and a forge=forgejo block
+# appends " forge=forgejo". The "Ship branch: <branch>"
 # line under it is machine-readable the same way: bin/fm-spawn.sh refuses a ship
 # whose spawn-selected branch disagrees with it.
-# forge is none|gerrit and defaults to none; bin/fm-project-mode.sh's header owns
-# what the registry binding means, and this file owns what gerrit changes for a
-# WORKER (docs/gerrit-forge-integration.md is the design). A forge composes with
+# forge is none|gerrit|forgejo and defaults to none; bin/fm-project-mode.sh's
+# header owns what the registry binding means, and this file owns what each
+# forge changes for a WORKER (docs/gerrit-forge-integration.md is the gerrit
+# design). In the Definition of done, forgejo changes only the CLI a direct-PR
+# worker opens its pull request with: tea instead of gh-axi. A forge composes with
 # the two modes that publish and is refused on local-only, which publishes
 # nothing. On gerrit the worker publishes one squashed change with
 # `gerrit-axi publish --squash` instead of opening a pull request: direct-PR does
@@ -152,9 +155,9 @@ EOF
 fm_forge_valid_for_mode() {  # <forge> <mode> <caller>
   local forge=$1 mode=$2 caller=$3
   case "$forge" in
-    none|gerrit) ;;
+    none|gerrit|forgejo) ;;
     *)
-      echo "error: $caller: unknown forge '$forge' (expected none or gerrit)" >&2
+      echo "error: $caller: unknown forge '$forge' (expected none, gerrit, or forgejo)" >&2
       return 1 ;;
   esac
   if [ "$forge" != none ] && [ "$mode" = local-only ]; then
@@ -441,7 +444,11 @@ EOF
 
 fm_dod_block() {  # <mode> <task-id> [branch] [<forge>] [<base>]
   local mode=$1 id=$2 forge=${4:-none} base=${5:-}
-  local branch=${3:-fm/$id} pr_base='' nm_base='' base_q
+  local branch=${3:-fm/$id} pr_base='' nm_base='' base_q contract_forge='' forge_cli=gh-axi draft_check
+  # The fork's new-PR title rule reads the opening year from the PR itself. It is
+  # a gh-axi rule, so it is emitted for every forge but forgejo, whose PR is
+  # opened with tea; the two arms phrase it differently, so each has its own.
+  local pr_retitle_direct='' pr_retitle_nm=''
   # The publish-guard instruction names the checkout that owns
   # bin/fm-publish-guard.sh. Callers normally set FM_ROOT; a caller that sources
   # this library directly (a test, a bare shell) resolves it here instead, so the
@@ -449,6 +456,19 @@ fm_dod_block() {  # <mode> <task-id> [branch] [<forge>] [<base>]
   local root=${FM_ROOT:-${FM_ROOT_OVERRIDE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}}
   fm_forge_valid_for_mode "$forge" "$mode" fm_dod_block || return 1
   fm_base_branch_valid "$base" "$mode" "$forge" fm_dod_block || return 1
+  draft_check="(\`gh-axi pr view <number>\` must print \`draft: no\`, where <number> is the PR number from your PR URL); if it is a draft, mark it ready with \`gh-axi pr ready <number>\`."
+  # shellcheck disable=SC2016 # literal backticks and placeholders in single-quoted prompt text are intentional
+  if [ "$forge" = forgejo ]; then
+    contract_forge=' forge=forgejo'
+    forge_cli=tea
+    draft_check="(\`tea api --repo <owner>/<repo> /repos/{owner}/{repo}/pulls/<number>\` must show \`draft\` as false, where <owner>/<repo> and <number> come from your PR URL); Forgejo marks a draft by a work-in-progress title prefix such as \`WIP:\`, so if it is a draft, remove that prefix with \`tea pulls edit <number> --repo <owner>/<repo> --title '<title without the prefix>'\`."
+  else
+    pr_retitle_direct='Immediately after opening it, use the returned PR URL to get its number, then read that PR'"'"'s own `createdAt` year with `gh-axi pr view <number> --json createdAt` and run `gh-axi pr edit <number> --title "<createdAt year>-<number>: <original title>"`, replacing the placeholders with the PR number, the year the PR was opened, and the title you opened it with. Take the year from the PR itself, never from the current date, so a PR opened in December and edited in January keeps its opening year. Apply this only to the new PR; do not rename existing PRs.
+'
+    pr_retitle_nm='Whenever this flow opens a new PR, immediately use its returned URL to get the PR number, then read that PR'"'"'s own `createdAt` year with `gh-axi pr view <number> --json createdAt` and run `gh-axi pr edit <number> --title "<createdAt year>-<number>: <original title>"`, replacing the placeholders with the PR number, the year the PR was opened, and the title you opened it with. Take the year from the PR itself, never from the current date, so a PR opened in December and edited in January keeps its opening year. Apply this only to the new PR; do not rename existing PRs.
+
+'
+  fi
   if [ -n "$base" ]; then
     printf -v base_q '%q' "$base"
     pr_base=", against the base branch \`$base\` (\`--base $base_q\`), not the repository default"
@@ -506,7 +526,7 @@ EOF
     direct-PR:*)
       cat <<EOF
 # Definition of done
-Delivery contract: mode=direct-PR
+Delivery contract: mode=direct-PR$contract_forge
 Ship branch: $branch
 This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
 The task is complete only when committed on your branch.
@@ -514,9 +534,8 @@ EOF
       fm_publish_guard_instruction "$root"
       fm_pr_target_guard_instruction "$root" check
       cat <<EOF
-After the guard passes, push your branch and open a PR with \`gh-axi\` that is ready for review, not a draft$pr_base.
-Immediately after opening it, use the returned PR URL to get its number, then read that PR's own \`createdAt\` year with \`gh-axi pr view <number> --json createdAt\` and run \`gh-axi pr edit <number> --title "<createdAt year>-<number>: <original title>"\`, replacing the placeholders with the PR number, the year the PR was opened, and the title you opened it with. Take the year from the PR itself, never from the current date, so a PR opened in December and edited in January keeps its opening year. Apply this only to the new PR; do not rename existing PRs.
-Before you report done, read the PR back from the forge and confirm it is not a draft (\`gh-axi pr view <number>\` must print \`draft: no\`, where <number> is the PR number from your PR URL); if it is a draft, mark it ready with \`gh-axi pr ready <number>\`.
+When it is implemented and committed, push your branch and open a PR with \`$forge_cli\` that is ready for review, not a draft$pr_base.
+${pr_retitle_direct}Before you report done, read the PR back from the forge and confirm it is not a draft $draft_check
 A draft cannot be merged, so a done report on one leaves the merge unasked.
 Then append \`done [at=<epoch>]: PR {url}\` to the status file and stop.
 That \`done:\` is accepted only when this copy's HEAD - your latest commit - is pushed to your PR branch; the check tests that commit, not merely that a branch moved.
@@ -540,7 +559,7 @@ EOF
     no-mistakes:*)
       cat <<EOF
 # Definition of done
-Delivery contract: mode=no-mistakes
+Delivery contract: mode=no-mistakes$contract_forge
 Ship branch: $branch
 EOF
       fm_publish_guard_instruction "$root"
@@ -555,9 +574,7 @@ EOF
 
 During the test stage, when \`herdr\` is absent from \`PATH\` and this repository's \`.github/workflows/ci.yml\` defines a \`Behavior tests (Herdr)\` lane, record that Herdr live validation is unavailable locally and covered by that CI lane. Continue with the remaining validation without asking firstmate or the captain solely because Herdr is unavailable, and do not claim local Herdr validation passed.
 
-Whenever this flow opens a new PR, immediately use its returned URL to get the PR number, then read that PR's own \`createdAt\` year with \`gh-axi pr view <number> --json createdAt\` and run \`gh-axi pr edit <number> --title "<createdAt year>-<number>: <original title>"\`, replacing the placeholders with the PR number, the year the PR was opened, and the title you opened it with. Take the year from the PR itself, never from the current date, so a PR opened in December and edited in January keeps its opening year. Apply this only to the new PR; do not rename existing PRs.
-
-After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), read the PR back from the forge and confirm it is not a draft (\`gh-axi pr view <number>\` must print \`draft: no\`, where <number> is the PR number from your PR URL); if it is a draft, mark it ready with \`gh-axi pr ready <number>\`.
+${pr_retitle_nm}After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), read the PR back from the forge and confirm it is not a draft $draft_check
 A draft cannot be merged, so a done report on one leaves the merge unasked.
 Then append \`done [at=<epoch>]: PR {url} checks green\` and stop. You are finished.
 That CI-ready \`done:\` is accepted only when this copy's HEAD - your latest commit - is one the /no-mistakes run pushed, so commit nothing after the run; the check tests that commit, not merely that a branch moved.
