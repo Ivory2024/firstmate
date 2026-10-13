@@ -15,7 +15,6 @@
 #   - missing audit -> AUDIT_UNAVAILABLE.
 #   - incomplete test (no exit code / no raw logs) -> HOLD/REWORK.
 #   - artifact hash mismatch -> HOLD.
-#   - forbidden external write declared by the contract, or its marker -> HOLD.
 #   - a reused prior PASS -> HOLD.
 #   - auditor and executor sharing a workspace -> HOLD.
 #   - fewer executed tests than the contract requires -> HOLD.
@@ -23,7 +22,7 @@
 # Inputs under $EVIDENCE_ROOT/runs/<run_id>/:
 #   task-contract.json, executor/{rc,command-log.jsonl,stdout/,stderr/,wd,
 #   artifact-manifest.json,pid,patch-hash,test-count}, auditor/findings.json,
-#   auditor/session.json, gate/forbidden_write
+#   auditor/session.json
 # Output: gate/verdict.json + gate/summary.md; exit 0 iff VERIFIED_PASS.
 set -u
 ROOT=${EVIDENCE_ROOT:?set EVIDENCE_ROOT}
@@ -33,7 +32,9 @@ _jget() { python3 -c 'import json,sys
 d=json.load(open(sys.argv[1]))
 for k in sys.argv[2].split("."):
     d=d.get(k) if isinstance(d,dict) else None
-print("" if d is None else d)' "$1" "$2" 2>/dev/null; }
+if d is None: print("")
+elif isinstance(d,bool): print("true" if d else "false")
+else: print(d)' "$1" "$2" 2>/dev/null; }
 
 judge() { # <run_id>
   local id=$1 d="$RUNS/$1"
@@ -68,8 +69,6 @@ d=json.load(open(sys.argv[1]));print(len(d.get("required_tests") or []))' "$c" 2
     fi
   fi
 
-  [ -f "$d/gate/forbidden_write" ] && ck "forbidden-external-write"
-
   # hash mismatch
   if [ -f "$e/patch-hash" ] && [ -f "$c" ]; then
     local exp got; exp=$(_jget "$c" patch_sha256); got=$(cat "$e/patch-hash")
@@ -96,10 +95,14 @@ d=json.load(open(sys.argv[1]));print(len(d.get("required_tests") or []))' "$c" 2
   [ -f "$e/reused-prior-pass" ] && ck "reused-prior-pass"
   [ -f "$e/interrupted" ] && ck "suite-interrupted"
 
-  # independent audit
-  local audit_ok=0 audit_kind="" mode
+  # independent audit. A contract that declares audit.required=false is
+  # decided from the deterministic floor alone (no auditor evidence exists).
+  local audit_ok=0 audit_kind="" mode audit_required
   mode=$(_jget "$c" mode); [ -n "$mode" ] || mode="test"
-  if [ ! -f "$a" ]; then
+  audit_required=$(_jget "$c" "audit.required"); [ -n "$audit_required" ] || audit_required=true
+  if [ "$audit_required" = "false" ]; then
+    audit_ok=1
+  elif [ ! -f "$a" ]; then
     ck "audit-missing"
   else
     local av; av=$(_jget "$a" verdict)

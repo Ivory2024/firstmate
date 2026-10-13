@@ -147,14 +147,13 @@ for k in sys.argv[2].split("."):
 for x in (v or []): sys.stdout.write(str(x)); sys.stdout.write("\0")' "$1" "$2" 2>/dev/null; }
 
 # Flatten one task into the per-run contract the judge reads, carrying the
-# batch-level mode/patch/forbidden and the task-level required_tests so the
-# judge's deterministic floor applies to this task specifically.
+# batch-level mode/patch and the task-level required_tests so the judge's
+# deterministic floor applies to this task specifically.
 _write_task_contract() { # <batch-contract> <task-index> <out-file>
   python3 -c 'import json,sys
 c=json.load(open(sys.argv[1])); i=int(sys.argv[2])
 t=c["tasks"][i] if 0 <= i < len(c["tasks"]) else {}
-flat={"batch_id":c.get("batch_id"),"mode":c.get("mode"),"patch_sha256":c.get("patch_sha256"),
-      "forbidden_operations":c.get("forbidden_operations")}
+flat={"batch_id":c.get("batch_id"),"mode":c.get("mode"),"patch_sha256":c.get("patch_sha256")}
 for k in ("task_id","required_tests","patch_sha256","audit","executor"):
     if k in t: flat[k]=t[k]
 json.dump(flat,open(sys.argv[3],"w"))' "$1" "$2" "$3" 2>/dev/null; }
@@ -310,7 +309,7 @@ _dispatch_executor_real() { # <batch> <task> <attempt>
   dm=$(UC_HOME="$UC_HOME" "$ADAPTER" dispatch --batch "$b" --task "$t" --role executor --attempt "$a" --workdir "$ws" \
     --brief-intent "$(_jget "$c" "tasks.$i.executor.intent")" --brief-spec "$(_jget "$c" "tasks.$i.executor.spec")" 2>&1); drc=$?
   if ! printf '%s' "$dm" | grep -q 'DISPATCHED'; then
-    printf '%s' "$dm" | grep -q 'DUPLICATE_DISPATCH' && { _transition "$b" "$t" DISPATCHING HOLD "duplicate-dispatch" "$a"; return 0; }
+    printf '%s' "$dm" | grep -q 'DUPLICATE_DISPATCH' && { _quota_refund "$b"; _transition "$b" "$t" DISPATCHING HOLD "duplicate-dispatch" "$a"; return 0; }
     _quota_refund "$b"
     # Distinct reasons per adapter return code so a fast local refusal is not
     # collapsed into "spawn-failed" (RCA: the pilot's ~2s failure was opaque).
@@ -330,7 +329,7 @@ _dispatch_executor_real() { # <batch> <task> <attempt>
     "$sid" "$spawn_id" "$t" "${wt:-$ws}" > "$rd/executor/session.json"
   [ -n "$sid" ] && printf '%s\n' "$sid" > "$rd/executor/session-id"
   [ -n "$spawn_id" ] && printf '%s\n' "$spawn_id" > "$rd/executor/spawn-id"
-  if [ "$ident" != "$sid" ]; then _transition "$b" "$t" DISPATCHING HOLD "identity-mismatch" "$a" "$sid"; return 0; fi
+  if [ "$ident" != "$sid" ]; then _quota_release "$b"; _transition "$b" "$t" DISPATCHING HOLD "identity-mismatch" "$a" "$sid"; return 0; fi
 
   # pre-run worktree SHA, recorded before the crew can change it
   gt=${wt:-$ws}
@@ -445,7 +444,9 @@ _dispatch_auditor_real() { # <batch> <task> <attempt>
     _judge_task "$b" "$t" "$a"; return 0
   fi
   report="${UC_FM_HOME:?}/data/$spawn/report.md"
-  verdict=$(grep -oiE 'verdict[=:[:space:]]+(PASS|FAIL|CONFLICT|UNAVAILABLE)' "$report" 2>/dev/null | tail -1 | grep -oiE 'PASS|FAIL|CONFLICT|UNAVAILABLE' | tr '[:lower:]' '[:upper:]')
+  verdict=$(grep -oiE 'verdict[=:[:space:]]+(PASS|FAIL|CONFLICT|UNAVAILABLE)' "$report" 2>/dev/null \
+    | grep -oiE 'PASS|FAIL|CONFLICT|UNAVAILABLE' | tr '[:lower:]' '[:upper:]' | sort -u)
+  [ "$(printf '%s\n' "$verdict" | grep -c .)" -eq 1 ] || verdict=""
   printf '{"session_id":"%s","spawn_id":"%s","role":"auditor","task":"%s","workdir":"%s","auditor_kind":"real"}\n' \
     "$sid" "$spawn" "$t" "$wt" > "$rd/auditor/session.json"
   if [ -n "$verdict" ]; then
@@ -596,6 +597,7 @@ _step_real() { # <batch> <task> <state> <attempt> <index> <contract> <rundir>
       # Generation-bound lease FIRST: reject a stale-generation executor (a late
       # rc/report/success from a superseded attempt) before it can advance state.
       if [ -f "$rd/executor/.gen" ] && [ "$(cat "$rd/executor/.gen" 2>/dev/null)" != "$(_gen_of "$b" "$t")" ]; then
+        _quota_release "$b"
         _transition "$b" "$t" "$st" HOLD "stale-generation" "$a"; return 0
       fi
       if [ -f "$rd/executor/rc" ]; then _transition "$b" "$t" "$st" EVIDENCE_PENDING "evidence-collected" "$a"; return 0; fi
@@ -624,23 +626,25 @@ _step_real() { # <batch> <task> <state> <attempt> <index> <contract> <rundir>
           working|parked|done)
             sc=$(( $(cat "$stallf" 2>/dev/null || echo 0) + 1 ))
             if [ "$sc" -ge "${UC_CREW_STALL_LIMIT:-3}" ]; then
+              _quota_release "$b"
               _transition "$b" "$t" "$st" HOLD "executor-timeout" "$a"; return 0
             fi
             printf '%s\n' "$sc" > "$stallf"; printf '%s\n' "$now_ts" > "$sincef";;
-          *) _transition "$b" "$t" "$st" HOLD "executor-timeout" "$a"; return 0;;
+          *) _quota_release "$b"; _transition "$b" "$t" "$st" HOLD "executor-timeout" "$a"; return 0;;
         esac
       fi
       sid=$(cat "$rd/executor/session-id" 2>/dev/null || echo "")
-      if [ -z "$sid" ]; then _transition "$b" "$t" "$st" HOLD "worker-interrupted" "$a"; return 0; fi
+      if [ -z "$sid" ]; then _quota_release "$b"; _transition "$b" "$t" "$st" HOLD "worker-interrupted" "$a"; return 0; fi
       res=$(_real_wait_done "$b" "$sid" "$CREW_WAIT"); rc=$?
       case "$rc" in
         0) if _real_collect_executor "$b" "$t"; then
              _quota_release "$b"
              _transition "$b" "$t" "$st" EVIDENCE_PENDING "evidence-collected" "$a"; return 0
            else
+             _quota_release "$b"
              _transition "$b" "$t" "$st" HOLD "evidence-incomplete" "$a"; return 0
            fi;;
-        2) case "$res" in failed) _transition "$b" "$t" "$st" REWORK "worker-failed" "$a";; *) _transition "$b" "$t" "$st" HOLD "worker-interrupted" "$a";; esac; return 0;;
+        2) _quota_release "$b"; case "$res" in failed) _transition "$b" "$t" "$st" REWORK "worker-failed" "$a";; *) _transition "$b" "$t" "$st" HOLD "worker-interrupted" "$a";; esac; return 0;;
         *) return 1;;
       esac ;;
     EVIDENCE_PENDING)

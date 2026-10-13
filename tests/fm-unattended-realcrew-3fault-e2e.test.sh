@@ -71,7 +71,6 @@ HOME_DIR="$LAB/home"
 UC_HOME="$LAB/uc"
 GOOD_PROJ="$LAB/proj-good"
 BAD_PROJ="$LAB/proj-bad"
-SESSION="fm-realcrew-e2e"
 
 cleanup() {
   env -u TMUX TMUX_TMPDIR="$TMUXDIR" tmux kill-server >/dev/null 2>&1 || true
@@ -124,7 +123,7 @@ make_project "$BAD_PROJ" none
 uc() { # <proj> <exec-id> <coordinator args...>
   local p=$1 xid=$2
   shift 2
-  env -u TMUX TMUX_TMPDIR="$TMUXDIR" FM_TMUX_SESSION="$SESSION" \
+  env -u TMUX TMUX_TMPDIR="$TMUXDIR" \
     UC_HOME="$UC_HOME" UC_IMPL_DIR="$IMPL" UC_ENTRYPOINT_ROLE=captain \
     UC_CONFIG_FILE="$HOME_DIR/config/unattended-crew.json" \
     FM_HOME="$HOME_DIR" UC_FM_HOME="$HOME_DIR" UC_REAL_PROJECT="$p" \
@@ -139,12 +138,12 @@ uc() { # <proj> <exec-id> <coordinator args...>
 state_of() { sed -n 's/^new=//p' "$UC_HOME/batches/$1/tasks/t1.state" 2>/dev/null; }
 reasons() { sed -n "s/.*task_id=$2 .*new=\([A-Z_]*\) reason=\([^ ]*\).*/\1:\2/p" "$UC_HOME/batches/$1/state.jsonl" 2>/dev/null | tr '\n' ' '; }
 dispatches() { grep -c 'new=DISPATCHING' "$UC_HOME/batches/$1/state.jsonl" 2>/dev/null || echo 0; }
-crew_windows() { env -u TMUX TMUX_TMPDIR="$TMUXDIR" tmux list-windows -t "$SESSION" -F '#{window_name}' 2>/dev/null | grep -c '^fm-' || true; }
+crew_windows() { env -u TMUX TMUX_TMPDIR="$TMUXDIR" tmux list-windows -a -F '#{window_name}' 2>/dev/null | grep -c '^fm-' || true; }
 held() { [ -f "$UC_HOME/batches/$1/.batch-held" ]; }
 kill_crew_windows() {
-  local w
-  for w in $(env -u TMUX TMUX_TMPDIR="$TMUXDIR" tmux list-windows -t "$SESSION" -F '#{window_name}' 2>/dev/null | grep '^fm-' || true); do
-    env -u TMUX TMUX_TMPDIR="$TMUXDIR" tmux kill-window -t "$SESSION:$w" >/dev/null 2>&1 || true
+  local tgt
+  for tgt in $(env -u TMUX TMUX_TMPDIR="$TMUXDIR" tmux list-windows -a -F '#{session_name}:#{window_name}' 2>/dev/null | grep -E ':fm-' || true); do
+    env -u TMUX TMUX_TMPDIR="$TMUXDIR" tmux kill-window -t "$tgt" >/dev/null 2>&1 || true
   done
 }
 

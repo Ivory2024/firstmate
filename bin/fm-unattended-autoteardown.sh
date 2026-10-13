@@ -44,13 +44,23 @@ _captain_calls() { # <batch-dir> <task> -> open captain calls
   if [ -f "$f" ]; then cat "$f"; else echo 0; fi
 }
 
+# The evidence root is durable and configurable: the coordinator records the
+# resolved per-batch dir (the one containing runs/) in batch.meta. Fall back to
+# the compatibility default only when no non-default root was recorded.
+_evidence_root() { # <batch-dir>
+  local bd=$1 er
+  er=$(sed -n 's/^evidence_root=//p' "$bd/batch.meta" 2>/dev/null | tail -1)
+  if [ -n "$er" ]; then printf '%s\n' "$er"; else printf '%s/evidence\n' "$bd"; fi
+}
+
 check_one() { # <batch-dir> <task> <home>
   local bd=$1 t=$2 home=$3
   local st; st=$(sed -n 's/^new=//p' "$bd/tasks/$t.state" 2>/dev/null | tail -1)
   [ "$st" = VERIFIED_PASS ] || { echo "REFUSE task=$t reason=not-terminal($st)"; return 3; }
 
   # C4 evidence persisted and re-readable
-  local ev="$bd/evidence/runs/$t" rc
+  local ev rc
+  ev="$(_evidence_root "$bd")/runs/$t"
   rc=$(cat "$ev/executor/rc" 2>/dev/null || echo "")
   [ -n "$rc" ] && [ "$rc" = 0 ] || { echo "REFUSE task=$t reason=evidence-missing"; return 3; }
   [ -f "$ev/executor/artifact-manifest.json" ] || { echo "REFUSE task=$t reason=evidence-manifest-missing"; return 3; }
