@@ -163,6 +163,7 @@ run_spawn() {
     FM_FAKE_OPENCODE_MODELS="${FM_TEST_OPENCODE_MODELS:-}" \
     FM_FAKE_OPENCODE_MODELS_STATUS="${FM_TEST_OPENCODE_MODELS_STATUS:-0}" \
     FM_FAKE_OPENCODE_MODELS_ARGS="${FM_TEST_OPENCODE_MODELS_ARGS:-}" \
+    FM_OPENCODE_PAID_MODELS="${FM_TEST_OPENCODE_PAID_MODELS:-}" \
     FM_FAKE_MODELS_DEV_JSON="${FM_TEST_MODELS_DEV_JSON:-}" \
     FM_FAKE_MODELS_DEV_STATUS="${FM_TEST_MODELS_DEV_STATUS:-0}" \
     GROK_HOME="$home/grok-home" \
@@ -1184,6 +1185,195 @@ test_opencode_dispatch_warns_on_expiring_health_entry() {
   [ -e "$HOME_DIR/state/$id.meta" ] || fail "expiring health entry blocked spawn"
   [ -s "$LAUNCH_LOG" ] || fail "expiring health entry did not launch an agent"
   pass "OpenCode warns but dispatches when a free-model catalog entry is expiring"
+}
+
+# The captain-approved paid-id allowlist (bin/fm-spawn.sh header). The config
+# file lives beside the home's other config and holds one exact id per line.
+# A directory at that path is the portable stand-in for an unreadable file.
+write_opencode_paid_allowlist_file() {  # <home> <content>
+  printf '%b' "$2" > "$1/config/opencode-paid-models"
+}
+
+paid_opencode_models_dev_json() {
+  printf '%s\n' '{"opencode-go":{"models":{"paid-candidate":{"cost":{"input":0.15,"output":0.6}}}}}'
+}
+
+test_opencode_allowlisted_paid_model_dispatches_from_environment() {
+  local rec id out status
+  id=profile-opencode-paid-env-z8a
+  rec=$(make_spawn_case profile-opencode-paid-env opencode "$id")
+  read_case_record "$rec"
+
+  out=$(FM_TEST_OPENCODE_MODELS='opencode-go/paid-candidate' \
+    FM_TEST_MODELS_DEV_JSON="$(paid_opencode_models_dev_json)" \
+    FM_TEST_OPENCODE_PAID_MODELS='opencode-go/paid-candidate' \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+      --model opencode-go/paid-candidate)
+  status=$?
+  expect_code 0 "$status" "an allowlisted paid OpenCode model must dispatch: $out"
+  assert_not_contains "$out" "is not classified as free by models.dev" \
+    "the allowlist did not relax the zero-cost pricing gate"
+  assert_contains "$out" "not tracked by the opencode free-model health catalog" \
+    "an allowlisted paid model absent from the free-model catalog must warn rather than refuse"
+  assert_meta_profile "$HOME_DIR/state/$id.meta" opencode opencode-go/paid-candidate default
+  [ -s "$LAUNCH_LOG" ] || fail "an allowlisted paid OpenCode model launched no agent"
+  pass "an allowlisted paid OpenCode model dispatches from FM_OPENCODE_PAID_MODELS"
+}
+
+test_opencode_allowlisted_paid_model_dispatches_from_config_file() {
+  local rec id out status
+  id=profile-opencode-paid-file-z8b
+  rec=$(make_spawn_case profile-opencode-paid-file opencode "$id")
+  read_case_record "$rec"
+  write_opencode_paid_allowlist_file "$HOME_DIR" \
+    '# captain-approved paid ids\n\n  opencode-go/paid-candidate\t\r\nopencode-go/other-paid\n'
+
+  out=$(FM_TEST_OPENCODE_MODELS='opencode-go/paid-candidate' \
+    FM_TEST_MODELS_DEV_JSON="$(paid_opencode_models_dev_json)" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+      --model opencode-go/paid-candidate)
+  status=$?
+  expect_code 0 "$status" "config/opencode-paid-models must allow its listed paid id: $out"
+  assert_meta_profile "$HOME_DIR/state/$id.meta" opencode opencode-go/paid-candidate default
+  [ -s "$LAUNCH_LOG" ] || fail "config-file allowlisted paid model launched no agent"
+  pass "config/opencode-paid-models allows its exact id, ignoring comments, blanks, and padding"
+}
+
+test_opencode_paid_model_outside_the_allowlist_still_refuses() {
+  local rec id out status
+  id=profile-opencode-paid-unlisted-z8c
+  rec=$(make_spawn_case profile-opencode-paid-unlisted opencode "$id")
+  read_case_record "$rec"
+
+  out=$(FM_TEST_OPENCODE_MODELS='opencode-go/paid-candidate' \
+    FM_TEST_MODELS_DEV_JSON="$(paid_opencode_models_dev_json)" \
+    FM_TEST_OPENCODE_PAID_MODELS='opencode-go/some-other-paid' \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+      --model opencode-go/paid-candidate)
+  status=$?
+  expect_code 1 "$status" "a paid model outside the allowlist must still refuse"
+  assert_contains "$out" "is not classified as free by models.dev" \
+    "unlisted paid model refusal lost its pricing classification message"
+  assert_contains "$out" "add its exact id to FM_OPENCODE_PAID_MODELS or config/opencode-paid-models" \
+    "refusal must name both allowlist entry points"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "unlisted paid model published metadata"
+  [ ! -s "$LAUNCH_LOG" ] || fail "unlisted paid model launched an agent"
+  pass "a paid OpenCode model missing from the allowlist keeps the original refusal"
+}
+
+test_opencode_paid_allowlist_matches_exact_ids_only() {
+  local spelling rec id out status
+  for spelling in 'opencode-go/paid-candidate-extra' 'opencode-go/paid' 'opencode-go/paid-*'; do
+    id="profile-opencode-paid-exact-$(printf '%s' "$spelling" | tr -c 'a-z0-9' '-')"
+    rec=$(make_spawn_case "opencode-paid-exact-$id" opencode "$id")
+    read_case_record "$rec"
+
+    out=$(FM_TEST_OPENCODE_MODELS='opencode-go/paid-candidate' \
+      FM_TEST_MODELS_DEV_JSON="$(paid_opencode_models_dev_json)" \
+      FM_TEST_OPENCODE_PAID_MODELS="$spelling" \
+      run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+        --model opencode-go/paid-candidate)
+    status=$?
+    expect_code 1 "$status" "allowlist entry '$spelling' must not match opencode-go/paid-candidate"
+    [ ! -s "$LAUNCH_LOG" ] || fail "allowlist entry '$spelling' launched an agent"
+  done
+  pass "the paid allowlist matches a whole id only, never a prefix, suffix, or wildcard"
+}
+
+test_opencode_paid_allowlist_does_not_exempt_pricing_metadata_failure() {
+  local rec id out status
+  id=profile-opencode-paid-meta-z8e
+  rec=$(make_spawn_case profile-opencode-paid-meta opencode "$id")
+  read_case_record "$rec"
+
+  out=$(FM_TEST_OPENCODE_MODELS='opencode-go/paid-candidate' \
+    FM_TEST_MODELS_DEV_STATUS=1 \
+    FM_TEST_OPENCODE_PAID_MODELS='opencode-go/paid-candidate' \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+      --model opencode-go/paid-candidate)
+  status=$?
+  expect_code 1 "$status" "the allowlist must not exempt an unreadable models.dev response"
+  assert_contains "$out" "could not verify OpenCode model 'opencode-go/paid-candidate' free pricing metadata" \
+    "allowlisted paid model skipped the models.dev fetch-failure refusal"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "failed pricing metadata published metadata"
+  [ ! -s "$LAUNCH_LOG" ] || fail "failed pricing metadata launched an agent"
+  pass "an allowlisted paid model still refuses when models.dev cannot be read"
+}
+
+test_opencode_paid_allowlist_keeps_health_checks_for_tracked_entries() {
+  local rec id out status
+  id=profile-opencode-paid-health-z8f
+  rec=$(make_spawn_case profile-opencode-paid-health opencode "$id")
+  read_case_record "$rec"
+  write_opencode_health_catalog "$HOME_DIR" \
+    '{"models":[{"id":"opencode-free/paid-candidate","status":"retired","early_termination_detected":false,"is_expiring_soon":false}]}'
+
+  out=$(FM_TEST_OPENCODE_MODELS='opencode-go/paid-candidate' \
+    FM_TEST_MODELS_DEV_JSON="$(paid_opencode_models_dev_json)" \
+    FM_TEST_OPENCODE_PAID_MODELS='opencode-go/paid-candidate' \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+      --model opencode-go/paid-candidate)
+  status=$?
+  expect_code 1 "$status" "an allowlisted paid model with a tracked unhealthy entry must refuse"
+  assert_contains "$out" "flagged unhealthy in the free-model health catalog" \
+    "allowlisted paid model skipped the tracked-entry health check"
+  assert_contains "$out" "status=retired" "tracked-entry refusal did not report the catalog status"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "unhealthy allowlisted paid model published metadata"
+  [ ! -s "$LAUNCH_LOG" ] || fail "unhealthy allowlisted paid model launched an agent"
+  pass "a tracked health entry is still enforced for an allowlisted paid model"
+}
+
+test_opencode_paid_allowlist_absent_or_unreadable_keeps_the_free_only_gate() {
+  local rec id out status
+  id=profile-opencode-paid-absent-z8g
+  rec=$(make_spawn_case profile-opencode-paid-absent opencode "$id")
+  read_case_record "$rec"
+
+  out=$(FM_TEST_OPENCODE_MODELS='opencode-go/paid-candidate' \
+    FM_TEST_MODELS_DEV_JSON="$(paid_opencode_models_dev_json)" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+      --model opencode-go/paid-candidate)
+  status=$?
+  expect_code 1 "$status" "with no allowlist source a paid model must still refuse"
+  assert_contains "$out" "is not classified as free by models.dev" \
+    "the absent-allowlist default lost the free-only pricing refusal"
+  [ ! -s "$LAUNCH_LOG" ] || fail "absent allowlist launched a paid agent"
+
+  id=profile-opencode-paid-dir-z8h
+  rec=$(make_spawn_case profile-opencode-paid-dir opencode "$id")
+  read_case_record "$rec"
+  mkdir -p "$HOME_DIR/config/opencode-paid-models"
+
+  out=$(FM_TEST_OPENCODE_MODELS='opencode-go/paid-candidate' \
+    FM_TEST_MODELS_DEV_JSON="$(paid_opencode_models_dev_json)" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+      --model opencode-go/paid-candidate)
+  status=$?
+  expect_code 1 "$status" "an unreadable allowlist path must not allow a paid model"
+  assert_contains "$out" "is not classified as free by models.dev" \
+    "the unreadable-allowlist default lost the free-only pricing refusal"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "unreadable allowlist published metadata"
+  [ ! -s "$LAUNCH_LOG" ] || fail "unreadable allowlist launched a paid agent"
+  pass "an absent or unreadable allowlist leaves the free-only gate unchanged"
+}
+
+test_opencode_free_model_dispatch_is_unchanged_by_a_present_allowlist() {
+  local rec id out status
+  id=profile-opencode-free-allowlist-z8i
+  rec=$(make_spawn_case profile-opencode-free-allowlist opencode "$id")
+  read_case_record "$rec"
+
+  out=$(FM_TEST_OPENCODE_MODELS='opencode-go/space-bunny-free' \
+    FM_TEST_OPENCODE_PAID_MODELS='opencode-go/paid-candidate' \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+      --model opencode-go/space-bunny-free)
+  status=$?
+  expect_code 0 "$status" "a free model must dispatch with an allowlist present: $out"
+  assert_not_contains "$out" "not tracked by the opencode free-model health catalog" \
+    "a free model with a catalog entry must not take the allowlist skip path"
+  assert_meta_profile "$HOME_DIR/state/$id.meta" opencode opencode-go/space-bunny-free default
+  [ -s "$LAUNCH_LOG" ] || fail "free model with an allowlist present launched no agent"
+  pass "the allowlist never changes dispatch for a free model"
 }
 
 test_non_opencode_model_dispatch_does_not_require_health_catalog() {
@@ -2725,6 +2915,14 @@ test_opencode_refuses_inactive_health_entry
 test_opencode_dispatch_refuses_untracked_health_catalog_model
 test_opencode_dispatch_resolves_dispatch_identity_to_canonical_catalog_identity
 test_opencode_dispatch_warns_on_expiring_health_entry
+test_opencode_allowlisted_paid_model_dispatches_from_environment
+test_opencode_allowlisted_paid_model_dispatches_from_config_file
+test_opencode_paid_model_outside_the_allowlist_still_refuses
+test_opencode_paid_allowlist_matches_exact_ids_only
+test_opencode_paid_allowlist_does_not_exempt_pricing_metadata_failure
+test_opencode_paid_allowlist_keeps_health_checks_for_tracked_entries
+test_opencode_paid_allowlist_absent_or_unreadable_keeps_the_free_only_gate
+test_opencode_free_model_dispatch_is_unchanged_by_a_present_allowlist
 test_non_opencode_model_dispatch_does_not_require_health_catalog
 test_opencode_dispatch_warns_on_stale_health_catalog_scan
 test_opencode_dispatch_silent_on_fresh_health_catalog_scan
