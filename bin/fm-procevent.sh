@@ -889,12 +889,35 @@ EOF
       esac
     fi
     unset FM_PROCEVENT_CAPTURE_SOURCE_LOCK_HELD
-    if fm_wake_append check "procevent:$id:$seq" "check: $line"; then
+    # One durable row per captured generation, however many reconcile cycles run
+    # before the supervisor handles it. The queued row is already the durable
+    # announcement - bin/fm-watch.sh's header owns "reported once per captured
+    # generation, never again while that record stays queued and never once it is
+    # acknowledged" - so a second append adds no announcement, only another queue
+    # row and another pending recovery episode, which makes the next watcher
+    # announce that generation again and exit before it can poll.
+    # Reported as published either way, because in both cases the wake is
+    # durably published; a consumed row disappears from this key view, so a
+    # still-unhandled result is queued again on a later cycle.
+    # The read is the queue's own append-locked view (bin/fm-wake-lib.sh
+    # fm_wake_queued_keys), the same key check bin/fm-inactive-reconcile.sh's
+    # publish_actionable uses.
+    if procevent_result_already_queued "$id" "$seq" \
+      || fm_wake_append check "procevent:$id:$seq" "check: $line"; then
       status=0
     fi
   fi
   fm_procevent_source_lock_release "$id"
   return "$status"
+}
+
+# procevent_result_already_queued <id> <seq>: true while this captured
+# generation's check row is still queued and unacknowledged.
+procevent_result_already_queued() {
+  local id=$1 seq=$2 key queued
+  key="procevent:$id:$seq"
+  queued=$(fm_wake_queued_keys check 2>/dev/null || true)
+  printf '%s\n' "$queued" | grep -Fx -- "$key" >/dev/null 2>&1
 }
 
 publish_pending() {  # [result-file-to-skip]

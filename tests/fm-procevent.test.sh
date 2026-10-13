@@ -384,6 +384,16 @@ out=$(pe "$H2" reconcile)
 assert_contains "$out" "published=1" "an unhandled result is re-announced on every reconcile, not only the first"
 assert_contains "$(wake_payloads "$H2")" "procevent lavish src-cut 7" "the repeat wake preserves its deduplication identity"
 [ "$(count_results "$H2" src-cut)" = 1 ] || fail "repeat re-announcement created a second durable copy"
+# While its row is still queued and unacknowledged, the row IS the durable
+# announcement: a second reconcile reports it as published and appends nothing.
+# Measured live, one unhandled result accumulated 16 identical rows and
+# republished the recovery marker as pending on every cycle, which drove the
+# watcher to exit on each recovery resurface instead of supervising.
+queued_before=$(wake_payloads "$H2" | wc -l | tr -d ' ')
+out=$(pe "$H2" reconcile)
+assert_contains "$out" "published=1" "a still-queued result stays durably published"
+[ "$(wake_payloads "$H2" | wc -l | tr -d ' ')" = "$queued_before" ] \
+  || fail "reconciliation duplicated a wake row that was still queued and unacknowledged"
 mv "$H2/state/.wake-queue" "$H2/state/.wake-queue.drained-2"
 
 ack_out=$(pe "$H2" handled src-cut 7)
