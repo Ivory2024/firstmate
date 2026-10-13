@@ -40,6 +40,14 @@
 # `stale` means the response was served from a snapshot older than the TTL
 # because a refresh was already running; `error` means the last refresh failed
 # and the served lanes are the last good ones (never presented as current).
+#
+# Queue board. `/board` adds the three things the backlog markdown alone cannot
+# answer: what is queued, what is held for the captain, and what is blocked
+# waiting on another task. `fm-tasks-axi.sh list` owns those answers, but each
+# call spawns the CLI, so the triple read goes through its own TTL cache with
+# the same freshness contract as the lanes, reported in X-Queue-* headers.
+# The board is READ-ONLY: it lists what the queue already says and never
+# transitions, adds, or holds a task.
 import glob, http.server, json, os, re, socketserver, subprocess, threading, time
 from pathlib import Path
 
@@ -94,6 +102,152 @@ def backlog_tasks():
     except OSError:
         pass
     return out
+
+
+# --- backlog queue board ----------------------------------------------------
+#
+# The queue read is one `fm-tasks-axi.sh list` per section. Its output is TOON:
+# a `count: N[ of M total]` line, then `tasks[N]{field,field,...}:`, then one
+# indented line per row. A value that would be ambiguous is double-quoted, and
+# the CLI writes a truncated value as an inline `\n...` marker on the same
+# line, so one row is always one line.
+_TASKS_HEADER = re.compile(r"^tasks\[(\d+)\]\{([^}]*)\}:\s*$")
+_LIST_COUNT = re.compile(r"^count:\s*(\d+)(?:\s+of\s+(\d+)\s+total)?\s*$")
+
+
+def _toon_fields(body):
+    """One TOON row's values, honoring double-quoted fields and \\" escapes."""
+    fields, buf, quoted, i = [], [], False, 0
+    while i < len(body):
+        ch = body[i]
+        if quoted:
+            if ch == "\\" and body[i + 1:i + 2] == '"':
+                buf.append('"')
+                i += 2
+                continue
+            if ch == '"':
+                quoted = False
+            else:
+                buf.append(ch)
+        elif ch == '"':
+            quoted = True
+        elif ch == ",":
+            fields.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+        i += 1
+    fields.append("".join(buf))
+    return fields
+
+
+def parse_task_list(text):
+    """(rows, total) from one `tasks-axi list` TOON body.
+
+    `rows` are dicts keyed by the header's own field names, in the order the CLI
+    printed them. `total` is the CLI's own match count when it reports
+    "count: N of M total" (its row cap can hide the rest), else the row count.
+    """
+    rows, total, fields, want = [], None, [], 0
+    for line in (text or "").splitlines():
+        m = _LIST_COUNT.match(line)
+        if m:
+            total = int(m.group(2) or m.group(1))
+            continue
+        header = _TASKS_HEADER.match(line)
+        if header:
+            want = int(header.group(1))
+            fields = [f.strip() for f in header.group(2).split(",") if f.strip()]
+            continue
+        if not fields or len(rows) >= want or not line.startswith("  ") or not line.strip():
+            continue
+        vals = _toon_fields(line[2:])
+        vals += [""] * (len(fields) - len(vals))
+        rows.append(dict(zip(fields, vals)))
+    return rows, (total if total is not None else len(rows))
+
+
+# Seconds a backlog read stays fresh. Each refresh spawns three CLI processes,
+# so the page's own 5s poll must not be what triggers them: at this TTL at most
+# one refresh happens per interval, or per interval plus one refresh's duration,
+# since the TTL is measured from the last finished read.
+QUEUE_TTL = 15.0
+QUEUE_LIMIT = 100   # rows read per section; this panel's own cap, not the CLI's
+QUEUE_SHOWN = 30    # rows rendered per section; the rest is reported as a count
+
+# The CLI appends this trailer to a value too long for its row, as one inline
+# `\n...` run rather than a real newline. A glance panel shows the value's own
+# prefix and a cut mark instead of that sentence, and `show <id>` still has the
+# complete text.
+_TRUNCATED = re.compile(r"\\n\.\.\. \(truncated, \d+ chars total[^)]*\)\s*$")
+
+
+def _clean(value):
+    """One field's display value: the CLI's truncation trailer becomes a cut mark."""
+    return _TRUNCATED.sub("\u2026", value or "").strip()
+
+
+_QUEUE_LOCK = threading.Condition()
+_QUEUE = {"board": None, "ok": False, "error": "", "computed_at": 0.0,
+          "checked_at": 0.0, "refreshing": False}
+
+
+def tasks_axi_list(args, timeout=30):
+    """(rows, total) from `fm-tasks-axi.sh list <args>`. Raises on a refusal."""
+    done = subprocess.run([f"{FM}/bin/fm-tasks-axi.sh", "list", *args], cwd=FM,
+                          capture_output=True, text=True, timeout=timeout)
+    if done.returncode != 0:
+        why = (done.stderr or done.stdout or "list failed").strip().splitlines()
+        raise RuntimeError((why[0] if why else "list failed")[:200])
+    return parse_task_list(done.stdout)
+
+
+def _section(rows, total, *fields, cli_rows=None):
+    """One board section: the first QUEUE_SHOWN rows plus honest counts."""
+    items = [{k: _clean(row.get(k)) for k in fields} for row in rows]
+    cli_rows = len(rows) if cli_rows is None else cli_rows
+    capped = total > cli_rows
+    return {"items": items[:QUEUE_SHOWN], "count": len(items),
+            "total": total if capped else len(items), "capped": capped}
+
+
+def _queue_board():
+    """The board's three sections, each read straight from the queue.
+
+    `queued` excludes the rows the CLI marks held or blocked, because those are
+    the board's own other two sections and would otherwise be counted twice.
+    """
+    queued, queued_total = tasks_axi_list(
+        ["--state", "queued", "--limit", str(QUEUE_LIMIT),
+         "--fields", "priority,held,blocked,blocked_by"])
+    blocked, blocked_total = tasks_axi_list(
+        ["--limit", str(QUEUE_LIMIT), "--blocked", "--fields", "priority,blocked_by"])
+    held, held_total = tasks_axi_list(
+        ["--state", "held", "--limit", str(QUEUE_LIMIT),
+         "--fields", "priority,hold_reason,hold_until"])
+    # ponytail: the three reads run serially, ~4s cold on a 100-row queue and
+    # ~2ms while the TTL holds. Overlap them in a thread pool if the board ever
+    # needs to be fresher than its own TTL.
+
+    def yes(value):
+        return (value or "").strip().lower() == "yes"
+
+    blocked_ids = {row.get("id") for row in blocked}
+    held_ids = {row.get("id") for row in held}
+    waiting = [row for row in queued
+               if not yes(row.get("held")) and not yes(row.get("blocked"))
+               and row.get("id") not in blocked_ids]
+    sections = {
+        "queued": _section(waiting, queued_total, "id", "title", "repo", "priority",
+                           cli_rows=len(queued)),
+        "blocked": _section(blocked, blocked_total, "id", "title", "repo", "priority", "blocked_by"),
+        "held": _section(held, held_total, "id", "title", "repo", "priority", "hold_reason", "hold_until"),
+    }
+    sections["counts"] = {name: sections[name]["count"]
+                          for name in ("queued", "blocked", "held")}
+    sections["counts"]["stuck"] = len(blocked_ids | held_ids)
+    return sections
+
 
 # Distinct accent per lane, assigned by stable sorted index.
 LANE_PALETTE = ["#58a6ff", "#3fb950", "#e3b341", "#bc8cff", "#2dd4bf", "#f778ba", "#ff7b72", "#79c0ff"]
@@ -286,18 +440,72 @@ def _refresh_lanes():
             for i, m in enumerate(metas)]
 
 
-def snap_meta(status, error=""):
-    """Freshness record for the lanes being served. Call with _SNAP_LOCK held."""
+def _cache_meta(state, ttl, status, error=""):
+    """Freshness record for the value one cache is serving. Its lock must be held."""
     now = time.time()
+    computed = state["computed_at"]
     return {
         "status": status,
-        "computed_at": _SNAP["computed_at"],
-        "checked_at": _SNAP["checked_at"],
-        "age": (now - _SNAP["computed_at"]) if _SNAP["computed_at"] else -1.0,
-        "refreshing": _SNAP["refreshing"],
-        "error": error or _SNAP["error"],
-        "ttl": _SNAP_TTL,
+        "computed_at": computed,
+        "checked_at": state["checked_at"],
+        "age": (now - computed) if computed else -1.0,
+        "refreshing": state["refreshing"],
+        "error": error or state["error"],
+        "ttl": ttl,
     }
+
+
+def _cached(lock, state, key, ttl, refresh, empty):
+    """(value, meta) from one TTL cache with single flight and honest freshness.
+
+    Both read paths (the lanes and the queue board) share this one contract so
+    neither can drift: a value inside the TTL is served as it is; a miss runs
+    `refresh` once, with concurrent misses collapsing onto the read already
+    running and being labelled `stale`; a failed refresh keeps serving the last
+    good value and never presents it as current. `empty` is served when nothing
+    good exists yet.
+    """
+    with lock:
+        now = time.time()
+        if state["checked_at"] and now - state["checked_at"] < ttl:
+            return (state[key] if state[key] is not None else empty,
+                    _cache_meta(state, ttl, "fresh" if state["ok"] else "error"))
+        if state["refreshing"]:
+            # Single flight: another thread already owns the refresh. Serve what
+            # we have and label it stale rather than starting a second read; with
+            # nothing to serve yet, join the refresh instead of duplicating it.
+            if state[key] is not None:
+                return state[key], _cache_meta(state, ttl, "stale")
+            deadline = now + _SNAP_WAIT
+            while state["refreshing"] and time.time() < deadline:
+                lock.wait(deadline - time.time())
+            if state[key] is None:
+                return empty, _cache_meta(state, ttl, "error",
+                                          error="refresh in progress with nothing to serve yet")
+            return state[key], _cache_meta(state, ttl, "fresh" if state["ok"] else "error")
+        state["refreshing"] = True
+    value, error = None, ""
+    try:
+        value = refresh()
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {exc}"
+    with lock:
+        state["refreshing"] = False
+        # Stamped AFTER the read: a snapshot whose own computation outran the TTL
+        # used to be born already expired, so every request recomputed it.
+        state["checked_at"] = time.time()
+        if value is None:
+            state["ok"] = False
+            state["error"] = error or "refresh failed"
+        else:
+            state[key] = value
+            state["ok"] = True
+            state["error"] = ""
+            state["computed_at"] = state["checked_at"]
+        lock.notify_all()
+        if state[key] is None:
+            return empty, _cache_meta(state, ttl, "error")
+        return state[key], _cache_meta(state, ttl, "fresh" if state["ok"] else "error")
 
 
 def snap():
@@ -307,45 +515,30 @@ def snap():
     a refresh ran, or are the last good ones after a failed refresh; it never
     presents stale lanes as current.
     """
+    return _cached(_SNAP_LOCK, _SNAP, "lanes", _SNAP_TTL, _refresh_lanes, [])
+
+
+def queue():
+    """(board, meta): the backlog sections plus how fresh they are.
+
+    meta follows snap()'s contract exactly, so a reader can tell a freshly read
+    queue from one served while a read was running and from the last good read
+    after the CLI refused.
+    """
+    return _cached(_QUEUE_LOCK, _QUEUE, "board", QUEUE_TTL, _queue_board, {})
+
+
+def cached_lanes():
+    """(lanes, ready): the page's lane snapshot, never triggering its read.
+
+    The panel must not wait on the page's own lane read: that one peeks every
+    pane and reads one commit per lane, which measured 68s on a cold server for
+    an 11-lane home. The board reports the live lanes the page has already
+    computed, and `ready` says whether any have been computed at all, so a cold
+    board says "not computed yet" instead of an authoritative-looking zero.
+    """
     with _SNAP_LOCK:
-        now = time.time()
-        if _SNAP["checked_at"] and now - _SNAP["checked_at"] < _SNAP_TTL:
-            return _SNAP["lanes"] or [], snap_meta("fresh" if _SNAP["ok"] else "error")
-        if _SNAP["refreshing"]:
-            # Single flight: another thread already owns the refresh. Serve what
-            # we have and label it stale rather than starting a second read; with
-            # nothing to serve yet, join the refresh instead of duplicating it.
-            if _SNAP["lanes"] is not None:
-                return _SNAP["lanes"], snap_meta("stale")
-            deadline = now + _SNAP_WAIT
-            while _SNAP["refreshing"] and time.time() < deadline:
-                _SNAP_LOCK.wait(deadline - time.time())
-            if _SNAP["lanes"] is None:
-                return [], snap_meta("error", error="refresh in progress with nothing to serve yet")
-            return _SNAP["lanes"], snap_meta("fresh" if _SNAP["ok"] else "error")
-        _SNAP["refreshing"] = True
-    lanes, error = None, ""
-    try:
-        lanes = _refresh_lanes()
-    except Exception as exc:
-        error = f"{type(exc).__name__}: {exc}"
-    with _SNAP_LOCK:
-        _SNAP["refreshing"] = False
-        # Stamped AFTER the read: a snapshot whose own computation outran the TTL
-        # used to be born already expired, so every request recomputed it.
-        _SNAP["checked_at"] = time.time()
-        if lanes is None:
-            _SNAP["ok"] = False
-            _SNAP["error"] = error or "refresh failed"
-        else:
-            _SNAP["lanes"] = lanes
-            _SNAP["ok"] = True
-            _SNAP["error"] = ""
-            _SNAP["computed_at"] = _SNAP["checked_at"]
-        _SNAP_LOCK.notify_all()
-        if _SNAP["lanes"] is None:
-            return [], snap_meta("error")
-        return _SNAP["lanes"], snap_meta("fresh" if _SNAP["ok"] else "error")
+        return list(_SNAP["lanes"] or []), _SNAP["lanes"] is not None
 
 
 PAGE = r"""<!doctype html><html><head><meta charset=utf-8>
@@ -388,6 +581,20 @@ header b{color:var(--acc)}.mut{color:var(--mut)}
 .st.ok{color:var(--ok)}.st.warn{color:var(--warn)}.st.bad{color:var(--bad)}
 .age.ok{color:var(--ok)}.age.warn{color:var(--warn)}.age.bad{color:var(--bad)}
 .out{flex:1;min-height:0;overflow:auto;background:#0b0f14;border:1px solid var(--bd);border-radius:6px;padding:6px;white-space:pre-wrap;word-break:break-word;font-size:11px;color:#adbac7}
+.qwrap{flex:0 0 auto;border-bottom:1px solid var(--bd);padding:6px 16px;font:12px/1.45 ui-monospace,Menlo,monospace}
+.qwrap>summary{cursor:pointer;color:var(--acc);font-weight:700}
+.qwrap>summary .ro{color:var(--mut);font-weight:400}
+.qwrap>summary b{color:var(--fg)}
+.qbar{display:flex;gap:10px;padding-top:8px;align-items:flex-start;flex-wrap:wrap}
+.qcol{flex:1 1 300px;min-width:0;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:7px 8px;max-height:40vh;overflow:auto}
+.qcol h4{margin:0 0 6px;font-size:11px;letter-spacing:.04em;color:var(--acc);border-bottom:1px solid var(--bd);padding-bottom:5px}
+.qcol h4 .mut{font-weight:400}
+.qrow{padding:4px 6px;border-left:3px solid var(--bd);margin-bottom:4px;border-radius:4px;background:#0f141b}
+.qrow.live{border-left-color:var(--ok)}.qrow.blk{border-left-color:var(--bad)}.qrow.hld{border-left-color:var(--warn)}
+.qrow .qt{font-size:12px;color:#e6edf3;overflow-wrap:anywhere;word-break:break-word}
+.qrow .qm{color:var(--mut);font-size:10px;overflow-wrap:anywhere;word-break:break-word}
+.qrow .qm.one{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qrow .sid{color:var(--mut)}
 </style></head><body>
 <header>
   <b>FirstCrew monitor</b>
@@ -397,6 +604,12 @@ header b{color:var(--acc)}.mut{color:var(--mut)}
   <span class=mut id=fresh></span>
   <span class=legend id=legend></span>
 </header>
+<details class=qwrap id=qwrap open><summary>작업 현황 · 진행중 <b id=qc-flight>?</b> · 진행예정 <b id=qc-queued>?</b> · 걸림 <b id=qc-stuck>?</b> <span class=ro id=qmeta>읽기 전용</span></summary>
+<div class=qbar>
+  <div class=qcol><h4>진행중 (라이브 워커) <span class=mut id=qn-flight></span></h4><div id=q-flight></div></div>
+  <div class=qcol><h4>진행예정 (백로그 대기) <span class=mut id=qn-queued></span></h4><div id=q-queued></div></div>
+  <div class=qcol><h4>걸림 (차단 + 보류) <span class=mut id=qn-stuck></span></h4><div id=q-stuck></div></div>
+</div></details>
 <div class=main>
   <div class=grid id=grid></div>
   <aside class=tasks><div class=th>할당된 업무 <span class=mut id=tcount></span></div><div id=tlist></div></aside>
@@ -442,29 +655,99 @@ l.innerHTML=d.map(t=>`<div class="tk ${t.live?'live':''}">
  <div class=tkline><span class=tktitle>${esc(t.title||t.id)}</span>${t.live?'<span class=dot title="session alive">●</span>':''}</div>
  <div class=tkmeta>${esc(t.section)} · ${esc(t.repo||'-')}${t.kind?' · '+esc(t.kind):''} · <span class=sid>${esc(t.id)}</span></div>
 </div>`).join('')||'<div class=mut>없음</div>';}catch(e){}}
+function qrow(cls,title,meta,one){return `<div class="qrow ${cls}"><div class=qt>${esc(title)}</div><div class="qm${one?' one':''}">${meta}</div></div>`}
+function qextra(s){const extra=Math.max(0,(s.count||0)-(s.items||[]).length);const bits=[];
+ if(extra)bits.push('그 외 '+extra+'건');
+ if(s.capped)bits.push('조회 상한(100건) 도달');
+ return bits.length?`<div class=qnote>${bits.join(' · ')}</div>`:''}
+async function tickBoard(){try{const r=await fetch('/board',{cache:'no-store'});const d=await r.json();
+ const c=d.counts||{},q=d.queued||{},b=d.blocked||{},h=d.held||{};
+ const set=(id,v)=>{document.getElementById(id).textContent=v};
+ const put=(id,v)=>{document.getElementById(id).innerHTML=v};
+ const ready=d.lanes_ready!==false;
+ // With no board at all the counts are unknown, not zero: show the read
+ // failure in the sections rather than an authoritative-looking 0.
+ const hasBoard=d.queued!==undefined;
+ set('qc-flight',ready?(c.in_flight||0):'…');
+ set('qc-queued',hasBoard?(c.queued||0):'?');
+ set('qc-stuck',hasBoard?(c.stuck||0):'?');
+ let tag='읽기 전용';const qs=r.headers.get('X-Queue-Status')||'?';
+ if(d.computed_at)tag+=' · 갱신 '+new Date(d.computed_at*1000).toLocaleTimeString();
+ if(qs!=='fresh')tag+=' · '+(qs==='stale'?'이전 값(갱신 중)':'갱신 실패 '+(r.headers.get('X-Queue-Error')||''));
+ set('qmeta',tag);
+ set('qn-flight',ready?'('+(d.in_flight||[]).length+')':'…');
+ set('qn-queued',hasBoard?'('+(q.count||0)+')':'');
+ set('qn-stuck',hasBoard?'차단 '+(b.count||0)+' · 보류 '+(h.count||0):'');
+ const empty='<div class=mut>없음</div>';
+ const unread='<div class=mut>백로그를 읽지 못했습니다</div>';
+ const flight=(d.in_flight||[]).map(t=>qrow('live',t.title||t.id,
+   esc(t.harness||'')+' · '+esc(t.window||'')+' · <span class=sid>'+esc(t.id)+'</span><br>'+esc(t.last||'(상태 줄 없음)'),true)).join('');
+ const queued=(q.items||[]).map(t=>qrow('',t.title||t.id,
+   'P'+esc(t.priority||'-')+' · '+esc(t.repo||'-')+' · <span class=sid>'+esc(t.id)+'</span>',false)).join('');
+ const stuck=(b.items||[]).map(t=>qrow('blk',t.title||t.id,
+   '차단: '+esc(t.blocked_by||'-')+' · '+esc(t.repo||'-')+' · <span class=sid>'+esc(t.id)+'</span>',true)).join('')
+  +(h.items||[]).map(t=>qrow('hld',t.title||t.id,
+   '보류: '+esc(t.hold_reason||'-')+(t.hold_until&&t.hold_until!=='-'?' (~'+esc(t.hold_until)+')':'')+' · <span class=sid>'+esc(t.id)+'</span>',true)).join('');
+ put('q-flight',flight||(ready?empty:'<div class=mut>라이브 워커 계산 중 (메인 뷰가 준비되면 표시)</div>'));
+ put('q-queued',hasBoard?((queued+qextra(q))||empty):unread);
+ put('q-stuck',hasBoard?((stuck+qextra(b)+qextra(h))||unread):unread);
+}catch(e){document.getElementById('qmeta').textContent='읽기 전용 · /board 실패';}}
 tick();setInterval(tick,5000);
 tickTasks();setInterval(tickTasks,5000);
+tickBoard();setInterval(tickBoard,5000);
 </script></body></html>"""
 
 class H(http.server.BaseHTTPRequestHandler):
-    def _send(self, body, content_type, meta):
+    def _send(self, body, content_type, meta=None, qmeta=None):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         # Freshness travels in headers so the JSON schema stays exactly what it
         # was: an array of lanes (/data) or of tasks (/tasks).
         self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Snap-Status", meta["status"])
-        self.send_header("X-Snap-Age", f"{meta['age']:.3f}")
-        self.send_header("X-Snap-Computed-At", f"{meta['computed_at']:.3f}")
-        self.send_header("X-Snap-Refreshing", "true" if meta["refreshing"] else "false")
-        self.send_header("X-Snap-Ttl", f"{meta['ttl']:.3f}")
-        if meta["error"]:
-            self.send_header("X-Snap-Error", meta["error"].replace("\n", " ")[:200])
+        if meta:
+            self.send_header("X-Snap-Status", meta["status"])
+            self.send_header("X-Snap-Age", f"{meta['age']:.3f}")
+            self.send_header("X-Snap-Computed-At", f"{meta['computed_at']:.3f}")
+            self.send_header("X-Snap-Refreshing", "true" if meta["refreshing"] else "false")
+            self.send_header("X-Snap-Ttl", f"{meta['ttl']:.3f}")
+            if meta["error"]:
+                self.send_header("X-Snap-Error", meta["error"].replace("\n", " ")[:200])
+        # The queue board's own freshness, same shape, so a reader of /board can
+        # tell a fresh backlog read from one served while a read was running.
+        if qmeta:
+            self.send_header("X-Queue-Status", qmeta["status"])
+            self.send_header("X-Queue-Age", f"{qmeta['age']:.3f}")
+            self.send_header("X-Queue-Computed-At", f"{qmeta['computed_at']:.3f}")
+            self.send_header("X-Queue-Refreshing", "true" if qmeta["refreshing"] else "false")
+            self.send_header("X-Queue-Ttl", f"{qmeta['ttl']:.3f}")
+            if qmeta["error"]:
+                self.send_header("X-Queue-Error", qmeta["error"].replace("\n", " ")[:200])
         self.end_headers()
         self.wfile.write(body)
 
     def do_GET(self):
-        if self.path.startswith("/tasks"):
+        if self.path.startswith("/board"):
+            # The board's freshness is the queue's, so it carries X-Queue-*
+            # only: no X-Snap-* header here, because those describe lanes this
+            # route deliberately does not compute.
+            board, qmeta = queue()
+            lanes, ready = cached_lanes()
+            payload = dict(board)
+            payload["in_flight"] = [
+                {"id": lane["id"], "title": lane.get("title") or "",
+                 "state": lane.get("state") or "", "last": lane.get("last") or "",
+                 "window": lane.get("window") or "",
+                 "harness": HARNESS.get(lane.get("harness") or "", {}).get(
+                     "label", (lane.get("harness") or "?").upper())}
+                for lane in lanes if lane.get("liveness") == LIVE]
+            payload["lanes_ready"] = ready
+            counts = dict(payload.get("counts") or {})
+            counts["in_flight"] = len(payload["in_flight"])
+            payload["counts"] = counts
+            payload["readonly"] = True
+            payload["computed_at"] = qmeta["computed_at"]
+            self._send(json.dumps(payload).encode(), "application/json", None, qmeta)
+        elif self.path.startswith("/tasks"):
             lanes, meta = snap()
             # `live` now means a session is actually alive, not that a meta
             # record exists; `liveness` carries the three-way verdict and
