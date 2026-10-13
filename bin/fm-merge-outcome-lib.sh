@@ -49,8 +49,8 @@ FM_MERGE_OUTCOME_ALREADY_RECORDED=false
 # identity-bound value or external when no matching record proves that this
 # home authorized the merge.
 # Optional <gate-relaxation> names a gate the evidence verdict deliberately
-# resolved rather than enforced; the only value today is plan-unavailable, set
-# when GitHub's plan cannot expose branch protection at all. It is appended to
+# resolved rather than enforced; the only value today is unavailable-by-plan,
+# set when GitHub's plan cannot expose branch protection at all. It is appended to
 # the same line, so the captain sees that the merge passed without that gate.
 # A poll-detected merge never carries it: the poll did not make the decision.
 #
@@ -74,7 +74,7 @@ fm_merge_outcome_report() {  # <home> <state> <task-id> <pr-url> <origin> [autho
     *) return 2 ;;
   esac
   case "$relaxation" in
-    plan-unavailable) relaxation_suffix=" gate-relaxed(plan-unavailable)" ;;
+    unavailable-by-plan) relaxation_suffix=" gate-relaxed(unavailable-by-plan)" ;;
     '') ;;
     *) return 2 ;;
   esac

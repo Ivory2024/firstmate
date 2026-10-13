@@ -257,6 +257,7 @@ eq "plan-gated 403 on both protection sources resolves to no enforceable require
   "$(printf '%s' "$out" | jq -r '.status + ":" + (.reasons | join(","))')" "PASS:"
 eq "the plan resolution records why the gate was not enforced" \
   "$(printf '%s' "$out" | jq -r .protection_source)" unavailable-by-plan
+plan_relaxation=$(printf '%s' "$out" | jq -r .protection_source)
 eq "the plan resolution does not claim protection exists" \
   "$(printf '%s' "$out" | jq -r '.protection | tostring')" false
 plan_scope=$(printf '%s' "$out" | jq -r .protection_scope)
@@ -611,9 +612,9 @@ eq "empty risk classification output holds" "$(printf '%s' "$out" | jq -r .reaso
 outcome_state="$TMP/outcome-state"
 mkdir -p "$outcome_state"
 ( . "$ROOT/bin/fm-merge-outcome-lib.sh"
-  fm_merge_outcome_report "$TMP/home" "$outcome_state" outcome-task "$PR" self '' plan-unavailable ) >/dev/null 2>&1
+  fm_merge_outcome_report "$TMP/home" "$outcome_state" outcome-task "$PR" self '' "$plan_relaxation" ) >/dev/null 2>&1
 eq "the merge outcome reports a plan-relaxed gate" \
-  "$(grep -c 'merge landed: outcome-task .* gate-relaxed(plan-unavailable)' "$outcome_state/.wake-queue" 2>/dev/null)" 1
+  "$(grep -c 'merge landed: outcome-task .* gate-relaxed(unavailable-by-plan)' "$outcome_state/.wake-queue" 2>/dev/null)" 1
 outcome_plain="$TMP/outcome-plain"
 mkdir -p "$outcome_plain"
 ( . "$ROOT/bin/fm-merge-outcome-lib.sh"
