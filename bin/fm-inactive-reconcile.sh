@@ -37,7 +37,12 @@
 # that --startup performs the same scan immediately in the locked session
 # start's deferred worker. Each scan uses an aggregate
 # FM_INACTIVE_RECONCILE_BUDGET_SECS deadline (default 10, valid 1..30) and
-# resumes after its last visited child on the next scan.
+# resumes after its last visited child on the next scan. The same locked pass
+# then runs `bin/fm-autonomous-loop.sh reconcile` (with --startup when this is
+# the startup scan) on whatever time that one deadline has left, so a slow scan
+# can never add a second budget to the poll and a pass out of time leaves the
+# reconcile to the next poll; a reconcile timeout or failure stays contained,
+# and the scan still exits on its own status.
 # The scan enforces that budget itself through a whole-second deadline, and the
 # first due child of every scan is always visited with at least a one-second
 # state-read bound: whole-second arithmetic can otherwise round a small budget
