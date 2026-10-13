@@ -1,0 +1,24 @@
+   stub-lab reply: supervision s   stub-lab reply: supervision s +
+  ┃
+  ┃  ⁣⁣●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ┃  ●  TURN WOULD END BLIND - SUPERVISION IS OFF
+  ┃  ●  X-mode relay polling needs supervision, but no live watcher holds this
+  ┃  home lock (last beat: never).
+  ┃  ●  repair missing watcher supervision by letting the OpenCode TUI plugin
+  ┃  arm after idle; use bin/fm-watch-arm.sh only as a manual recovery probe
+  ┃  if the plugin reports failure.
+  ┃  ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ┃
+  ┃
+
+     stub-lab reply: supervision scenario turn completed.
+
+     Build · stub-model · 27ms
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · stub-model LabStub
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  /…/primar…/opencode-v2-quiet-afk-20261013  shift+tab agents  ctrl+p commands
+

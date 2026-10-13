@@ -1,0 +1,39 @@
+# Scenario B: turn-end guard in the interactive TUI (real opencode v2.0.27)
+# Home: lab homeB - supervision NEEDED (state/x-watch.check.sh), no watcher, no away record.
+# First user turn ends -> guard injects one bounded follow-up on session.execution.succeeded.
+# TUI pane at rest (rendered follow-up banner):
+  ┃  ●  TURN WOULD END BLIND - SUPERVISION IS OFF
+  ┃  ●  X-mode relay polling needs supervision, but no live watcher holds this
+  ┃  home lock (last beat: never).
+  ┃  ●  repair missing watcher supervision by letting the OpenCode TUI plugin
+  ┃  arm after idle; use bin/fm-watch-arm.sh only as a manual recovery probe
+  ┃  if the plugin reports failure.
+  ┃  ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ┃
+  ┃
+
+     stub-lab reply: supervision scenario turn completed.
+
+     Build · stub-model · 27ms
+
+# Persisted session messages (opencode.db session_message):
+  type     seq                                               data
+---------  ---  -----------------------------------------------------------------------------------------------
+user         4  {"time":{"created":1791892406628},"text":"hello supervisor","files":[],"agents":[]}
+assistant    8  {"time":{"created":1791892406795,"streamed":1791892406852,"completed":1791892406935},"agent":"b
+user        13  {"time":{"created":1791892406969},"text":"⁣FIRSTMATE_OP: v1 session-start: Run `bin/fm-session-
+assistant   14  {"time":{"created":1791892407053,"streamed":1791892407148,"completed":1791892407193},"agent":"b
+idle        19  {"time":{"created":1791892407196},"outcome":"succeeded"}
+user        23  {"time":{"created":1791892407565},"text":"⁣FIRSTMATE_OP: v1 turn-end-guard: TURN WOULD END BLIN
+assistant   24  {"time":{"created":1791892407572,"streamed":1791892407587,"completed":1791892407611},"agent":"b
+idle        29  {"time":{"created":1791892407615},"outcome":"succeeded"}
+user        33  {"time":{"created":1791892467642},"text":"another turn while supervision still down","files":[]
+assistant   34  {"time":{"created":1791892467648,"streamed":1791892467664,"completed":1791892467673},"agent":"b
+idle        39  {"time":{"created":1791892467674},"outcome":"succeeded"}
+user        43  {"time":{"created":1791892467848},"text":"⁣FIRSTMATE_OP: v1 turn-end-guard: TURN WOULD END BLIN
+assistant   44  {"time":{"created":1791892467854,"streamed":1791892467865,"completed":1791892467875},"agent":"b
+idle        49  {"time":{"created":1791892467876},"outcome":"succeeded"}
+
+# full guard follow-up text:
+{"time":{"created":1791892407565},"text":"⁣FIRSTMATE_OP: v1 turn-end-guard: TURN WOULD END BLIND - supervision is off. The watcher cycle is missing, failed, or unhealthy. Follow the harness recovery instruction below before ending the turn.\n\n●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n●  TURN WOULD END BLIND - SUPERVISION IS OFF\n●  X-mode relay polling needs supervision, but no live watcher holds this home lock (last beat: never).\n●  repair missing watcher supervision by letting the OpenCode TUI plugin arm after idle; use bin/fm-watch-arm.sh only as a manual recovery probe if the plugin reports failure.\n●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# v2 events seen: session.idle=0 session.created=1 execution.started=4 execution.succeeded=4

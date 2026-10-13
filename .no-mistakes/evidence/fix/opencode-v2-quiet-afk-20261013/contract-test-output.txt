@@ -1,0 +1,1 @@
+ok - OpenCode watch-arm plugin exports v2 setup definition with legacy compatibility and normalizes lifecycle terminal events

@@ -1,0 +1,11 @@
+# Scenario A persisted session state (lab homeA opencode.db session_message):
+  type     seq                                                                                                    data
+---------  ---  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+user         4  {"time":{"created":1791892112097},"text":"\"nudge scenario one message\"","files":[]}
+assistant    8  {"time":{"created":1791892112346,"streamed":1791892112697,"completed":1791892112727},"agent":"build","model":{"id":"stub-model","providerID":"labstub","variant":"default"},"content":[{"type":"text","t
+user        13  {"time":{"created":1791892112741},"text":"⁣FIRSTMATE_OP: v1 session-start: Run `bin/fm-session-start.sh` now, exactly once, before executing any other instructions."}
+assistant   14  {"time":{"created":1791892112772,"streamed":1791892112841,"completed":1791892112894},"agent":"build","model":{"id":"stub-model","providerID":"labstub","variant":"default"},"content":[{"type":"text","t
+idle        19  {"time":{"created":1791892112907},"outcome":"succeeded"}
+
+# nudge (session-start) injected messages: 1
+# guard (turn-end-guard) injected messages: 0

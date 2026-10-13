@@ -1,0 +1,18 @@
+# Scenario C: away-mode dead supervisor caught by the guard (real opencode v2.0.27 TUI)
+# Home: lab homeC - .afk present, supervision NEEDED, no away daemon (dead supervisor).
+  ┃  ●  TURN WOULD END BLIND - SUPERVISION IS OFF
+  ┃  ●  X-mode relay polling needs supervision, but no live watcher holds this
+  ┃  home lock (last beat: never).
+  ┃  ●  Away mode owns watcher supervision; load /afk and ensure the daemon is
+  ┃  running instead of starting normal supervision directly.
+  ┃  ⁣●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ┃
+  ┃  ⁣
+
+     stub-lab reply: supervision scenario turn completed.
+
+     Build · stub-model · 45ms
+
+
+# guard follow-up text (away recovery instruction):
+{"time":{"created":1791892748154},"text":"⁣FIRSTMATE_OP: v1 turn-end-guard: TURN WOULD END BLIND - supervision is off. The watcher cycle is missing, failed, or unhealthy. Follow the harness recovery instruction below before ending the turn.\n\n●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n●  TURN WOULD END BLIND - SUPERVISION IS OFF\n●  X-mode relay polling needs supervision, but no live watcher holds this home lock (last beat: never).\n●  Away mode owns watcher supervision; load /afk and ensure the daemon is running instead of starting normal supervision directly.\n●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"}

@@ -1,0 +1,36 @@
+# Scenario A: session-start nudge at first sight (real opencode v2.0.27 headless session)
+# Home: clean lab homeA (no supervision need). Command: opencode run --standalone --model labstub/stub-model
+# Real event-type counts from the plugin event subscription (lab clone logger plugin):
+   1 agent.updated
+   1 command.updated
+   1 integration.updated
+   1 location.shutdown
+   1 model.updated
+   1 plugin.updated
+   1 provider.updated
+   1 reference.updated
+   1 session.execution.started
+   1 session.execution.succeeded
+   2 session.inbox.delivered
+   2 session.inbox.enqueued
+   1 session.instructions.updated
+   1 session.renamed
+   2 session.step.ended
+   2 session.step.started
+   2 session.step.streamed
+   2 session.text.delta
+   2 session.text.ended
+   2 session.text.started
+   3 session.usage.updated
+   2 skill.updated
+   1 vcs.branch.updated
+   1 websearch.updated
+
+# session.created count / session.idle count:
+session.created=0 session.idle=0
+
+# boundary events in order:
+{"type":"session.inbox.enqueued","id":"evt_13517c28c0012bI03hejJwl3K5","sessionID":"ses_ecae842daffepVDAAx0jY5MdKN"}
+{"type":"session.execution.started","id":"evt_13517c2ad001dQgHHyJom6L5pI","sessionID":"ses_ecae842daffepVDAAx0jY5MdKN"}
+{"type":"session.inbox.enqueued","id":"evt_13517c364001WauT0TczMIb9Cp","sessionID":"ses_ecae842daffepVDAAx0jY5MdKN"}
+{"type":"session.execution.succeeded","id":"evt_13517c60b001Tw4TXmvebx62yj","sessionID":"ses_ecae842daffepVDAAx0jY5MdKN"}
