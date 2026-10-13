@@ -501,6 +501,10 @@
       "audience": "operator-current"
     },
     {
+      "path": "docs/unattended-crew.md",
+      "audience": "maintainer-architecture"
+    },
+    {
       "path": "docs/verification/agy.md",
       "audience": "maintainer-verification"
     },

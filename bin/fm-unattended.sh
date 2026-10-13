@@ -16,10 +16,12 @@
 #   - The firstmate watcher/scheduler stays the supervisor; this controller is a
 #     producer of durable task state.
 #
-# Mounting: install with bin/fm-unattended-install.sh. That copies the wrapper as
-# bin/fm-unattended.sh and the coordinator as bin/fm-unattended-coordinator.sh
-# plus its siblings. Locally (uninstalled, as in this isolated tree) it falls
-# back to ../implementation.
+# Mounting: this repository ships the whole suite in place, so there is no
+# install step; bin/fm-unattended-install.sh is not part of this tree. The
+# implementation directory resolves in this order: $UC_IMPL_DIR, then the
+# coordinator shipped beside this wrapper in bin/, then ../implementation for an
+# externally mounted copy. UC_HOME is mandatory (the batch root); UC_CONFIG_FILE
+# points at a config file outside the implied locations.
 set -u
 
 SELF_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
