@@ -32,10 +32,14 @@ strong pinned model (dispatch narrows little) or a weekly-rotating free model
 (dispatch narrows a lot). Two tiers:
 
 - **Known-strong** (a pinned model with an established track record — e.g. the
-  models `config/crew-harness`/`config/secondmate-harness` name explicitly):
-  ordinary brief per `AGENTS.md` section 11. No extra narrowing.
+  models `config/crew-harness`/`config/secondmate-harness` name explicitly, and
+  paid `opencode-go/*` models the captain pins, e.g. `opencode-go/deepseek-v4-flash`
+  on the captain's paid `opencode-go` plan): ordinary brief per `AGENTS.md`
+  section 11. No extra narrowing. A paid plan is a pinned model, not a free
+  rotation, so it is not a reason to narrow.
 - **Rotating/unvetted** (anything selected fresh each cycle with no track
-  record yet — today this means opencode's free-tier models): narrow the brief
+  record yet — today this means opencode's free-tier models, not paid
+  `opencode-go/*` models): narrow the brief
   further than you would for a known-strong model doing the same task, and
   prefer it for mechanically-checkable work (a scoped fix, a test suite run, a
   read-only scout) over open-ended design judgment. This is the same lever,
@@ -53,6 +57,8 @@ classified into `coding_large` / `deep_debug` / `scout_tool`, each carrying
 `bin/fm-spawn.sh` mechanically enforces the catalog check below at dispatch time.
 It canonicalizes OpenCode dispatch identities `opencode/<model>` and
 `opencode-go/<model>` to the catalog identity `opencode-free/<model>`.
+That canonicalization is only the health-catalog lookup key, not a tier decision:
+it does not make a paid `opencode-go/*` model rotating/unvetted.
 Missing, unreadable, duplicate, or untracked health entries fail closed.
 An inactive status or `early_termination_detected: true` also refuses
 dispatch. Treat `is_expiring_soon: true` as a signal to narrow the brief or
