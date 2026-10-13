@@ -1,0 +1,42 @@
+=== git info ===
+base: 093f34c2e685e44c1345f261e54de4b1088fef8d  target: dc6c98d5e90dd8082a2fbd785cb11f67800f556f
+worktree: /Users/irene/.no-mistakes/worktrees/e10922160f77/01M4TF65XE07GKPSEDWR2EC7BR
+
+=== live setup ===
+disposable FM_HOME: /var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.anQYKA (minted via bin/fm-lab-home.sh create, removed after)
+backlog: real tasks-axi markdown db seeded via bin/fm-tasks-axi.sh: 35 bulk + plain-q1 + held-q2(held) + blocked-q3(blocked) + both-q4(held AND blocked) + fresh-x9 + 65 more = 105 queued rows
+live worker: real headless? no - real interactive 'claude' CLI session running in a tmux session 'primary' on the lab's private socket (default socket name), recorded as state/fm-crew-live-20261013.meta (backend=tmux, window=primary:fm-crew-live-20261013)
+server: the real bin/fm-crew-dashboard.py H handler served over HTTP on an ephemeral 127.0.0.1 port (PORT=8770 was already in use by the operator's running dashboard, which was left untouched); FM_HOME=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.anQYKA, TMUX_TMPDIR=/var/folders/pg/_5jy7w915bv_qt8hkrnpxm6w0000gn/T//fm-lab.anQYKA/tmux
+
+=== GET /board (fresh, 37 queued rows; headers) ===
+HTTP/1.0 200 OK
+Content-Type: application/json
+Cache-Control: no-store
+X-Queue-Status: fresh
+X-Queue-Age: 0.000
+X-Queue-Computed-At: 1791892078.867
+X-Queue-Refreshing: false
+X-Queue-Ttl: 15.000
+
+=== GET /board payload (live lane, 37 queued) ===
+readonly: True | lanes_ready: True | computed_at: 1791892078.866687
+counts: {'queued': 97, 'blocked': 2, 'held': 2, 'stuck': 3, 'in_flight': 1}
+queued: count=97 total=105 capped=True items=['plain-q1', 'bulk-q01', 'bulk-q02', 'bulk-q03', 'bulk-q04']...(30 shown)
+blocked: count=2 total=2 capped=False items=['blocked-q3', 'both-q4']...(2 shown)
+held: count=2 total=2 capped=False items=['held-q2', 'both-q4']...(2 shown)
+in_flight: [('fm-crew-live-20261013', 'CLAUDE')]
+
+=== TTL cache behaviour ===
+(verified live: identical computed_at + unchanged counts across requests inside the 15s TTL after adding a new task; refresh after expiry picked it up; x-queue-ttl=15.000)
+
+=== cap honesty ===
+(verified live: 105 queued -> queued count=97 total=105 capped=True, panel note '그 외 67건 · 조회 상한(100건) 도달'; at 37 rows queued count=36 total=36 capped=False and NO false '조회 상한' note despite 3 held/blocked rows filtered out)
+
+=== failure handling ===
+(verified live: with $LAB/bin/fm-tasks-axi.sh removed, /board keeps serving the last good board, X-Queue-Status: error, X-Queue-Error: FileNotFoundError... ; on a cold server without tasks-axi on PATH: X-Queue-Status: error, no board keys in payload - never authoritative zeros; rendered page shows '?'' counts and '갱신 실패 <reason>' meta)
+
+=== unchanged routes ===
+(verified live: GET /data -> lanes array with X-Snap-* headers; GET /tasks -> tasks array; GET / -> page 200)
+
+=== committed tests ===
+python3 tests/fm-crew-dashboard.test.py -> 58 tests OK
