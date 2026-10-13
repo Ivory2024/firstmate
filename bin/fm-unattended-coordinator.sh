@@ -1,0 +1,850 @@
+#!/usr/bin/env bash
+# fm-unattended.sh - Batch Coordinator for Firstmate's unattended crew
+# orchestrator (MVP).
+#
+# This is the top-level entrypoint. It drives a batch of task contracts through
+# a durable, restart-safe, idempotent state machine:
+#
+#   CAPTAIN REQUEST -> TASK CONTRACT -> BATCH COORDINATOR
+#     -> CREW EXECUTOR -> EVIDENCE COLLECTOR
+#     -> INDEPENDENT AUDITOR -> AUDIT EVIDENCE
+#     -> DETERMINISTIC JUDGE -> VERIFIED_PASS|REWORK|HOLD|AUDIT_UNAVAILABLE
+#     -> NEXT SAFE TASK / HANDOFF
+#
+# It REUSES firstmate's existing direction: the dispatch stage talks to a Crew
+# Dispatch Adapter (fm-unattended-adapter.sh) whose real backend would call
+# bin/fm-spawn.sh + bin/fm-send.sh + bin/fm-crew-state.sh; the evidence stage
+# reuses the evidence runner; the judgement stage reuses the judge. It NEVER
+# calls a real worker/provider (that is the unapproved integration gate) and
+# never touches a firstmate home, watcher, credential, or GitHub.
+#
+# Persistence lives outside every suite workspace, under
+# $UC_HOME/batches/<batch>/: state.jsonl (append-only transitions), tasks/,
+# sessions/, evidence/runs/<task>/ (executor + auditor + gate), handoff.md.
+# The state machine is driven by `advance` (one meaningful step per task) so a
+# coordinator killed mid-task is resumed, not duplicated: a live or completed
+# evidence run is adopted instead of re-dispatched.
+#
+# Usage:
+#   fm-unattended.sh init   --batch B --contract C.json
+#   fm-unattended.sh run    --batch B        (first drive)
+#   fm-unattended.sh resume --batch B        (restart / pickup)
+#   fm-unattended.sh status --batch B
+#   fm-unattended.sh next   --batch B
+#   fm-unattended.sh handoff --batch B
+set -u
+
+UC_HOME=${UC_HOME:?set UC_HOME to the batch root}
+IMPL_DIR=${UC_IMPL_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}
+ADAPTER="$IMPL_DIR/fm-unattended-adapter.sh"
+EVIDENCE="$IMPL_DIR/fm-unattended-evidence.sh"
+JUDGE="$IMPL_DIR/fm-unattended-judge.sh"
+GUARD="$IMPL_DIR/fm-unattended-guard.sh"
+CONFIG="$IMPL_DIR/fm-unattended-config.sh"
+QUOTA="$IMPL_DIR/fm-unattended-quota.sh"
+FAKE_AUDITOR="$IMPL_DIR/fake-auditor.sh"
+WAIT_SECS=${UC_WAIT_SECS:-40}
+BACKEND=${FM_UNATTENDED_ADAPTER:-fake}
+CREW_WAIT=${UC_CREW_WAIT_SECS:-30}
+
+_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+_bdir() { printf '%s/batches/%s\n' "$UC_HOME" "$1"; }
+# The evidence root is a durable, configurable value. At init the coordinator
+# records the resolved root in batch.meta so a later resume re-reads the SAME
+# evidence after a restart; when no root was configured the historic
+# canary-compatible path is used unchanged.
+_evroot() { # <batch>
+  local recorded live
+  recorded=$(_get "$(_bdir "$1")/batch.meta" evidence_root)
+  if [ -n "$recorded" ]; then printf '%s\n' "$recorded"; return 0; fi
+  if live=$(_resolve_evidence_root "$1") && [ -n "$live" ]; then printf '%s\n' "$live"; return 0; fi
+  printf '%s/batches/%s/evidence\n' "$UC_HOME" "$1"
+}
+
+# Resolve an explicit durable evidence root from env or config. Prints the
+# per-batch dir and returns 0 only when a non-default root is configured;
+# returns 1 (prints nothing) to signal "use the compatibility default". Creates
+# nothing itself beyond what the config resolver owns.
+_resolve_evidence_root() { # <batch>
+  [ -x "$CONFIG" ] || return 1
+  local cfgp; cfgp=$("$CONFIG" config-path 2>/dev/null)
+  [ -n "${UC_EVIDENCE_ROOT:-}" ] || { [ -n "$cfgp" ] && [ -f "$cfgp" ]; } || return 1
+  "$CONFIG" evidence-root --batch "$1" --home "$UC_HOME" 2>/dev/null || return 1
+  return 0
+}
+_tdir() { printf '%s/batches/%s/tasks\n' "$UC_HOME" "$1"; }
+_get() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -1; }
+
+# ---- real-crew observation helpers -----------------------------------------
+_crew_status_line() { UC_HOME="$UC_HOME" "$ADAPTER" status --batch "$1" --session "$2" 2>/dev/null || true; }
+_crew_state_of() { printf '%s\n' "$1" | sed -n 's/^state=\([^ ]*\).*/\1/p' | head -1; }
+
+# ACK gate: spawn success is NOT an ACK. A live endpoint (working/parked/done)
+# must be observed within the contract's ack window; a dead/absent endpoint or
+# an expired window is a refusal.
+_real_wait_ack() { # <batch> <session> <secs>
+  local b=$1 sid=$2 secs=${3:-5} ticks i st
+  ticks=$(( secs * 5 )); i=0
+  while [ $i -lt "$ticks" ]; do
+    st=$(_crew_state_of "$(_crew_status_line "$b" "$sid")")
+    case "$st" in working|parked|done) return 0;; failed|absent|unknown) return 1;; esac
+    sleep 0.2; i=$((i+1))
+  done
+  return 1
+}
+
+# Wait for the crew to finish. Echo the observed state; return 0=done 1=timeout
+# 2=dead. An unrecognized/dead endpoint never counts as success.
+_real_wait_done() { # <batch> <session> <secs>
+  local b=$1 sid=$2 secs=${3:-30} ticks i st
+  ticks=$(( secs * 5 )); i=0
+  while [ $i -lt "$ticks" ]; do
+    st=$(_crew_state_of "$(_crew_status_line "$b" "$sid")")
+    case "$st" in done) echo "done"; return 0;; failed|absent|unknown) echo "$st"; return 2;; esac
+    sleep 0.2; i=$((i+1))
+  done
+  echo "${st:-timeout}"; return 1
+}
+
+# Is the task's real auditor still live or already done? Used to re-enter
+# AUDITING after a mere observation-timeout (never a new spawn).
+_auditor_alive() { # <task>
+  local t=$1 spawn cs
+  [ -n "${UC_FM_HOME:-}" ] || return 1
+  spawn="${UC_REAL_AUDIT_ID:-${t}-audit}"
+  [ -f "$UC_FM_HOME/state/$spawn.meta" ] || return 1
+  [ -x "$UC_FM_HOME/bin/fm-crew-state.sh" ] || return 1
+  cs=$("$UC_FM_HOME/bin/fm-crew-state.sh" "$spawn" 2>/dev/null | sed -n 's/^state:[[:space:]]*\([a-z-]*\).*/\1/p')
+  case "$cs" in working|parked|done) return 0;; *) return 1;; esac
+}
+
+
+# ---- contract access (python3) ---------------------------------------------
+_jget() { python3 -c 'import json,sys
+d=json.load(open(sys.argv[1]))
+cur=d
+for k in sys.argv[2].split("."):
+    if isinstance(cur,list): cur=cur[int(k)]
+    elif isinstance(cur,dict): cur=cur.get(k)
+    else: cur=None; break
+if cur is None: print("")
+elif isinstance(cur,bool): print("true" if cur else "false")
+elif isinstance(cur,(dict,list)): print(json.dumps(cur))
+else: print(cur)' "$1" "$2" 2>/dev/null; }
+_jlen() { python3 -c 'import json,sys
+d=json.load(open(sys.argv[1]));v=d
+for k in sys.argv[2].split("."):
+    if isinstance(v,list): v=v[int(k)]
+    elif isinstance(v,dict): v=v.get(k)
+    else: v=None; break
+print(len(v) if isinstance(v,list) else 0)' "$1" "$2" 2>/dev/null; }
+_jarray_nul() { python3 -c 'import json,sys
+d=json.load(open(sys.argv[1]));v=d
+for k in sys.argv[2].split("."):
+    if isinstance(v,list): v=v[int(k)]
+    elif isinstance(v,dict): v=v.get(k)
+    else: v=None; break
+for x in (v or []): sys.stdout.write(str(x)); sys.stdout.write("\0")' "$1" "$2" 2>/dev/null; }
+
+# Flatten one task into the per-run contract the judge reads, carrying the
+# batch-level mode/patch/forbidden and the task-level required_tests so the
+# judge's deterministic floor applies to this task specifically.
+_write_task_contract() { # <batch-contract> <task-index> <out-file>
+  python3 -c 'import json,sys
+c=json.load(open(sys.argv[1])); i=int(sys.argv[2])
+t=c["tasks"][i] if 0 <= i < len(c["tasks"]) else {}
+flat={"batch_id":c.get("batch_id"),"mode":c.get("mode"),"patch_sha256":c.get("patch_sha256"),
+      "forbidden_operations":c.get("forbidden_operations")}
+for k in ("task_id","required_tests","patch_sha256","audit","executor"):
+    if k in t: flat[k]=t[k]
+json.dump(flat,open(sys.argv[3],"w"))' "$1" "$2" "$3" 2>/dev/null; }
+
+_state_of() { # <batch> <task> [field]
+  local f k
+  f=$(_tdir "$1")/$2.state
+  [ -f "$f" ] || { [ "${3:-}" = new ] && echo QUEUED || echo ""; return; }
+  k=${3:-new}; sed -n "s/^$k=//p" "$f" | tail -1
+}
+_set_state() { printf 'new=%s\n' "$3" > "$(_tdir "$1")/$2.state"; }
+_attempts() { local f; f=$(_tdir "$1")/$2.attempts; [ -f "$f" ] && cat "$f" || echo 0; }
+_bump_attempts() { local f; f=$(_tdir "$1")/$2.attempts; echo "$(( $(_attempts "$1" "$2") + 1 ))" > "$f"; }
+# Generation-bound lease: each dispatch gets a unique generation; a state write
+# carrying a stale generation (a late report/success from a superseded executor)
+# is rejected so it cannot overwrite the current attempt's state. The generation
+# is stored per task and mirrored into the executor run dir at dispatch time.
+_gen_of() { local f; f=$(_tdir "$1")/$2.gen; [ -f "$f" ] && cat "$f" || echo 0; }
+_bump_gen() { local f; f=$(_tdir "$1")/$2.gen; echo "$(( $(_gen_of "$1" "$2") + 1 ))" > "$f"; }
+
+# append a transition; dedup on (task,attempt,new,reason) so a duplicate wake
+# cannot record a second crew or a second outcome.
+_transition() { # <batch> <task> <prev> <new> <reason> [attempt] [session] [evidence]
+  local b t prev new reason attempt session ev key sl
+  b=$1; t=$2; prev=$3; new=$4; reason=$5
+  attempt=${6:-$(_attempts "$b" "$t")}; session=${7:-}; ev=${8:-}
+  key="task_id=$t attempt=$attempt new=$new reason=$reason"
+  sl=$(_bdir "$b")/state.jsonl
+  if grep -qF "$key" "$sl" 2>/dev/null && [ "$new" != "RUNNING" ]; then return 0; fi
+  printf 'at=%s run_id=%s task_id=%s attempt=%s session=%s role=%s baseline_sha=%s prev=%s new=%s reason=%s evidence=%s\n' \
+    "$(_now)" "$b" "$t" "$attempt" "$session" "" "${UC_BASELINE_SHA:-}" "$prev" "$new" "$reason" "$ev" >> "$sl"
+  _set_state "$b" "$t" "$new"
+  # A HOLD is terminal for the window: latch the batch so no further dispatch
+  # happens on any later run/resume until the captain clears it.
+  [ "$new" = HOLD ] && : > "$(_bdir "$b")/.batch-held"
+  printf '  [%s] %s -> %s (%s)\n' "$t" "$prev" "$new" "$reason"
+}
+
+_deps_ok() { # <batch> <task-index>
+  local b i c n j dep st
+  b=$1; i=$2; c=$(_bdir "$b")/contract.json
+  n=$(_jlen "$c" "tasks.$i.depends_on")
+  for (( j=0; j<n; j++ )); do
+    dep=$(_jget "$c" "tasks.$i.depends_on.$j")
+    st=$(_state_of "$b" "$dep" new)
+    [ "$st" = "VERIFIED_PASS" ] || return 1
+  done
+  return 0
+}
+
+_task_index() { # <batch> <task_id> -> index or -1
+  local b want c n i
+  b=$1; want=$2; c=$(_bdir "$b")/contract.json
+  n=$(_jlen "$c" "tasks")
+  for (( i=0; i<n; i++ )); do
+    [ "$(_jget "$c" "tasks.$i.task_id")" = "$want" ] && { echo "$i"; return 0; }
+  done
+  echo -1
+}
+
+# ---- dispatch + evidence ----------------------------------------------------
+_dispatch_executor() { # <batch> <task> <attempt>
+  if [ "$BACKEND" = real ]; then _dispatch_executor_real "$@"; return $?; fi
+  local b t a i c ev rd ws dm sid ident runlog rpid
+  local -a cmd
+  b=$1; t=$2; a=$3; i=$(_task_index "$b" "$t")
+  c=$(_bdir "$b")/contract.json
+  ev=$(_evroot "$b"); rd=$ev/runs/$t
+  # a fresh attempt starts a fresh run dir; the previous attempt's evidence is kept aside
+  if [ -f "$rd/attempt" ] && [ "$(cat "$rd/attempt")" != "$a" ]; then
+    # Kill the superseded attempt's background runner BEFORE rotating, so a late
+    # write from attempt N can never land in attempt N+1's fresh run dir (the
+    # gen marker would otherwise match and adopt a stale result).
+    [ -f "$rd/executor-runner.pid" ] && kill "$(cat "$rd/executor-runner.pid")" 2>/dev/null || true
+    mv "$rd" "$rd.attempt$(cat "$rd/attempt")"
+  fi
+  mkdir -p "$rd/executor" "$rd/auditor" "$rd/gate"
+  printf '%s\n' "$a" > "$rd/attempt"
+  # Arm the generation-bound lease: each dispatch bumps the task generation and
+  # mirrors it into the run dir, so a late write from a superseded executor
+  # (mismatched .gen) is rejected at the RUNNING boundary instead of advancing.
+  _bump_gen "$b" "$t"; _gen_of "$b" "$t" > "$rd/executor/.gen"
+  _write_task_contract "$c" "$i" "$rd/task-contract.json"
+  ws=$(_bdir "$b")/work/$t; mkdir -p "$ws"
+
+  # idempotency: an existing completed or live evidence run is adopted, not redone
+  if [ -f "$rd/executor/rc" ]; then _transition "$b" "$t" "$(_state_of "$b" "$t" new)" RUNNING "adopt-completed-run" "$a"; return 0; fi
+  if [ -f "$rd/executor-runner.pid" ] && kill -0 "$(cat "$rd/executor-runner.pid")" 2>/dev/null; then
+    _transition "$b" "$t" "$(_state_of "$b" "$t" new)" RUNNING "adopt-live-run" "$a"; return 0; fi
+
+  dm=""
+  _transition "$b" "$t" "$(_state_of "$b" "$t" new)" DISPATCHING "dispatch-executor" "$a"
+  dm=$(UC_HOME="$UC_HOME" "$ADAPTER" dispatch --batch "$b" --task "$t" --role executor --attempt "$a" --workdir "$ws" 2>&1) || true
+  if ! printf '%s' "$dm" | grep -q 'DISPATCHED'; then
+    if printf '%s' "$dm" | grep -q 'DUPLICATE_DISPATCH'; then
+      _transition "$b" "$t" DISPATCHING HOLD "duplicate-dispatch" "$a"; return 0
+    fi
+    _transition "$b" "$t" DISPATCHING REWORK "ack-timeout" "$a"; return 0
+  fi
+  sid=$(printf '%s\n' "$dm" | sed -n 's/.*session=\([^ ]*\).*/\1/p' | tail -1)
+  ident=$(UC_HOME="$UC_HOME" "$ADAPTER" identity --batch "$b" --session "$sid" 2>/dev/null)
+  printf '{"session_id":"%s","role":"executor","task":"%s","workdir":"%s"}\n' "$sid" "$t" "$ws" > "$rd/executor/session.json"
+  if [ "$ident" != "$sid" ]; then
+    _transition "$b" "$t" DISPATCHING HOLD "identity-mismatch" "$a" "$sid"; return 0
+  fi
+  _transition "$b" "$t" DISPATCHING ACKNOWLEDGED "executor-ack" "$a" "$sid"
+  # launch the tracked test OUT of process so a coordinator restart never
+  # deletes a running suite (the prior batch's failure mode).
+  cmd=(); mapfile -t -d '' cmd < <(_jarray_nul "$c" "tasks.$i.executor.command")
+  runlog="$rd/executor-run.log"
+  EVIDENCE_ROOT="$ev" GIT_DIR_FOR_RUN="$ws" \
+    "$EVIDENCE" run "$t" -- "${cmd[@]}" > "$runlog" 2>&1 &
+  rpid=$!; printf '%s\n' "$rpid" > "$rd/executor-runner.pid"
+  printf '%s\n' "$sid" > "$rd/executor/session-id"
+  _transition "$b" "$t" ACKNOWLEDGED RUNNING "executor-running" "$a" "$sid"
+  return 0
+}
+
+# ---- real-crew dispatch, evidence, and audit --------------------------------
+# The real backend never runs a one-shot command: it spawns an interactive
+# firstmate crew, observes the endpoint, harvests the durable evidence, then
+# spawns a SEPARATE auditor crew. Nothing here calls a provider directly; the
+# spawn/steer/state primitives are the adapter's, which is what the mock home
+# substitutes for the offline E2E test.
+
+_dispatch_executor_real() { # <batch> <task> <attempt>
+  local b t a i c ev rd ws dm sid spawn_id wt ident ack_to gt
+  b=$1; t=$2; a=$3; i=$(_task_index "$b" "$t")
+  c=$(_bdir "$b")/contract.json; ev=$(_evroot "$b"); rd=$ev/runs/$t
+  if [ -f "$rd/attempt" ] && [ "$(cat "$rd/attempt")" != "$a" ]; then
+    # Kill the superseded attempt's background runner BEFORE rotating, so a late
+    # write from attempt N can never land in attempt N+1's fresh run dir (the
+    # gen marker would otherwise match and adopt a stale result).
+    [ -f "$rd/executor-runner.pid" ] && kill "$(cat "$rd/executor-runner.pid")" 2>/dev/null || true
+    mv "$rd" "$rd.attempt$(cat "$rd/attempt")"
+  fi
+  mkdir -p "$rd/executor" "$rd/auditor" "$rd/gate"
+  printf '%s\n' "$a" > "$rd/attempt"
+  # Arm the generation-bound lease: each dispatch bumps the task generation and
+  # mirrors it into the run dir, so a late write from a superseded executor
+  # (mismatched .gen) is rejected at the RUNNING boundary instead of advancing.
+  _bump_gen "$b" "$t"; _gen_of "$b" "$t" > "$rd/executor/.gen"
+  _write_task_contract "$c" "$i" "$rd/task-contract.json"
+  ws=$(_bdir "$b")/work/$t; mkdir -p "$ws"
+  if [ -f "$rd/executor/rc" ]; then _transition "$b" "$t" "$(_state_of "$b" "$t" new)" RUNNING "adopt-completed-run" "$a"; return 0; fi
+
+  _transition "$b" "$t" "$(_state_of "$b" "$t" new)" DISPATCHING "dispatch-executor" "$a"
+  local qmsg
+  if ! qmsg=$(_quota_gate "$b" executor); then
+    mkdir -p "$rd/gate"; printf '%s\n' "$qmsg" > "$rd/gate/quota-block.txt" 2>/dev/null || true
+    _transition "$b" "$t" DISPATCHING HOLD "quota-blocked" "$a"; return 0
+  fi
+  dm=$(UC_HOME="$UC_HOME" "$ADAPTER" dispatch --batch "$b" --task "$t" --role executor --attempt "$a" --workdir "$ws" \
+    --brief-intent "$(_jget "$c" "tasks.$i.executor.intent")" --brief-spec "$(_jget "$c" "tasks.$i.executor.spec")" 2>&1); drc=$?
+  if ! printf '%s' "$dm" | grep -q 'DISPATCHED'; then
+    printf '%s' "$dm" | grep -q 'DUPLICATE_DISPATCH' && { _transition "$b" "$t" DISPATCHING HOLD "duplicate-dispatch" "$a"; return 0; }
+    _quota_refund "$b"
+    # Distinct reasons per adapter return code so a fast local refusal is not
+    # collapsed into "spawn-failed" (RCA: the pilot's ~2s failure was opaque).
+    case "$drc" in
+      2) dreason="dispatch-refused";;
+      3) dreason="duplicate-dispatch";;
+      1) dreason="spawn-failed";;
+      *) dreason="dispatch-failed-rc${drc:-?}";;
+    esac
+    _transition "$b" "$t" DISPATCHING REWORK "$dreason" "$a"; return 0
+  fi
+  sid=$(printf '%s\n' "$dm" | sed -n 's/.*session=\([^ ]*\).*/\1/p' | tail -1)
+  spawn_id=$(printf '%s\n' "$dm" | sed -n 's/.*spawn_id=\([^ ]*\).*/\1/p' | tail -1)
+  wt=$(printf '%s\n' "$dm" | sed -n 's/.*worktree=\([^ ]*\).*/\1/p' | tail -1)
+  ident=$(UC_HOME="$UC_HOME" "$ADAPTER" identity --batch "$b" --session "$sid" 2>/dev/null || true)
+  printf '{"session_id":"%s","spawn_id":"%s","role":"executor","task":"%s","workdir":"%s"}\n' \
+    "$sid" "$spawn_id" "$t" "${wt:-$ws}" > "$rd/executor/session.json"
+  [ -n "$sid" ] && printf '%s\n' "$sid" > "$rd/executor/session-id"
+  [ -n "$spawn_id" ] && printf '%s\n' "$spawn_id" > "$rd/executor/spawn-id"
+  if [ "$ident" != "$sid" ]; then _transition "$b" "$t" DISPATCHING HOLD "identity-mismatch" "$a" "$sid"; return 0; fi
+
+  # pre-run worktree SHA, recorded before the crew can change it
+  gt=${wt:-$ws}
+  printf '{"sha":"%s","branch":"%s","recorded_at":%s}\n' \
+    "$(git -C "$gt" rev-parse HEAD 2>/dev/null || echo unknown)" \
+    "$(git -C "$gt" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)" "$(date +%s)" > "$rd/executor/git-before.json"
+  printf '%s\n' "$gt" > "$rd/executor/wd"
+
+  ack_to=$(_jget "$c" ack_timeout_secs); [ -n "$ack_to" ] || ack_to=5
+  if ! _real_wait_ack "$b" "$sid" "$ack_to"; then
+    _quota_refund "$b"
+    _transition "$b" "$t" DISPATCHING REWORK "ack-timeout" "$a" "$sid"; return 0
+  fi
+  _transition "$b" "$t" DISPATCHING ACKNOWLEDGED "executor-ack" "$a" "$sid"
+  _transition "$b" "$t" ACKNOWLEDGED RUNNING "executor-running" "$a" "$sid"
+  return 0
+}
+
+_real_collect_executor() { # <batch> <task>  -> 0 clean evidence, 1 incomplete
+  local b t ev rd sid spawn wd report attest c
+  b=$1; t=$2; c=$(_bdir "$b")/contract.json
+  ev=$(_evroot "$b"); rd=$ev/runs/$t
+  sid=$(cat "$rd/executor/session-id" 2>/dev/null || echo "")
+  spawn=$(cat "$rd/executor/spawn-id" 2>/dev/null || echo "")
+  wd=$(cat "$rd/executor/wd" 2>/dev/null || echo "")
+  [ -n "$spawn" ] || return 1
+  report="${UC_FM_HOME:?}/data/$spawn/report.md"
+  attest=$(_jget "$c" "tasks.$(_task_index "$b" "$t").executor.attest")
+  local patch; patch=$(_jget "$c" patch_sha256)
+  EVIDENCE_ROOT="$ev" FM_PATCH_SHA256="$patch" \
+    "$EVIDENCE" collect "$t" --home "${UC_FM_HOME:?}" --spawn-id "$spawn" --workdir "$wd" \
+    --report "$report" ${attest:+--attest "$attest"} >/dev/null 2>&1
+}
+
+_dispatch_auditor_real() { # <batch> <task> <attempt>
+  local b t a i c ev rd aws dm sid spawn verdict report wt
+  b=$1; t=$2; a=$3; i=$(_task_index "$b" "$t")
+  c=$(_bdir "$b")/contract.json; ev=$(_evroot "$b"); rd=$ev/runs/$t
+  aws=$(_bdir "$b")/audit-ws/$t; mkdir -p "$aws"
+  # production path may NEVER use the built-in fake auditor
+  local -a acmd; mapfile -t -d '' acmd < <(_jarray_nul "$c" "tasks.$i.audit.command")
+  if [ "${#acmd[@]}" -gt 0 ] && printf '%s\n' "${acmd[*]}" | grep -q 'fake-auditor.sh'; then
+    _transition "$b" "$t" "$(_state_of "$b" "$t" new)" HOLD "fake-auditor-in-production" "$a"; return 0
+  fi
+
+  local qmsg abinding sdir
+  # GAP-2b: an auditor already dispatched for this (task, attempt) is ADOPTED,
+  # never re-reserved or re-spawned. Without this the resume loop re-reserves on
+  # every pass and exhausts the provider-call cap into a false HOLD. (Lookup is
+  # inline: the adapter's _find_binding is not defined in the coordinator.)
+  abinding=''
+  for sdir in "$(_bdir "$b")/sessions"/*/; do
+    [ -f "${sdir}meta" ] || continue
+    [ "$(_get "${sdir}meta" task)" = "$t" ] || continue
+    [ "$(_get "${sdir}meta" role)" = "auditor" ] || continue
+    [ "$(_get "${sdir}meta" attempt)" = "$a" ] || continue
+    [ "$(_get "${sdir}meta" state)" = "pending-ack" ] && continue
+    abinding=$(basename "$sdir"); break
+  done
+  if [ -n "$abinding" ]; then
+    sid=$abinding
+    spawn=$(_get "$(_bdir "$b")/sessions/$sid/meta" spawn_id); [ -n "$spawn" ] || spawn="${sid##*:}"
+    wt=$(_get "$(_bdir "$b")/sessions/$sid/meta" workdir)
+  else
+    if ! qmsg=$(_quota_gate "$b" auditor); then
+      mkdir -p "$rd/gate"; printf '%s\n' "$qmsg" > "$rd/gate/quota-block.txt" 2>/dev/null || true
+      _transition "$b" "$t" "$(_state_of "$b" "$t" new)" HOLD "quota-blocked" "$a"; return 0
+    fi
+    dm=$(UC_HOME="$UC_HOME" "$ADAPTER" dispatch --batch "$b" --task "$t" --role auditor --attempt "$a" --workdir "$aws" \
+      --brief-intent "$(_jget "$c" "tasks.$i.audit.intent")" --brief-spec "$(_jget "$c" "tasks.$i.audit.spec")" 2>&1) || true
+    if printf '%s' "$dm" | grep -q 'DISPATCHED'; then
+      sid=$(printf '%s\n' "$dm" | sed -n 's/.*session=\([^ ]*\).*/\1/p' | tail -1)
+      spawn=$(printf '%s\n' "$dm" | sed -n 's/.*spawn_id=\([^ ]*\).*/\1/p' | tail -1)
+      wt=$(printf '%s\n' "$dm" | sed -n 's/.*worktree=\([^ ]*\).*/\1/p' | tail -1)
+    elif printf '%s' "$dm" | grep -q 'DUPLICATE_DISPATCH'; then
+      sid=$(printf '%s\n' "$dm" | sed -n 's/.*session=\([^ ]*\).*/\1/p' | tail -1)
+      spawn=$(_get "$(_bdir "$b")/sessions/$sid/meta" spawn_id); [ -n "$spawn" ] || spawn="${sid##*:}"
+      wt=$(_get "$(_bdir "$b")/sessions/$sid/meta" workdir)
+    else
+      limit=$(_jget "$c" retry_limit); [ -n "$limit" ] || limit=2
+      _quota_refund "$b"
+      _transition "$b" "$t" "$(_state_of "$b" "$t" new)" REWORK "auditor-dispatch-failed" "$a"
+      if [ "$a" -ge "$limit" ]; then _transition "$b" "$t" REWORK HOLD "retry-exhausted" "$a"; fi
+      return 0
+    fi
+  fi
+  [ -n "$wt" ] || wt=$aws
+  _transition "$b" "$t" "$(_state_of "$b" "$t" new)" AUDITING "auditor-dispatch" "$a" "$sid"
+
+  # ACK within the ack window; then wait for COMPLETION within the full crew
+  # budget. Using the ack window for completion was the real-canary defect: a
+  # real auditor takes minutes, so it must not be judged on the ACK timeout.
+  local awt st rc
+  awt=$(_jget "$c" ack_timeout_secs); [ -n "$awt" ] || awt=5
+  if _real_wait_ack "$b" "$sid" "$awt"; then
+    rc=0
+    st=$(_real_wait_done "$b" "$sid" "$CREW_WAIT") || rc=$?
+    if [ "$rc" = 1 ]; then
+      # still working: not a failure, just no progress this call. Leave the
+      # state at AUDITING so the next resume adopts the SAME crew.
+      printf '{"session_id":"%s","spawn_id":"%s","role":"auditor","task":"%s","workdir":"%s","auditor_kind":"real","state":"working"}\n' \
+        "$sid" "$spawn" "$t" "$wt" > "$rd/auditor/session.json"
+      return 1
+    fi
+  else
+    st=dead
+  fi
+  if [ "$st" != "done" ]; then
+    # no usable audit -> judge yields AUDIT_UNAVAILABLE, never VERIFIED_PASS
+    printf '{"session_id":"%s","spawn_id":"%s","role":"auditor","task":"%s","workdir":"%s","auditor_kind":"real","state":"%s"}\n' \
+      "$sid" "$spawn" "$t" "$wt" "$st" > "$rd/auditor/session.json"
+    _judge_task "$b" "$t" "$a"; return 0
+  fi
+  report="${UC_FM_HOME:?}/data/$spawn/report.md"
+  verdict=$(grep -oiE 'verdict[=:[:space:]]+(PASS|FAIL|CONFLICT|UNAVAILABLE)' "$report" 2>/dev/null | tail -1 | grep -oiE 'PASS|FAIL|CONFLICT|UNAVAILABLE' | tr '[:lower:]' '[:upper:]')
+  printf '{"session_id":"%s","spawn_id":"%s","role":"auditor","task":"%s","workdir":"%s","auditor_kind":"real"}\n' \
+    "$sid" "$spawn" "$t" "$wt" > "$rd/auditor/session.json"
+  if [ -n "$verdict" ]; then
+    case "$verdict" in FAIL) verdict=CONFLICT;; esac
+    printf '{"verdict":"%s","auditor_kind":"real","report":"%s"}\n' "$verdict" "$report" > "$rd/auditor/findings.json"
+  fi
+  _judge_task "$b" "$t" "$a"
+  return 0
+}
+
+_wait_runner() { # <rc_file> <runner_pid> <secs>  -> 0 if rc appeared
+  local rc pid ticks i
+  rc=$1; pid=$2; ticks=$(( ${3:-40} * 5 )); i=0
+  while [ $i -lt "$ticks" ]; do
+    [ -f "$rc" ] && return 0
+    kill -0 "$pid" 2>/dev/null || { [ -f "$rc" ] && return 0; return 1; }
+    sleep 0.2; i=$((i + 1))
+  done
+  [ -f "$rc" ]
+}
+
+_dispatch_auditor() { # <batch> <task> <attempt>
+  local b t a i c ev rd aws dm sid
+  local -a acmd
+  b=$1; t=$2; a=$3; i=$(_task_index "$b" "$t")
+  c=$(_bdir "$b")/contract.json; ev=$(_evroot "$b"); rd=$ev/runs/$t
+  aws=$(_bdir "$b")/audit-ws/$t; mkdir -p "$aws"
+  # production path may never use the built-in fake auditor
+  if [ "$(_jget "$c" mode)" = production ] && [ "$(_jlen "$c" "tasks.$i.audit.command")" -eq 0 ]; then
+    _transition "$b" "$t" "$(_state_of "$b" "$t" new)" HOLD "fake-auditor-in-production" "$a"; return 0
+  fi
+  dm=""
+  dm=$(UC_HOME="$UC_HOME" "$ADAPTER" dispatch --batch "$b" --task "$t" --role auditor --attempt "$a" --workdir "$aws" 2>&1) || true
+  if printf '%s' "$dm" | grep -q 'DISPATCHED'; then
+    sid=$(printf '%s\n' "$dm" | sed -n 's/.*session=\([^ ]*\).*/\1/p' | tail -1)
+  elif printf '%s' "$dm" | grep -q 'DUPLICATE_DISPATCH'; then
+    # idempotent adoption: a prior attempt already registered the auditor; reuse it
+    sid=$(printf '%s\n' "$dm" | sed -n 's/.*session=\([^ ]*\).*/\1/p' | tail -1)
+    [ -n "$sid" ] || sid="adopted-$t-auditor"
+  else
+    _transition "$b" "$t" "$(_state_of "$b" "$t" new)" REWORK "auditor-dispatch-failed" "$a"; return 0
+  fi
+  _transition "$b" "$t" "$(_state_of "$b" "$t" new)" AUDITING "auditor-dispatch" "$a" "$sid"
+  # auditor runs in its OWN workspace; the default fake auditor proves the
+  # protocol only and is marked auditor_kind=fake.
+  acmd=(); mapfile -t -d '' acmd < <(_jarray_nul "$c" "tasks.$i.audit.command")
+  mkdir -p "$rd/auditor"
+  if [ "${#acmd[@]}" -eq 0 ]; then
+    ( cd "$aws" && "$FAKE_AUDITOR" "$rd" >/dev/null 2>&1 )
+  else
+    ( cd "$aws" && "${acmd[@]}" >/dev/null 2>&1 )
+  fi
+  printf '{"session_id":"%s","role":"auditor","task":"%s","workdir":"%s"}\n' "$sid" "$t" "$aws" > "$rd/auditor/session.json"
+  _judge_task "$b" "$t" "$a"
+  return 0
+}
+
+_judge_task() { # <batch> <task> <attempt>
+  local b t a ev rd out verdict prev
+  b=$1; t=$2; a=$3
+  ev=$(_evroot "$b"); rd=$ev/runs/$t
+  out=$(EVIDENCE_ROOT="$ev" "$JUDGE" run "$t" 2>&1)
+  verdict=$(printf '%s' "$out" | sed -n 's/^VERDICT=//;s/ .*//p')
+  prev=$(_state_of "$b" "$t" new)
+  _transition "$b" "$t" "$prev" "$verdict" "judge" "$a" "" "$rd/gate/verdict.json"
+  _quota_release "$b"
+  return 0
+}
+
+# ---- quota / concurrency gate ----------------------------------------------
+# Enforcement is opt-in: it activates when UC_QUOTA_ENFORCE=1 or a config file is
+# present. With no config the historic (uncapped) behaviour is preserved, so the
+# offline suites are unaffected. Once active, unknown quota is a HOLD.
+_quota_enforced() {
+  [ "${UC_QUOTA_ENFORCE:-0}" = 1 ] && return 0
+  [ -x "$CONFIG" ] || return 1
+  [ -f "$("$CONFIG" config-path 2>/dev/null)" ] && return 0
+  return 1
+}
+
+_quota_gate() { # <batch> <role> -> 0 allow / 3 block; prints the reason
+  _quota_enforced || return 0
+  [ -x "$QUOTA" ] || return 0
+  local out
+  if ! out=$("$QUOTA" check-model --model "${UC_REAL_MODEL:-}" 2>&1); then printf '%s\n' "$out"; return 3; fi
+  if ! out=$("$QUOTA" reserve --batch "$1" --role "$2" --home "$UC_HOME" 2>&1); then printf '%s\n' "$out"; return 3; fi
+  return 0
+}
+
+_quota_release() { # <batch>
+  _quota_enforced || return 0
+  [ -x "$QUOTA" ] || return 0
+  "$QUOTA" release --batch "$1" --home "$UC_HOME" >/dev/null 2>&1 || true
+}
+
+# GAP-2: undo a reservation whose dispatch never spent a provider call (spawn
+# failure, ack timeout, cancel). Called exactly once on each failure path; the
+# quota side clamps at zero so a stray duplicate cannot go negative.
+_quota_refund() { # <batch>
+  _quota_enforced || return 0
+  [ -x "$QUOTA" ] || return 0
+  "$QUOTA" refund --batch "$1" --home "$UC_HOME" >/dev/null 2>&1 || true
+}
+
+# Executor Evidence Guard: compare the Executor's CLAIMED structured values
+# against machine-derived canonical values BEFORE spending an auditor crew. Any
+# mismatch, un-evaluable claim, or guard error holds the task (fail-closed). A
+# contract that declares no claims is a no-op pass (compat). It writes
+# gate/guard.json and never touches the report or other evidence.
+_evidence_guard() { # <batch> <task> -> 0 pass, nonzero block
+  local b t ev rd
+  b=$1; t=$2
+  [ -x "$GUARD" ] || return 0
+  ev=$(_evroot "$b"); rd=$ev/runs/$t
+  "$GUARD" check --contract "$rd/task-contract.json" --report "$rd/executor/report.md" \
+    --workdir "$(cat "$rd/executor/wd" 2>/dev/null || echo "")" --out "$rd/gate/guard.json" >/dev/null 2>&1
+}
+
+# ---- one step of the state machine -----------------------------------------
+_advance() { # <batch> <task>
+  local b t st a i c limit
+  b=$1; t=$2; c=$(_bdir "$b")/contract.json
+  i=$(_task_index "$b" "$t"); [ "$i" != "-1" ] || return 0
+  st=$(_state_of "$b" "$t" new); a=$(_attempts "$b" "$t")
+
+  case "$st" in
+    QUEUED|REWORK)
+      # real backend: a completed executor must not be re-run just because the
+      # audit failed; retry the audit only (capped by the auditor's own retry).
+      if [ "$BACKEND" = real ] && [ "$st" = REWORK ] && [ -f "$(_evroot "$b")/runs/$t/executor/rc" ]; then
+        _bump_attempts "$b" "$t"
+        _transition "$b" "$t" REWORK AUDIT_PENDING "retry-audit" "$(_attempts "$b" "$t")"; return 0
+      fi
+      [ "$(_jget "$c" "tasks.$i.approval_required")" = "true" ] && { _transition "$b" "$t" "$st" HOLD "approval-required" "$a"; return 0; }
+      _deps_ok "$b" "$i" || return 0
+      limit=$(_jget "$c" retry_limit); [ -n "$limit" ] || limit=2
+      [ "$a" -ge "$limit" ] && { _transition "$b" "$t" "$st" HOLD "retry-exhausted" "$a"; return 0; }
+      _bump_attempts "$b" "$t"; _dispatch_executor "$b" "$t" "$(_attempts "$b" "$t")" ;;
+    *) return 0 ;;
+  esac
+}
+
+_step_real() { # <batch> <task> <state> <attempt> <index> <contract> <rundir>
+  local b=$1 t=$2 st=$3 a=$4 i=$5 c=$6 rd=$7 sid res rc
+  case "$st" in
+    QUEUED|REWORK) _advance "$b" "$t"; return 0 ;;
+    DISPATCHING|ACKNOWLEDGED|RUNNING)
+      # Generation-bound lease FIRST: reject a stale-generation executor (a late
+      # rc/report/success from a superseded attempt) before it can advance state.
+      if [ -f "$rd/executor/.gen" ] && [ "$(cat "$rd/executor/.gen" 2>/dev/null)" != "$(_gen_of "$b" "$t")" ]; then
+        _transition "$b" "$t" "$st" HOLD "stale-generation" "$a"; return 0
+      fi
+      if [ -f "$rd/executor/rc" ]; then _transition "$b" "$t" "$st" EVIDENCE_PENDING "evidence-collected" "$a"; return 0; fi
+      # Timeout terminalization. UC_CREW_TIMEOUT is the per-attempt INACTIVITY
+      # timeout (not the batch wall-clock cap, which is UC_WINDOW_SECS). Progress
+      # is a CHANGE in the report mtime (transition, not bare presence), so a
+      # stale stub report that never grows does not reset the clock. When the
+      # inactivity cap is reached the executor's liveness is re-checked: a live
+      # endpoint refreshes the clock but only up to UC_CREW_STALL_LIMIT times, so
+      # an executor that is alive yet stalled still terminalizes; a stale
+      # heartbeat (dead/absent/unknown) HOLDs immediately.
+      sincef="$rd/executor/.running-since"; now_ts=$(date +%s)
+      mtimef="$rd/executor/.report-mtime"; stallf="$rd/executor/.stall"
+      mt=$(stat -f %m "$rd/executor/report.md" 2>/dev/null || stat -c %Y "$rd/executor/report.md" 2>/dev/null || echo 0)
+      if [ "$mt" != "$(cat "$mtimef" 2>/dev/null || echo 0)" ]; then
+        printf '%s\n' "$now_ts" > "$sincef"; printf '%s\n' "$mt" > "$mtimef"; rm -f "$stallf"
+      fi
+      [ -f "$sincef" ] || printf '%s\n' "$now_ts" > "$sincef"
+      el=$(( now_ts - $(cat "$sincef" 2>/dev/null || echo "$now_ts") ))
+      cap=${UC_CREW_TIMEOUT:-900}
+      if [ "$cap" -gt 0 ] 2>/dev/null && [ "$el" -ge "$cap" ]; then
+        local hb_sid hb_st sc
+        hb_sid=$(cat "$rd/executor/session-id" 2>/dev/null || echo "")
+        hb_st=$(_crew_state_of "$(_crew_status_line "$b" "$hb_sid")")
+        case "$hb_st" in
+          working|parked|done)
+            sc=$(( $(cat "$stallf" 2>/dev/null || echo 0) + 1 ))
+            if [ "$sc" -ge "${UC_CREW_STALL_LIMIT:-3}" ]; then
+              _transition "$b" "$t" "$st" HOLD "executor-timeout" "$a"; return 0
+            fi
+            printf '%s\n' "$sc" > "$stallf"; printf '%s\n' "$now_ts" > "$sincef";;
+          *) _transition "$b" "$t" "$st" HOLD "executor-timeout" "$a"; return 0;;
+        esac
+      fi
+      sid=$(cat "$rd/executor/session-id" 2>/dev/null || echo "")
+      if [ -z "$sid" ]; then _transition "$b" "$t" "$st" HOLD "worker-interrupted" "$a"; return 0; fi
+      res=$(_real_wait_done "$b" "$sid" "$CREW_WAIT"); rc=$?
+      case "$rc" in
+        0) if _real_collect_executor "$b" "$t"; then
+             _quota_release "$b"
+             _transition "$b" "$t" "$st" EVIDENCE_PENDING "evidence-collected" "$a"; return 0
+           else
+             _transition "$b" "$t" "$st" HOLD "evidence-incomplete" "$a"; return 0
+           fi;;
+        2) case "$res" in failed) _transition "$b" "$t" "$st" REWORK "worker-failed" "$a";; *) _transition "$b" "$t" "$st" HOLD "worker-interrupted" "$a";; esac; return 0;;
+        *) return 1;;
+      esac ;;
+    EVIDENCE_PENDING)
+      if [ "$(_jget "$c" "tasks.$i.audit.required")" = "false" ]; then _judge_task "$b" "$t" "$a"; return 0; fi
+      if _evidence_guard "$b" "$t"; then
+        _transition "$b" "$t" EVIDENCE_PENDING AUDIT_PENDING "awaiting-audit" "$a"; return 0
+      fi
+      _transition "$b" "$t" EVIDENCE_PENDING HOLD "evidence-guard-mismatch" "$a"; return 0 ;;
+    AUDIT_PENDING|AUDITING) _dispatch_auditor_real "$b" "$t" "$a"; return $? ;;
+    AUDIT_UNAVAILABLE)
+      # a mere observation-timeout is not terminal: adopt a still-live or
+      # now-completed auditor and finish the harvest. Never spawn a new crew.
+      if _auditor_alive "$t"; then
+        _transition "$b" "$t" AUDIT_UNAVAILABLE AUDITING "adopt-audit" "$a"; return 0
+      fi
+      return 2 ;;
+    VERIFIED_PASS|HOLD|CANCELLED) return 2 ;;
+    *) return 0 ;;
+  esac
+}
+
+_step() { # <batch> <task> : drive one task as far as evidence allows this call
+  local b t i st a c ev rd rpid
+  b=$1; t=$2; c=$(_bdir "$b")/contract.json
+  i=$(_task_index "$b" "$t"); [ "$i" != "-1" ] || return 1
+  ev=$(_evroot "$b"); rd=$ev/runs/$t
+  st=$(_state_of "$b" "$t" new); a=$(_attempts "$b" "$t")
+  if [ "$BACKEND" = real ]; then _step_real "$b" "$t" "$st" "$a" "$i" "$c" "$rd"; return $?; fi
+
+  case "$st" in
+    QUEUED|REWORK) _advance "$b" "$t"; return 0 ;;
+    DISPATCHING|ACKNOWLEDGED|RUNNING)
+      if [ -f "$rd/executor/.gen" ] && [ "$(cat "$rd/executor/.gen" 2>/dev/null)" != "$(_gen_of "$b" "$t")" ]; then
+        _transition "$b" "$t" "$st" HOLD "stale-generation" "$a"; return 0
+      fi
+      if [ -f "$rd/executor/rc" ]; then
+        _transition "$b" "$t" "$st" EVIDENCE_PENDING "evidence-collected" "$a"; return 0
+      fi
+      rpid=$(cat "$rd/executor-runner.pid" 2>/dev/null || echo "")
+      if [ -n "$rpid" ] && _wait_runner "$rd/executor/rc" "$rpid" "$WAIT_SECS"; then
+        _transition "$b" "$t" "$st" EVIDENCE_PENDING "evidence-collected" "$a"; return 0
+      fi
+      if [ -n "$rpid" ] && kill -0 "$rpid" 2>/dev/null; then return 1; fi
+      _transition "$b" "$t" "$st" HOLD "worker-interrupted" "$a"; return 0 ;;
+    EVIDENCE_PENDING)
+      if [ "$(_jget "$c" "tasks.$i.audit.required")" = "false" ]; then _judge_task "$b" "$t" "$a"; return 0; fi
+      if _evidence_guard "$b" "$t"; then
+        _transition "$b" "$t" EVIDENCE_PENDING AUDIT_PENDING "awaiting-audit" "$a"; return 0
+      fi
+      _transition "$b" "$t" EVIDENCE_PENDING HOLD "evidence-guard-mismatch" "$a"; return 0 ;;
+    AUDIT_PENDING|AUDITING) _dispatch_auditor "$b" "$t" "$a"; return 0 ;;
+    VERIFIED_PASS|HOLD|CANCELLED|AUDIT_UNAVAILABLE) return 2 ;;
+    *) return 0 ;;
+  esac
+}
+
+_drive() { # <batch>
+  local b c n i t before after changed
+  b=$1; c=$(_bdir "$b")/contract.json
+  n=$(_jlen "$c" "tasks")
+  # Safety device: a wall-clock window cap. UC_WINDOW_SECS=0 (default) = no cap.
+  # When the cap is reached the batch HOLD-latches so no further dispatch happens.
+  local win=${UC_WINDOW_SECS:-0} deadline=0
+  if [ "$win" -gt 0 ] 2>/dev/null; then deadline=$(( $(date +%s) + win )); fi
+  for _ in $(seq 1 60); do
+    [ -f "$(_bdir "$b")/.batch-held" ] && break
+    if [ "$deadline" -gt 0 ] && [ "$(date +%s)" -ge "$deadline" ]; then
+      : > "$(_bdir "$b")/.batch-held"
+      printf 'at=%s run_id=%s reason=window-exhausted cap_secs=%s\n' "$(_now)" "$b" "$win" >> "$(_bdir "$b")/state.jsonl"
+      break
+    fi
+    changed=0
+    for (( i=0; i<n; i++ )); do
+      # The durable HOLD latch must stop every later task in THIS pass too, not
+      # only a later run/resume: once a block is recorded, nothing else advances.
+      [ -f "$(_bdir "$b")/.batch-held" ] && break
+      t=$(_jget "$c" "tasks.$i.task_id")
+      before=$(_state_of "$b" "$t" new)
+      _step "$b" "$t" >/dev/null 2>&1 || true
+      after=$(_state_of "$b" "$t" new)
+      [ "$before" != "$after" ] && changed=1
+    done
+    [ "$changed" = 1 ] || break
+  done
+}
+
+# ---- CLI --------------------------------------------------------------------
+cmd_init() {
+  local b cf bd n i t baseline er
+  b=""; cf=""
+  while [ $# -gt 0 ]; do case "$1" in --batch) b=$2; shift 2;; --contract) cf=$2; shift 2;; *) echo "bad arg $1" >&2; exit 2;; esac; done
+  [ -n "$b" ] && [ -f "$cf" ] || { echo "init: need --batch and a valid --contract" >&2; exit 2; }
+  # Resolve an explicit durable evidence root before writing batch.meta so a
+  # later restart re-reads the same evidence. Absent config => default path.
+  er=$(_resolve_evidence_root "$b" 2>/dev/null) || er=""
+  bd=$(_bdir "$b"); mkdir -p "$bd" "$(_tdir "$b")" "$bd/sessions"
+  cp "$cf" "$bd/contract.json"
+  baseline=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("baseline_sha",""))' "$cf")
+  printf 'batch_id=%s\nbaseline_sha=%s\ncreated_at=%s\nevidence_root=%s\n' "$b" "$baseline" "$(_now)" "$er" > "$bd/batch.meta"
+  mkdir -p "${er:-$bd/evidence}/runs"
+  : > "$bd/state.jsonl"
+  n=$(_jlen "$bd/contract.json" "tasks")
+  for (( i=0; i<n; i++ )); do t=$(_jget "$bd/contract.json" "tasks.$i.task_id"); _transition "$b" "$t" "" QUEUED "batch-init" 0; done
+  echo "initialized batch $b with $n task(s)"
+}
+
+cmd_drive() {
+  local b
+  b=""
+  while [ $# -gt 0 ]; do case "$1" in --batch) b=$2; shift 2;; *) echo "bad arg $1" >&2; exit 2;; esac; done
+  [ -n "$b" ] || { echo "run: need --batch" >&2; exit 2; }
+  [ -f "$(_bdir "$b")/contract.json" ] || { echo "run: batch $b not initialized" >&2; exit 2; }
+  UC_BASELINE_SHA=$(_get "$(_bdir "$b")/batch.meta" baseline_sha)
+  _drive "$b"
+  cmd_status --batch "$b"
+  cmd_handoff --batch "$b" >/dev/null
+}
+
+cmd_status() {
+  local b c n i t
+  b=""
+  while [ $# -gt 0 ]; do case "$1" in --batch) b=$2; shift 2;; *) echo "bad arg $1" >&2; exit 2;; esac; done
+  c=$(_bdir "$b")/contract.json
+  n=$(_jlen "$c" "tasks")
+  echo "batch=$b"
+  [ -f "$(_bdir "$b")/.batch-held" ] && echo "  batch-held: HOLD latch set (no further dispatch)"
+  for (( i=0; i<n; i++ )); do t=$(_jget "$c" "tasks.$i.task_id"); printf '  %s: %s (attempts=%s)\n' "$t" "$(_state_of "$b" "$t" new)" "$(_attempts "$b" "$t")"; done
+}
+
+cmd_next() {
+  local b c n i t st
+  b=""
+  while [ $# -gt 0 ]; do case "$1" in --batch) b=$2; shift 2;; *) echo "bad arg $1" >&2; exit 2;; esac; done
+  c=$(_bdir "$b")/contract.json
+  n=$(_jlen "$c" "tasks")
+  for (( i=0; i<n; i++ )); do
+    t=$(_jget "$c" "tasks.$i.task_id"); st=$(_state_of "$b" "$t" new)
+    case "$st" in VERIFIED_PASS|HOLD|CANCELLED) continue;; esac
+    _deps_ok "$b" "$i" || continue
+    echo "$t"; return 0
+  done
+  echo "NONE"; return 0
+}
+
+cmd_handoff() {
+  local b bd c n i t s
+  b=""
+  while [ $# -gt 0 ]; do case "$1" in --batch) b=$2; shift 2;; *) echo "bad arg $1" >&2; exit 2;; esac; done
+  bd=$(_bdir "$b"); c=$bd/contract.json
+  n=$(_jlen "$c" "tasks")
+  {
+    echo "# Unattended batch handoff - $b"
+    echo
+    echo "baseline_sha: $(_get "$bd/batch.meta" baseline_sha)"
+    echo "generated_at: $(_now)"
+    echo
+    echo "| task | state | attempts |"
+    echo "|---|---|---|"
+    for (( i=0; i<n; i++ )); do t=$(_jget "$c" "tasks.$i.task_id"); printf '| %s | %s | %s |\n' "$t" "$(_state_of "$b" "$t" new)" "$(_attempts "$b" "$t")"; done
+    echo
+    echo "## Active sessions"
+    for s in "$bd/sessions"/*/; do [ -f "${s}meta" ] || continue; printf -- '- %s: task=%s role=%s state=%s workdir=%s\n' "$(basename "$s")" "$(_get "${s}meta" task)" "$(_get "${s}meta" role)" "$(_get "${s}meta" state)" "$(_get "${s}meta" workdir)"; done
+    echo
+    echo "## Next runnable"
+    echo "- $(cmd_next --batch "$b")"
+    echo
+    echo "## Evidence"
+    echo "- evidence root: $(_evroot "$b")/runs/"
+    echo "- per-task verdict: <task>/gate/verdict.json"
+  } > "$bd/handoff.md"
+  cat "$bd/handoff.md"
+}
+
+# Safety device: an explicit stop. Sets the durable HOLD latch so no further
+# dispatch happens in this or any later pass, records a stop receipt, and lists
+# the active sessions so their crews can be exited through the normal control
+# plane (bin/fm-control.sh <id> exit). It never tears a crew down itself:
+# stopping preserves evidence, and teardown stays a separate, captain-approved
+# action.
+cmd_stop() {
+  local b reason='' bd s
+  b=""
+  while [ $# -gt 0 ]; do case "$1" in --batch) b=$2; shift 2;; --reason) reason=$2; shift 2;; *) echo "bad arg $1" >&2; exit 2;; esac; done
+  [ -n "$b" ] || { echo "stop: need --batch" >&2; exit 2; }
+  bd=$(_bdir "$b")
+  [ -d "$bd" ] || { echo "stop: batch $b not initialized" >&2; exit 2; }
+  : > "$bd/.batch-held"
+  printf 'at=%s run_id=%s reason=stopped stop_reason=%s\n' "$(_now)" "$b" "${reason:-manual-stop}" >> "$bd/state.jsonl"
+  printf '%s\n' "${reason:-manual-stop}" > "$bd/.batch-stopped"
+  echo "stopped: $b (HOLD latch set; no further dispatch)"
+  echo "active sessions (exit via bin/fm-control.sh <id> exit):"
+  for s in "$bd/sessions"/*/; do
+    [ -f "${s}meta" ] || continue
+    printf -- '  - %s task=%s role=%s state=%s\n' "$(basename "$s")" "$(_get "${s}meta" task)" "$(_get "${s}meta" role)" "$(_get "${s}meta" state)"
+  done
+}
+
+case "${1:-}" in
+  init) shift; cmd_init "$@";;
+  run) shift; cmd_drive "$@";;
+  resume) shift; cmd_drive "$@";;
+  status) shift; cmd_status "$@";;
+  next) shift; cmd_next "$@";;
+  handoff) shift; cmd_handoff "$@";;
+  stop) shift; cmd_stop "$@";;
+  *) echo "usage: fm-unattended.sh init|run|resume|status|next|handoff|stop --batch B" >&2; exit 2;;
+esac
