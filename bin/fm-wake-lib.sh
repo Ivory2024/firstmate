@@ -1008,8 +1008,23 @@ _fm_recovery_marker_arm_check() {
 # Apply the owner-documented announced-episode arm transition atomically with
 # the queue read. Handling successors and foreground checkpoints must not call
 # this transition.
+#
+# Bounded to one reopen per episode lineage. A reopen mints a fresh pending
+# generation and records that generation as reopen-born in
+# state/.watcher-down.reopened, so a later arm start that finds the SAME
+# reopen-born generation announced refuses to reopen it again.
+# Without the bound, an unconsumed row was re-announced on every arm start, and
+# because the resurface wake is not itself a queue row nothing could acknowledge
+# it away: a home that kept re-arming cycled a one-second watcher with no live
+# consumer while one durable row waited, and the liveness alert read that as
+# no-consumer for as long as the row stayed unconsumed.
+# The first reopen is untouched, so the crash-replay recovery
+# tests/fm-watch-arm.test.sh's interrupted-handling case owns still happens once,
+# and a new episode (a durable append, or a drain that leaves rows behind) starts
+# a new lineage whose first arm start may reopen again.
 _fm_recovery_marker_reopen_announced() {
-  local marker=$1 lock
+  local marker=$1 lock reopened generation
+  reopened="$STATE/.watcher-down.reopened"
   lock="${marker}.lock"
   fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK" || return 1
   if ! fm_lock_acquire_wait "$lock"; then
@@ -1023,11 +1038,19 @@ _fm_recovery_marker_reopen_announced() {
   fi
   case "$FM_RECOVERY_MARKER_TOKEN" in
     announced:*)
+      generation=${FM_RECOVERY_MARKER_TOKEN##*:}
       if [ -s "$FM_WAKE_QUEUE" ] \
-        && ! _fm_recovery_marker_write_locked "$marker" downtime ""; then
-        fm_lock_release "$lock"
-        fm_lock_release "$FM_WAKE_QUEUE_LOCK"
-        return 1
+        && [ "$(cat "$reopened" 2>/dev/null || true)" != "$generation" ]; then
+        if ! _fm_recovery_marker_write_locked "$marker" downtime ""; then
+          fm_lock_release "$lock"
+          fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+          return 1
+        fi
+        # Best effort, and deliberately fail-closed toward NOT reopening: a
+        # record that cannot be written leaves the next arm start refusing,
+        # which costs a resurface retry rather than an unbounded loop.
+        printf '%s\n' "${FM_RECOVERY_MARKER_WRITTEN_TOKEN##*:}" > "$reopened" 2>/dev/null \
+          || rm -f -- "$reopened" 2>/dev/null || true
       fi
       ;;
   esac

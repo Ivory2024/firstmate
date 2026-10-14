@@ -916,6 +916,79 @@ test_append_wakes_live_announced_watcher() {
   pass "watch-arm: appending work reopens an announced empty recovery"
 }
 
+# An announced episode that still has queued work is reopened at most once. This
+# is the live defect: a home that kept re-arming cycled a one-second watcher that
+# exited on "check: rearm-resurface" on every start, so no consumer ever held the
+# lock while a durable row was pending and the liveness alert reported
+# no-consumer. The resurface wake is not itself a queue row, so nothing could
+# acknowledge it away and the condition never went false. The first start still
+# reopens (the crash-replay recovery), and the next one must supervise instead.
+stop_fixture_watcher() {  # <state>
+  local state=$1 pid i=0
+  pid=$(cat "$state/.watch.lock/pid" 2>/dev/null || true)
+  [ -n "$pid" ] || return 0
+  kill -TERM "$pid" 2>/dev/null || true
+  while [ "$i" -lt 50 ] && is_live_non_zombie "$pid"; do
+    sleep 0.1
+    i=$((i + 1))
+  done
+  return 0
+}
+
+test_a_second_plain_arm_start_supervises_instead_of_reannouncing() {
+  local dir home state fakebin first_out second_out third_out before after
+  dir=$(make_case announced-bounded-reopen)
+  home="$dir/home"
+  state="$dir/state"
+  fakebin="$dir/fakebin"
+  mkdir -p "$home/data" "$state"
+  printf '%s\t16780\tstale\tdefault:w1:p1X\tstale: default:w1:p1X\n' 1791894119 > "$state/.wake-queue"
+  printf '16780\n' > "$state/.wake-queue.seq"
+  printf 'announced:downtime:queued.1.fixture\n' > "$state/.watcher-down"
+  chmod 600 "$state/.watcher-down"
+  before=$(cat "$state/.watcher-down")
+
+  # The first plain arm start reopens the announced episode once and surfaces it.
+  first_out="$dir/arm-1.out"
+  start_rearm_arm "$home" "$state" "$fakebin" "$first_out"
+  wait_for_exit "$ARM_PID" 80 || fail "the first plain arm start did not surface the queued recovery"
+  grep -F 'check: rearm-resurface' "$first_out" >/dev/null \
+    || fail "the first plain arm start did not reopen the announced episode: $(cat "$first_out")"
+  after=$(cat "$state/.watcher-down")
+  [ "$after" != "$before" ] || fail "the first reopen did not mint a fresh generation"
+  [ -s "$state/.wake-queue" ] || fail "the queued row disappeared on the first reopen"
+
+  # The second must not: the same reopen-born generation is announced, so the
+  # watcher it starts stays alive and supervises.
+  second_out="$dir/arm-2.out"
+  start_rearm_arm "$home" "$state" "$fakebin" "$second_out"
+  sleep 3
+  grep -F 'check: rearm-resurface' "$second_out" >/dev/null \
+    && { stop_fixture_watcher "$state"; wait_for_exit "$ARM_PID" 20 >/dev/null 2>&1 || true; \
+      fail "a second plain arm start re-announced the same announced episode: $(cat "$second_out")"; }
+  is_live_non_zombie "$ARM_PID" \
+    || fail "the bounded second arm start did not leave the watcher supervising: $(cat "$second_out")"
+  [ -s "$state/.watch.lock/pid" ] \
+    || { stop_fixture_watcher "$state"; fail "the bounded second arm start left no live watcher lock"; }
+  [ "$(cat "$state/.watcher-down")" = "$after" ] \
+    || { stop_fixture_watcher "$state"; fail "the bounded second arm start churned the episode"; }
+  stop_fixture_watcher "$state"
+  wait_for_exit "$ARM_PID" 50 >/dev/null 2>&1 || true
+
+  # A new episode - here a durable append - starts a new lineage whose first arm
+  # start may reopen again, so real work is never silenced by the bound.
+  append_wake "$state" check inbox:fixture 'check: bounded reopen fixture' \
+    || fail "the generic producer could not append its wake"
+  third_out="$dir/arm-3.out"
+  start_rearm_arm "$home" "$state" "$fakebin" "$third_out"
+  wait_for_exit "$ARM_PID" 80 || fail "a new episode's first arm start did not surface"
+  grep -F 'check: rearm-resurface' "$third_out" >/dev/null \
+    || fail "a new episode did not reopen recovery: $(cat "$third_out")"
+  grep "$(printf '\tstale\tdefault:w1:p1X\t')" "$state/.wake-queue" >/dev/null \
+    || fail "the original queued row was consumed by a watcher cycle"
+  pass "watch-arm: an announced episode is reopened once and the next arm start supervises"
+}
+
 # Exercise the handling-window recovery invariant owned by
 # docs/watcher-continuity.md through real watcher processes.
 test_handling_window_close_keeps_the_acknowledgement_valid() {
@@ -1705,6 +1778,7 @@ test_recovery_consumption_serializes_queue_publication
 test_markerless_legacy_queue_is_recovered_on_arm
 test_idle_lavish_source_stays_quiet_until_result
 test_append_wakes_live_announced_watcher
+test_a_second_plain_arm_start_supervises_instead_of_reannouncing
 test_handling_window_close_keeps_the_acknowledgement_valid
 test_moved_generation_acknowledgement_is_self_healing
 test_downtime_marker_does_not_follow_symlink
